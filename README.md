@@ -3,13 +3,25 @@
 ## Compile
 
 ```sh
-./build_wasm.sh
+scripts/build_wasm.sh
 ```
 
 OR
 
 ```sh
-wach -o "src/**" "./build_wasm.sh"
+wach -o "src/**" "scripts/build_wasm.sh"
+```
+
+## Test
+
+```sh
+scripts/test.sh
+```
+
+OR
+
+```sh
+wach scripts/test.sh
 ```
 
 ## Start the server

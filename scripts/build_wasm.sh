@@ -9,7 +9,7 @@ set -e
 # - PATH_TO_NIM
 #
 # At some point, move to a dockerized or otherwise reproducible build system.
-source "./build_user_settings.sh"
+source "scripts/build_user_settings.sh"
 
 export PATH_TO_C_ASSETS="./nimcache"
 export C_ENTRY_FILE="${PATH_TO_C_ASSETS}/@mnim_wasm.nim.c"
@@ -45,7 +45,7 @@ echo "============================================="
   --d:useMalloc \
   --d:noSignalHandler \
   --nimcache:${PATH_TO_C_ASSETS} \
-  c src/main.nim
+  c src/dida.nim
 
   # Link nimbase.h
   ln -sfw ${PATH_TO_NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h

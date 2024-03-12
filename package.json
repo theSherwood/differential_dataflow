@@ -9,11 +9,9 @@
   },
   "scripts": {
     "start": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build:vite": "tsc && vite build"
   },
   "author": "",
-  "license": "ISC",
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "^0.2.19"
   },
