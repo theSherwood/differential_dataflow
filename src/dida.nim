@@ -1,4 +1,5 @@
 import std/[tables, sets, bitops]
+import hashes
 
 when defined(isNimSkull):
   {.pragma: ex, exportc, dynlib.}
@@ -200,7 +201,7 @@ when NaN_boxing and system_32_bits:
 
   # XOR is commutative, associative, and is its own inverse.
   # So we can use this same function to unhash as well.
-  proc hash(i1, i2: int32): int32 =
+  proc calc_hash(i1, i2: int32): int32 =
     return bitxor(i1, i2)
 
   const MASK_SIGN        = 0b10000000000000000000000000000000'i32
@@ -238,26 +239,51 @@ when NaN_boxing and system_32_bits:
   const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
   const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
-  proc is_float(head: int32): bool =
+  template is_float(head: int32): bool =
     return bitand(bitnot(head), MASK_EXPONENT) == 0
-  proc is_int(head: int32): bool =
+  template is_int(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_INT
-  proc is_nil(head: int32): bool =
+  template is_nil(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_NIL
-  proc is_bool(head: int32): bool =
+  template is_bool(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_BOOL
-  proc is_atom(head: int32): bool =
+  template is_atom(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_ATOM
-  proc is_string(head: int32): bool =
+  template is_string(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_STRING
-  proc is_bignum(head: int32): bool =
+  template is_bignum(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_BIGNUM
-  proc is_array(head: int32): bool =
+  template is_array(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_ARRAY
-  proc is_set(head: int32): bool =
+  template is_set(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_SET
-  proc is_map(head: int32): bool =
+  template is_map(head: int32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_MAP
+  proc is_heap(head: int32): bool =
+    return bitand(head, MASK_EXP_OR_Q) == MASK_HEAP
+  
+  template is_float(v: ImValue): bool =
+    return v.head.is_float
+  template is_int(v: ImValue): bool =
+    return v.head.is_int
+  template is_nil(v: ImValue): bool =
+    return v.head.is_nil
+  template is_bool(v: ImValue): bool =
+    return v.head.is_bool
+  template is_atom(v: ImValue): bool =
+    return v.head.is_atom
+  template is_string(v: ImValue): bool =
+    return v.head.is_string
+  template is_bignum(v: ImValue): bool =
+    return v.head.is_bignum
+  template is_array(v: ImValue): bool =
+    return v.head.is_array
+  template is_set(v: ImValue): bool =
+    return v.head.is_set
+  template is_map(v: ImValue): bool =
+    return v.head.is_map
+  proc is_heap(v: ImValue): bool =
+    return v.head.is_heap
 
   proc get_kind(head: int32): ImValueKind =
     if bitand(bitnot(head), MASK_EXPONENT) != 0: return ImValueKind.Float64
@@ -298,11 +324,56 @@ when NaN_boxing and system_32_bits:
     result = false
     if v1.head == v2.head:
       result = v1.tail == v2.tail
+
+  proc hash(v: ImValue): Hash =
+    if is_heap(v):
+      # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
+      let vh = cast[ImString](v)
+      result = vh.tail.hash
+    else:
+      result = v.head
   
-  proc `==`(v1, v2: ImValueRef): bool =
-    result = false
-    if v1.head == v2.head:
-      result = v1.tail == v2.tail
+  proc update_head(previous_head: int32, full_hash: Hash): int32 =
+    let short_hash = bitand(full_hash, MASK_SHORT_HASH)
+    let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
+    return bitor(truncated_head, short_hash.int32).int32
+
+  proc `[]=`(m: ImMap, k: ImValue, v: ImValue): ImMap =
+    if m.tail.data[k] == v: return m
+    var table_copy = m.tail.data
+    table_copy[k] = v
+    let k_hash = hash(k)
+    let v_hash = hash(v)
+    let entry_hash = (k_hash + v_hash).int32
+    let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
+    let new_m_payload = ImMapPayloadRef(
+      hash: new_m_map_hash,
+      data: table_copy
+    )
+    let new_m = ImMap( 
+      head: update_head(m.head, new_m_map_hash),
+      tail: new_m_payload
+    )
+    return new_m
+  
+  proc del(m: ImMap, k: ImValue): ImMap =
+    if not(k in m.tail.data): return m
+    let v = m.tail.data[k]
+    let k_hash = hash(k)
+    let v_hash = hash(v)
+    let entry_hash = (k_hash + v_hash).int32
+    let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
+    var table_copy = m.tail.data
+    table_copy.del(k)
+    let new_m_payload = ImMapPayloadRef(
+      hash: new_m_map_hash,
+      data: table_copy
+    )
+    let new_m = ImMap( 
+      head: update_head(m.head, new_m_map_hash),
+      tail: new_m_payload
+    )
+    return new_m
 
   #[
   # TODO
