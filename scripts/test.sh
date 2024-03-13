@@ -9,7 +9,12 @@ set -e
 # At some point, move to a dockerized or otherwise reproducible build system.
 source "scripts/build_user_settings.sh"
 
+export PATH_TO_C_ASSETS="./nimcache/tests"
+
 (
+  # Clean previous compilation results
+  rm -Rf ${PATH_TO_C_ASSETS}
+
   ${PATH_TO_NIM} \
   r \
   --os: macosx \
@@ -18,6 +23,7 @@ source "scripts/build_user_settings.sh"
   --stackTrace: on \
   --d: release \
   --multimethods: on \
+  --nimcache:${PATH_TO_C_ASSETS} \
   tests/test.nim
 )
 

@@ -1,4 +1,4 @@
-import std/[tables, sets, bitops]
+import std/[tables, sets, bitops, strutils]
 import hashes
 
 when defined(isNimSkull):
@@ -165,15 +165,19 @@ when NaN_boxing and system_32_bits:
       tail*: int32
     ImValueRef* = ref ImValue
 
-    ImImmediateValue* = object of RootObj
+    ImImmediateValue* = object
       head*: int32
       tail*: int32
+    ImFloat* {.borrow: `.`.} = distinct ImImmediateValue
+    ImInt* {.borrow: `.`.} = distinct ImImmediateValue
     ImNaN* {.borrow: `.`.} = distinct ImImmediateValue
     ImNil* {.borrow: `.`.} = distinct ImImmediateValue
     ImBool* {.borrow: `.`.} = distinct ImImmediateValue
     ImAtom* {.borrow: `.`.} = distinct ImImmediateValue
 
     ImImmediateValueRef* = ref ImImmediateValue
+    ImFloatRef* = ref ImFloat
+    ImIntRef* = ref ImInt
     ImNaNRef* = ref ImNaN
     ImNilRef* = ref ImNil
     ImBoolRef* = ref ImBool
@@ -320,12 +324,26 @@ when NaN_boxing and system_32_bits:
     if v1.hash == v2.hash:
       result = v1.data == v2.data
   
-  proc `==`(v1, v2: ImValue): bool =
+  proc `==`*(v1, v2: ImValue): bool =
     result = false
     if v1.head == v2.head:
       result = v1.tail == v2.tail
+  
+  proc `==`*(v1, v2: ImFloat): bool =
+    return cast[float64](v1) == cast[float64](v2)
+  proc `==`*(v: ImValue, f: float64): bool =
+    return cast[float64](v) == f
+  proc `==`*(f: float64, v: ImValue): bool =
+    return cast[float64](v) == f
+  proc `==`*(v: ImFloat, f: float64): bool =
+    return cast[float64](v) == f
+  proc `==`*(f: float64, v: ImFloat): bool =
+    return cast[float64](v) == f
 
-  proc hash(v: ImValue): Hash =
+  proc to_float*(v: ImFloat): float64 =
+    return cast[float64](v)
+
+  proc hash*(v: ImValue): Hash =
     if is_heap(v):
       # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
       let vh = cast[ImString](v)
@@ -338,7 +356,22 @@ when NaN_boxing and system_32_bits:
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
     return bitor(truncated_head, short_hash.int32).int32
 
-  proc `[]=`(m: ImMap, k: ImValue, v: ImValue): ImMap =
+  proc init_float*(f: float64 = 0): ImFloat =
+    var a: array[8,byte] = cast[array[8,byte]](f)
+    echo "a: ", a
+    echo "int: ", cast[array[4, byte]](1)
+    echo "float: ", toHex(f.int64), " ", f
+    return ImImmediateValue(head: (f.int64 shr 32).int32, tail: f.int32).ImFloat
+
+  proc init_map*(): ImMap =
+    var m = ImMap(head: MASK_SIG_MAP)
+    return m
+
+  proc `[]`*(m: ImMap, k: ImValue): ImValue =
+    let nil_v = ImValue(head: MASK_SIG_NAN, tail: 0)
+    return m.tail.data.getOrDefault(k, nil_v)
+
+  proc `[]=`*(m: ImMap, k: ImValue, v: ImValue): ImMap =
     if m.tail.data[k] == v: return m
     var table_copy = m.tail.data
     table_copy[k] = v
@@ -356,7 +389,7 @@ when NaN_boxing and system_32_bits:
     )
     return new_m
   
-  proc del(m: ImMap, k: ImValue): ImMap =
+  proc del*(m: ImMap, k: ImValue): ImMap =
     if not(k in m.tail.data): return m
     let v = m.tail.data[k]
     let k_hash = hash(k)
@@ -375,16 +408,6 @@ when NaN_boxing and system_32_bits:
     )
     return new_m
 
-  #[
-  # TODO
-  const mask_heap: uint32 = 0b11111111111110000000000000000000'u32
-  const mask_plain_NaN: uint32 = 0b01111111111110000000000000000000'u32
-  proc is_map(v: ImValue): bool =
-    return v.head == mask_heap
-  # const mask_NaN = 0b
-  proc kind_from_value(v: ImValue): ImValueKind =
-    discard
-  ]#
 else:
   type
     ImValueKind* = enum
@@ -448,3 +471,11 @@ else:
       discard
     else:
       result = false
+
+proc do_thing(): void =
+  var
+    f1 = init_float()
+    f2 = init_float()
+  doAssert f1 == f2
+
+do_thing()
