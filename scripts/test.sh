@@ -17,6 +17,7 @@ source "scripts/build_user_settings.sh"
   --cc: gcc \
   --stackTrace: on \
   --d: release \
+  --multimethods: on \
   tests/test.nim
 )
 
