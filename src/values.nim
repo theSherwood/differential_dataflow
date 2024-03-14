@@ -1,4 +1,4 @@
-import std/[tables, sets, bitops, strutils]
+import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
 # TODO - figure out how to make a macro for this pragma so it can be imported
@@ -456,6 +456,26 @@ when NaN_boxing and system_32_bits:
   proc init_number*(f: float64 = 0): ImNumber =
     return (cast[ImStackValue](f)).ImNumber
 
+  let empty_string = ImString(
+    head: MASK_SIG_STRING,
+    tail: ImStringPayloadRef(hash: 0)
+  )
+
+  proc init_string*(s: string = ""): ImString =
+    if s.len == 0: return empty_string
+    let hash = hash(s).uint32
+    return ImString(
+      head: update_head(MASK_SIG_STRING, hash),
+      tail: ImStringPayloadRef(hash: hash, data: s)
+    )
+
+  proc concat*(s1, s2: ImString): ImString =
+    let new_s = s1.tail.data & s2.tail.data
+    return init_string(new_s)
+
+  proc size*(s: ImString): int32 =
+    return s.tail.data.len.int32
+  
   let empty_map = ImMap(
     head: MASK_SIG_MAP,
     tail: ImMapPayloadRef(hash: 0)

@@ -46,6 +46,10 @@ proc main =
       check m3 == m4
       check m3.get(1.0) == Nil.as_v
       check m4.get(1.0) == Nil.as_v
+  suite "string":
+    test "simple":
+      var s = init_string("this")
+      check s.size == 4
   suite "foo":
     test "bar":
       check 1 == get_one()
