@@ -300,17 +300,17 @@ when NaN_boxing and system_32_bits:
   proc is_heap(v: ImValue): bool =
     return v.head.is_heap
 
-  template to_v*(v: typed): ImValue =
+  template as_v*(v: typed): ImValue =
     cast[ImValue](v)
-  template to_f64*(v: typed): float64 =
+  template as_f64*(v: typed): float64 =
     cast[float64](v)
-  template to_u64*(v: typed): uint64 =
+  template as_u64*(v: typed): uint64 =
     cast[uint64](v)
 
   proc to_hex*(f: float64): string =
-    return toHex(f.to_u64)
+    return toHex(f.as_u64)
   proc to_hex*(v: ImV): string =
-    return toHex(v.to_u64)
+    return toHex(v.as_u64)
   proc to_byte_array*(v: ImV): array[8, byte] =
     return cast[array[8, byte]](v)
 
@@ -363,24 +363,33 @@ when NaN_boxing and system_32_bits:
           eq_heap_tail(v1.ImSet, v2.ImSet)
         else:
           discard
+
+  proc `==`*(v1: ImSV, v2: float64): bool =
+    return v1.as_f64 == v2
+  proc `==`*(v1: float64, v2: ImSV): bool =
+    return v1 == v2.as_f64
   proc `==`*(v1, v2: ImSV): bool =
-    return v1.to_u64 == v2.to_u64
+    return v1.as_u64 == v2.as_u64
   
   proc `==`*(v1, v2: ImV): bool =
     if bitand(MASK_HEAP, v1.head) == MASK_HEAP:
       return v1.ImHV == v2.ImHV
     else:
       return v1.ImSV == v2.ImSV
+  proc `==`*(v1: ImV, v2: float64): bool =
+    return v1 == v2.as_v
+  proc `==`*(v1: float64, v2: ImV): bool =
+    return v1.as_v == v2
   
-  proc `==`*(v1, v2: ImFloat): bool =
-    return cast[float64](v1) == cast[float64](v2)
+  # TODO - figure out how to make this work so we get some handy coercion
+  #proc `==`*(v1, v2: ImValue): bool =
+    #if bitand(MASK_HEAP, v1.head) == MASK_HEAP:
+      #return v1.ImHV == v2.ImHV
+    #else:
+      #return v1.ImSV == v2.ImSV
   proc `==`*(v: ImValue, f: float64): bool =
     return cast[float64](v) == f
   proc `==`*(f: float64, v: ImValue): bool =
-    return cast[float64](v) == f
-  proc `==`*(v: ImFloat, f: float64): bool =
-    return cast[float64](v) == f
-  proc `==`*(f: float64, v: ImFloat): bool =
     return cast[float64](v) == f
 
   proc float_from_mask*(mask: uint32): float64 =
@@ -435,21 +444,29 @@ when NaN_boxing and system_32_bits:
       else:
         discard
 
-
   proc init_float*(f: float64 = 0): ImFloat =
     return (cast[ImStackValue](f)).ImFloat
 
+  let empty_map = ImMap(
+    head: MASK_SIG_MAP,
+    tail: ImMapPayloadRef(hash: 0)
+  )
+
   proc init_map*(): ImMap =
-    var m = ImMap(
-      head: MASK_SIG_MAP,
-      tail: ImMapPayloadRef(hash: 0)
-    )
-    return m
+    return empty_map
+  
+  # There's probably no point in having this. It suggests reference semantics.
+  proc clear*(m: ImMap): ImMap =
+    return empty_map
 
   proc `[]`*(m: ImMap, k: ImValue): ImValue =
-    return m.tail.data.getOrDefault(k, Nil.to_v).to_v
+    return m.tail.data.getOrDefault(k, Nil.as_v).as_v
+  proc `[]`*(m: ImMap, k: float64): ImValue =
+    return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
   proc get*(m: ImMap, k: ImValue): ImValue =
-    return m.tail.data.getOrDefault(k, Nil.to_v).to_v
+    return m.tail.data.getOrDefault(k, Nil.as_v).as_v
+  proc get*(m: ImMap, k: float64): ImValue =
+    return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
 
   proc del*(m: ImMap, k: ImValue): ImMap =
     if not(k in m.tail.data): return m
@@ -469,10 +486,12 @@ when NaN_boxing and system_32_bits:
       tail: new_m_payload
     )
     return new_m
+  proc del*(m: ImMap, k: float64): ImMap =
+    return m.del(k.as_v)
 
   proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
-    if v == Nil.to_v: return m.del(k)
-    if m.tail.data.getOrDefault(k, Nil.to_v) == v: return m
+    if v == Nil.as_v: return m.del(k)
+    if m.tail.data.getOrDefault(k, Nil.as_v) == v: return m
     var table_copy = m.tail.data
     table_copy[k] = v
     let k_hash = hash(k)
@@ -488,6 +507,15 @@ when NaN_boxing and system_32_bits:
       tail: new_m_payload
     )
     return new_m
+  proc set*(m: ImMap, k: float64, v: float64): ImMap =
+    return m.set(k.as_v, v.as_v)
+  proc set*(m: ImMap, k: ImValue, v: float64): ImMap =
+    return m.set(k, v.as_v)
+  proc set*(m: ImMap, k: float64, v: ImValue): ImMap =
+    return m.set(k.as_v, v)
+
+  proc size*(m: ImMap): int32 =
+    return m.tail.data.len.int32
 
 else:
   type
