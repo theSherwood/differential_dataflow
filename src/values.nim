@@ -46,13 +46,8 @@ proc get_one*(): int {.ex.} =
 
     32 bits                          | 32 bits
     XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  float64
-    +- Sign bit (1)
-    |            +- Int indicator bit (1)
-    |            |+- Payload bits (51)
-    |            ||
-    X1111111111111XXXXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  int
 
-    00 - plain NaN
+    0000 - plain NaN
 
     +- Immediate bit (1)
     |+- Exponent bits (11)
@@ -63,48 +58,77 @@ proc get_one*(): int {.ex.} =
     ||          ||| |
     01111111111110000000000000000000 | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  NaN
 
-    Immediate types (2 bits)
-    01 - logical (nil | true | false)
-    10 - atom (string of max 6 bytes)
-    11 - (unused)
+    Immediate types (3 bits, because atom needs a 48-bit payload)
+    000 - (cannot use because of collision with NaN)
+    001 - logical (nil | true | false)
+    010 - atom (string of max 6 bytes)
+    011-111 - (unused, 5 values)
+
+    Some types we could add:
+    atom-symbol, timestamp(no timezone?), bitset(48-bit), binary(48-bit), int,
+    small byte array (48-bit, useful for small tuples)
+
+    If there are other types that don't need 6 bytes of payload, we could add
+    a lot more types. If we only need 4 bytes of payload, for example, we
+    could add thousands of types. So we really aren't short of bits for
+    specifying types.
 
     +- Immediate bit (1)
     |+- Exponent bits (11)
     ||          +- Quiet bit (1)
-    ||          |+- Not int bit (1)
-    ||          ||+- Immediate type bits (2)
-    ||          ||| +- Payload bits (48)
-    ||          ||| |
+    ||          |+- Immediate type bits (2)
+    ||          || +- Payload bits (48)
+    ||          || |
     01111111111110010000000000000000 | 00000000000000000000000000000000  nil
     01111111111110011000000000000000 | 00000000000000000000000000000000  false
     01111111111110011100000000000000 | 00000000000000000000000000000000  true
     0111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  atom
-    0111111111111011XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  (unused)
 
+    # OPTION 1 : (4 bits, leaves 15-bit short hash, 32768 values)
+    Heap types (4 bits)
+    0000 - (cannot use because of collision with NaN)
+    0001 - string
+    0010 - bignum
+    0011 - array
+    0100 - set
+    0101 - map
+    0110-1111 - (unused, 10 values)
+
+    # OPTION 2 : (3 bits, leaves 16-bit short hash, 65536 values)
     Heap types (3 bits)
-    00X - (cannot use because of collision with NaN)
-    010 - string
-    011 - bignum
-    100 - array
-    101 - set
-    110 - map
-    111 - user-defined
+    000 - (cannot use because of collision with NaN)
+    001 - string
+    010 - bignum
+    011 - array
+    100 - set
+    101 - map
+    110-111 - (unused, 2 values)
+
+    # Going with OPTION 1 for now
+    The extra types may prove to be more useful than the extra bit in the short
+    hash. Of course, we can also use one value as a Box for any number of
+    other types.
+    Some types we could add:
+    regex, time, date, datetime, pair, tuple, closure, symbol, tag, path,
+    var/box(reactive?), email, version, typedesc/class, vector(homogenous),
+    bitset, binary, unit(measurements), ...
+    (...or mutable types?:)
+    mut-array, mut-map, mut-set, mut-vector, ...
+    (...or ruliad-specific:) 
+    id, branch, patch
 
     +- Heap bit (1)
-    |            +- Not int bit (1)
-    |            |+- Heap type bits (3)
-    |            ||  +- Short content hash (15 bits, only 32768 values)
-    |            ||  |                 +- Pointer (32)
-    |            ||  |                 |
-    11111111111110010XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
-    11111111111110011XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
-    11111111111110100XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
-    11111111111110101XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
-    11111111111110110XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
-    11111111111110111XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  user-defined
+    |            +- Heap type bits (4)
+    |            |   +- Short content hash (15 bits, only 32768 values)
+    |            |   |                 +- Pointer (32)
+    |            |   |                 |
+    11111111111110001XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
+    11111111111110010XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
+    11111111111110011XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
+    11111111111110100XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
+    11111111111110101XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
 
   ]#
-
 
   Bits for immutable value hashes
 
@@ -130,14 +154,11 @@ when NaN_boxing and system_32_bits:
     Bar = ref object of Foo
       b: int32
     ImValueKind* = enum
-      # Number Kinds
-      kFloat64
-      kInt52
       # Immediate Kinds
       kPlainNaN
       kNil
       kBool
-      kNumber
+      kNumber # like js, we just have a float64 number type
       kAtom
       # Heap Kinds
       kBigNum
@@ -171,18 +192,17 @@ when NaN_boxing and system_32_bits:
     ImStackValue* = object
       tail*: uint32
       head*: uint32
-    ImFloat* {.borrow: `.`.} = distinct ImStackValue
-    ImInt* {.borrow: `.`.} = distinct ImStackValue
+    # TODO - change ImNumber to alias float64
+    ImNumber* {.borrow: `.`.} = distinct ImStackValue
     ImNaN* {.borrow: `.`.} = distinct ImStackValue
     ImNil* {.borrow: `.`.} = distinct ImStackValue
     ImBool* {.borrow: `.`.} = distinct ImStackValue
     ImAtom* {.borrow: `.`.} = distinct ImStackValue
 
-    ImSV* = ImStackValue or ImFloat or ImNaN or ImNil or ImBool or ImAtom
+    ImSV* = ImStackValue or ImNumber or ImNaN or ImNil or ImBool or ImAtom
 
     ImImmediateValueRef* = ref ImStackValue
-    ImFloatRef* = ref ImFloat
-    ImIntRef* = ref ImInt
+    ImNumberRef* = ref ImNumber
     ImNaNRef* = ref ImNaN
     ImNilRef* = ref ImNil
     ImBoolRef* = ref ImBool
@@ -226,23 +246,19 @@ when NaN_boxing and system_32_bits:
   const MASK_HEAP        = 0b11111111111110000000000000000000'u32
 
   const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u32
-  const MASK_TYPE_INT    = 0b00000000000001000000000000000000'u32
   const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u32
   const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u32
   const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u32
   const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u32
   const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u32
-  const MASK_TYPE_TODO   = 0b00000000000000110000000000000000'u32
 
-  const MASK_TYPE_STRING = 0b10000000000000010000000000000000'u32
-  const MASK_TYPE_BIGNUM = 0b10000000000000011000000000000000'u32
-  const MASK_TYPE_ARRAY  = 0b10000000000000100000000000000000'u32
-  const MASK_TYPE_SET    = 0b10000000000000101000000000000000'u32
-  const MASK_TYPE_MAP    = 0b10000000000000110000000000000000'u32
-  const MASK_TYPE_DEF    = 0b10000000000000111000000000000000'u32
+  const MASK_TYPE_STRING = 0b10000000000000001000000000000000'u32
+  const MASK_TYPE_BIGNUM = 0b10000000000000010000000000000000'u32
+  const MASK_TYPE_ARRAY  = 0b10000000000000011000000000000000'u32
+  const MASK_TYPE_SET    = 0b10000000000000100000000000000000'u32
+  const MASK_TYPE_MAP    = 0b10000000000000101000000000000000'u32
 
   const MASK_SIG_NAN     = MASK_EXP_OR_Q
-  const MASK_SIG_INT     = MASK_EXP_OR_Q or MASK_TYPE_INT
   const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
   const MASK_SIG_FALSE   = MASK_EXP_OR_Q or MASK_TYPE_FALSE
   const MASK_SIG_TRUE    = MASK_EXP_OR_Q or MASK_TYPE_TRUE
@@ -256,8 +272,6 @@ when NaN_boxing and system_32_bits:
 
   template is_float(head: uint32): bool =
     return bitand(bitnot(head), MASK_EXPONENT) == 0
-  template is_int(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_TYPE_INT
   template is_nil(head: uint32): bool =
     return bitand(head, MASK_SIGNATURE) == MASK_TYPE_NIL
   template is_bool(head: uint32): bool =
@@ -279,8 +293,6 @@ when NaN_boxing and system_32_bits:
   
   template is_float(v: ImValue): bool =
     return v.head.is_float
-  template is_int(v: ImValue): bool =
-    return v.head.is_int
   template is_nil(v: ImValue): bool =
     return v.head.is_nil
   template is_bool(v: ImValue): bool =
@@ -315,18 +327,17 @@ when NaN_boxing and system_32_bits:
     return cast[array[8, byte]](v)
 
   proc get_kind(head: uint32): ImValueKind =
-    if bitand(bitnot(head), MASK_EXPONENT) != 0: return ImValueKind.kFloat64
+    if bitand(bitnot(head), MASK_EXPONENT) != 0: return kNumber
     let signature = bitand(head, MASK_SIGNATURE)
     case signature:
-      of MASK_SIG_INT:    return ImValueKind.kInt52
-      of MASK_SIG_NIL:    return ImValueKind.kNil
-      of MASK_SIG_BOOL:   return ImValueKind.kBool
-      of MASK_SIG_ATOM:   return ImValueKind.kAtom
-      of MASK_SIG_STRING: return ImValueKind.kString
-      of MASK_SIG_BIGNUM: return ImValueKind.kBigNum
-      of MASK_SIG_ARRAY:  return ImValueKind.kArray
-      of MASK_SIG_SET:    return ImValueKind.kSet
-      of MASK_SIG_MAP:    return ImValueKind.kMap
+      of MASK_SIG_NIL:    return kNil
+      of MASK_SIG_BOOL:   return kBool
+      of MASK_SIG_ATOM:   return kAtom
+      of MASK_SIG_STRING: return kString
+      of MASK_SIG_BIGNUM: return kBigNum
+      of MASK_SIG_ARRAY:  return kArray
+      of MASK_SIG_SET:    return kSet
+      of MASK_SIG_MAP:    return kMap
       else:
         discard
 
@@ -410,9 +421,6 @@ when NaN_boxing and system_32_bits:
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
     return bitor(truncated_head, short_hash.uint32).uint32
 
-  proc to_imsv*(f: float64 = 0): ImStackValue =
-    return (cast[ImStackValue](f))
-
   let Nil* = cast[ImNil](float_from_mask(MASK_SIG_NIL))
   let True* = cast[ImBool](float_from_mask(MASK_SIG_TRUE))
   let False* = cast[ImBool](float_from_mask(MASK_SIG_FALSE))
@@ -427,8 +435,8 @@ when NaN_boxing and system_32_bits:
   proc `$`*(v: ImValue): string =
     let kind = get_kind(v.head)
     case kind:
-      of kFloat64:
-        result = "Float( " & $(cast[float64](v)) & " )"
+      of kNumber:
+        result = "Num(" & $(cast[float64](v)) & ")"
       of kMap:
         result = "Map( TODO )"
       else:
@@ -437,15 +445,16 @@ when NaN_boxing and system_32_bits:
     let kind = get_kind(v.head)
     let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
     case kind:
-      of kFloat64:
-        result = "Float" & shallow_str
+      of kNumber:
+        result = "Num" & shallow_str
       of kMap:
         result = "Map" & shallow_str
       else:
         discard
 
-  proc init_float*(f: float64 = 0): ImFloat =
-    return (cast[ImStackValue](f)).ImFloat
+  # TODO - eliminate this completely by just using floats?
+  proc init_number*(f: float64 = 0): ImNumber =
+    return (cast[ImStackValue](f)).ImNumber
 
   let empty_map = ImMap(
     head: MASK_SIG_MAP,

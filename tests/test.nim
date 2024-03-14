@@ -2,22 +2,22 @@ import std/[unittest, bitops]
 import values
 
 proc main =
-  suite "float":
+  suite "number":
     test "simple":
       var
-        f1 = init_float()
-        f2 = init_float()
-      check f1 == f2
-      check f1 == 0.float64
-      check 0.float64 == f2
+        n1 = init_number()
+        n2 = init_number()
+      check n1 == n2
+      check n1 == 0.float64
+      check 0.float64 == n2
       var
-        f3 = init_float(3.45)
-        f4 = init_float(-99.156)
-      check f3 != f4
-      check f3.as_f64 == 3.45
-      check -99.156 == f4.as_f64
-      check (3.45).as_v == f3.as_v
-      check (-99.156).as_v == f4.as_v
+        n3 = init_number(3.45)
+        n4 = init_number(-99.156)
+      check n3 != n4
+      check n3.as_f64 == 3.45
+      check -99.156 == n4.as_f64
+      check (3.45).as_v == n3.as_v
+      check (-99.156).as_v == n4.as_v
   suite "map":
     test "immutable updates":
       var
