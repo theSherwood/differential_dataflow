@@ -130,21 +130,21 @@ when NaN_boxing and system_32_bits:
       b: int32
     ImValueKind* = enum
       # Number Kinds
-      Float64
-      Int52
+      kFloat64
+      kInt52
       # Immediate Kinds
-      PlainNaN
-      Nil
-      Bool
-      Number
-      Atom
+      kPlainNaN
+      kNil
+      kBool
+      kNumber
+      kAtom
       # Heap Kinds
-      BigNum
-      String
-      Array
-      Map
-      Set
-      UserDefined
+      kBigNum
+      kString
+      kArray
+      kMap
+      kSet
+      kUserDefined
 
     ImHeapPayloadRef* = ref object of RootObj
     ImStringPayloadRef* = ref object of ImHeapPayloadRef
@@ -160,22 +160,26 @@ when NaN_boxing and system_32_bits:
       hash: int32
       data: HashSet[ImValue]
 
+    # Always put the tail first because we are targeting 32-bit little-endian
+    # systems. So tail, head lets us cast directly to and from float64.
     ImValue* {.final, acyclic.} = object
-      head*: int32
       tail*: int32
+      head*: int32
     ImValueRef* = ref ImValue
 
-    ImImmediateValue* = object
-      head*: int32
+    ImStackValue* = object
       tail*: int32
-    ImFloat* {.borrow: `.`.} = distinct ImImmediateValue
-    ImInt* {.borrow: `.`.} = distinct ImImmediateValue
-    ImNaN* {.borrow: `.`.} = distinct ImImmediateValue
-    ImNil* {.borrow: `.`.} = distinct ImImmediateValue
-    ImBool* {.borrow: `.`.} = distinct ImImmediateValue
-    ImAtom* {.borrow: `.`.} = distinct ImImmediateValue
+      head*: int32
+    ImFloat* {.borrow: `.`.} = distinct ImStackValue
+    ImInt* {.borrow: `.`.} = distinct ImStackValue
+    ImNaN* {.borrow: `.`.} = distinct ImStackValue
+    ImNil* {.borrow: `.`.} = distinct ImStackValue
+    ImBool* {.borrow: `.`.} = distinct ImStackValue
+    ImAtom* {.borrow: `.`.} = distinct ImStackValue
 
-    ImImmediateValueRef* = ref ImImmediateValue
+    ImSV = ImStackValue or ImFloat or ImNaN or ImNil or ImBool or ImAtom
+
+    ImImmediateValueRef* = ref ImStackValue
     ImFloatRef* = ref ImFloat
     ImIntRef* = ref ImInt
     ImNaNRef* = ref ImNaN
@@ -185,23 +189,27 @@ when NaN_boxing and system_32_bits:
 
     ImHeapValue* = object of RootObj
     ImString* = object of ImHeapValue
-      head*: int32
       tail*: ImStringPayloadRef
+      head*: int32
     ImArray* = object of ImHeapValue
-      head*: int32
       tail*: ImArrayPayloadRef
+      head*: int32
     ImMap* = object of ImHeapValue
-      head*: int32
       tail*: ImMapPayloadRef
-    ImSet* = object of ImHeapValue
       head*: int32
+    ImSet* = object of ImHeapValue
       tail*: ImSetPayloadRef
+      head*: int32
+
+    ImHV = ImHeapValue or ImString or ImArray or ImMap or ImSet
 
     ImHeapValueRef* = ref ImHeapValue
     ImStringRef* = ref ImString
     ImArrayRef* = ref ImArray
     ImMapRef* = ref ImMap
     ImSetRef* = ref ImSet
+
+    ImV = ImSV or ImHV
 
   # XOR is commutative, associative, and is its own inverse.
   # So we can use this same function to unhash as well.
@@ -235,6 +243,8 @@ when NaN_boxing and system_32_bits:
   const MASK_SIG_NAN     = MASK_EXP_OR_Q
   const MASK_SIG_INT     = MASK_EXP_OR_Q or MASK_TYPE_INT
   const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
+  const MASK_SIG_FALSE   = MASK_EXP_OR_Q or MASK_TYPE_FALSE
+  const MASK_SIG_TRUE    = MASK_EXP_OR_Q or MASK_TYPE_TRUE
   const MASK_SIG_BOOL    = MASK_EXP_OR_Q or MASK_TYPE_BOOL
   const MASK_SIG_ATOM    = MASK_EXP_OR_Q or MASK_TYPE_ATOM
   const MASK_SIG_STRING  = MASK_EXP_OR_Q or MASK_TYPE_STRING
@@ -290,21 +300,21 @@ when NaN_boxing and system_32_bits:
     return v.head.is_heap
 
   proc get_kind(head: int32): ImValueKind =
-    if bitand(bitnot(head), MASK_EXPONENT) != 0: return ImValueKind.Float64
+    if bitand(bitnot(head), MASK_EXPONENT) != 0: return ImValueKind.kFloat64
     let signature = bitand(head, MASK_SIGNATURE)
     case signature:
-      of MASK_TYPE_INT:    return ImValueKind.Int52
-      of MASK_TYPE_NIL:    return ImValueKind.Nil
-      of MASK_TYPE_BOOL:   return ImValueKind.Bool
-      of MASK_TYPE_ATOM:   return ImValueKind.Atom
-      of MASK_TYPE_STRING: return ImValueKind.String
-      of MASK_TYPE_BIGNUM: return ImValueKind.BigNum
-      of MASK_TYPE_ARRAY:  return ImValueKind.Array
-      of MASK_TYPE_SET:    return ImValueKind.Set
-      of MASK_TYPE_MAP:    return ImValueKind.Map
+      of MASK_SIG_INT:    return ImValueKind.kInt52
+      of MASK_SIG_NIL:    return ImValueKind.kNil
+      of MASK_SIG_BOOL:   return ImValueKind.kBool
+      of MASK_SIG_ATOM:   return ImValueKind.kAtom
+      of MASK_SIG_STRING: return ImValueKind.kString
+      of MASK_SIG_BIGNUM: return ImValueKind.kBigNum
+      of MASK_SIG_ARRAY:  return ImValueKind.kArray
+      of MASK_SIG_SET:    return ImValueKind.kSet
+      of MASK_SIG_MAP:    return ImValueKind.kMap
       else:
         discard
-  
+
   method `==`(v1, v2: ImHeapPayloadRef): bool {.base.} =
     result = false
   method `==`(v1, v2: ImStringPayloadRef): bool =
@@ -340,7 +350,10 @@ when NaN_boxing and system_32_bits:
   proc `==`*(f: float64, v: ImFloat): bool =
     return cast[float64](v) == f
 
-  proc to_float*(v: ImFloat): float64 =
+  proc float_from_mask*(mask: int32): float64 =
+    return cast[float64](cast[int64](mask) shl 32)
+
+  proc to_float*(v: ImSV): float64 =
     return cast[float64](v)
 
   proc hash*(v: ImValue): Hash =
@@ -356,12 +369,28 @@ when NaN_boxing and system_32_bits:
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
     return bitor(truncated_head, short_hash.int32).int32
 
+  proc to_immediate*(f: float64 = 0): ImStackValue =
+    return (cast[ImStackValue](f))
+
+  let Nil* = to_immediate(float_from_mask(MASK_SIG_NIL)).ImNil
+  let True* = to_immediate(float_from_mask(MASK_SIG_TRUE)).ImBool
+  let False* = to_immediate(float_from_mask(MASK_SIG_FALSE)).ImBool
+
+  proc to_hex*(f: float64): string =
+    return toHex(cast[int64](f))
+  proc to_hex*(v: ImV): string =
+    return toHex(cast[int64](v))
+  proc to_byte_array*(v: ImV): array[8, byte] =
+    return cast[array[8, byte]](v)
+  echo to_hex(Nil)
+  echo to_hex(True)
+  echo to_hex(False)
+  echo to_byte_array(Nil)
+  echo to_byte_array(True)
+  echo to_byte_array(False)
+
   proc init_float*(f: float64 = 0): ImFloat =
-    var a: array[8,byte] = cast[array[8,byte]](f)
-    echo "a: ", a
-    echo "int: ", cast[array[4, byte]](1)
-    echo "float: ", toHex(f.int64), " ", f
-    return ImImmediateValue(head: (f.int64 shr 32).int32, tail: f.int32).ImFloat
+    return (cast[ImStackValue](f)).ImFloat
 
   proc init_map*(): ImMap =
     var m = ImMap(head: MASK_SIG_MAP)
@@ -412,18 +441,18 @@ else:
   type
     ImValueKind* = enum
       # Immediate Kinds
-      PlainNaN
-      Nil
-      Bool
+      kPlainNaN
+      kNil
+      kBool
       # Heap Kinds
-      Number
-      Atom
+      kNumber
+      kAtom
       # BigNum
-      String
-      Array
-      Map
-      Set
-      UserDefined
+      kString
+      kArray
+      kMap
+      kSet
+      kUserDefined
     ImValueKindFlags* = set[ImValueKind]
 
     ImNumberRef* = ref float64
@@ -448,19 +477,19 @@ else:
 
     ImValue* {.final, acyclic.} = object
       case kind*: ImValueKind:
-        of PlainNaN, Nil, Bool:
+        of kPlainNaN, kNil, kBool:
           discard
-        of Number:
+        of kNumber:
           num*: ImNumberRef
-        of Atom, String:
+        of kAtom, kString:
           str*: ImStringRef
-        of Array:
+        of kArray:
           arr*: ImArrayRef
-        of Map:
+        of kMap:
           map*: ImMapRef
-        of Set:
+        of kSet:
           set*: ImSetRef
-        of UserDefined:
+        of kUserDefined:
           discard
     ImValueRef* = ref ImValue
 
