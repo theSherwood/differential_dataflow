@@ -199,9 +199,7 @@ else:
   type
     # Always put the tail first because we are targeting 32-bit little-endian
     # systems. So tail, head lets us cast directly to and from float64.
-    ImValue* {.final, acyclic.} = object
-      tail*: uint32
-      head*: uint32
+    ImValue* = distinct uint64
 
     ImStringPayloadRef* = ref object
       hash: Hash
@@ -408,11 +406,15 @@ else:
   template is_heap(v: typed): bool =
     bitand(v.as_u64, MASK_EXP_OR_Q) == MASK_SIG_MAP
 
+when cpu_32:
+  template type_bits(v: ImValue): uint32 =
+    v.head
+else:
+  template type_bits(v: ImValue): uint64 =
+    v.as_u64
+
 proc get_type(v: ImValue): ImValueKind =
-  when cpu_32:
-    let type_carrier = v.head
-  else:
-    let type_carrier = v.as_u64
+  let type_carrier = v.type_bits
   echo toHex(type_carrier), " ", toHex(MASK_EXPONENT)
   if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
   let signature = bitand(type_carrier, MASK_SIGNATURE)
@@ -486,7 +488,10 @@ proc debug*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
   # echo "bin: ", v.to_bin_str
   let kind = get_type(v)
-  let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
+  when cpu_32:
+    let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
+  else:
+    let shallow_str = "( " & to_hex(v.as_u64) & " )"
   case kind:
     of kNumber: return "Num" & shallow_str
     of kString: return "Str" & shallow_str
@@ -505,20 +510,21 @@ if true:
 # Equality Testing #
 # ---------------------------------------------------------------------
 
+template initial_eq_heap_value(v1, v2: typed): bool =
+  when cpu_32:
+    v1.head == v2.head
+  else:
+    bitand(v1.as_u64, MASK_SIGNATURE) == bitand(v2.as_u64, MASK_SIGNATURE)
 template eq_heap_payload(t1, t2: typed) =
   result = false
   if t1.hash == t2.hash:
     result = t1.data == t2.data
 template eq_heap_value_specific(v1, v2: typed) =
   result = false
-  when cpu_32:
-    if v1.head == v2.head:
-      eq_heap_payload(v1.tail, v2.tail)
-  else:
-    if bitand(v1.as_u64, MASK_SIGNATURE) == bitand(v2.as_u64, MASK_SIGNATURE):
-      eq_heap_payload(v1.tail, v2.tail)
+  if initial_eq_heap_value(v1, v2):
+    eq_heap_payload(v1.tail, v2.tail)
 template eq_heap_value_generic*(v1, v2: typed) =
-  if v1.head == v2.head:
+  if initial_eq_heap_value(v1, v2):
     echo v1, " ", v2
     when cpu_32:
       let signature = bitand(v1.head, MASK_SIGNATURE)
@@ -530,17 +536,19 @@ template eq_heap_value_generic*(v1, v2: typed) =
       of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.tail, v2.as_map.tail)
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.tail, v2.as_set.tail)
       else:               discard
-    
-proc `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
-proc `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
-proc `==`*(v1, v2: ImMap): bool = eq_heap_value_specific(v1, v2)
-proc `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
+template complete_eq(v1, v2: typed): bool =
+  if bitand(MASK_HEAP, v1.type_bits) == MASK_HEAP: eq_heap_value_generic(v1, v2) else: v1.as_u64 == v2.as_u64
 proc `==`*(v1, v2: ImValue): bool =
-  if bitand(MASK_HEAP, v1.head) == MASK_HEAP: eq_heap_value_generic(v1, v2)
+  if bitand(MASK_HEAP, v1.type_bits) == MASK_HEAP: eq_heap_value_generic(v1, v2)
   else: return v1.as_u64 == v2.as_u64
 proc `==`*(v: ImValue, f: float64): bool = return v == f.as_v
 proc `==`*(f: float64, v: ImValue): bool = return v == f.as_v
+    
+proc `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
+proc `==`*(v1, v2: ImMap): bool = eq_heap_value_specific(v1, v2)
+proc `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
+proc `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
 proc `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
 
@@ -549,7 +557,7 @@ proc `==`*(v1: float64, v2: ImSV): bool = return v1 == v2.as_f64
 proc `==`*(v1, v2: ImSV): bool = return v1.as_u64 == v2.as_u64
   
 proc `==`*(v1, v2: ImV): bool =
-  if bitand(MASK_HEAP, v1.head) == MASK_HEAP: eq_heap_value_generic(v1, v2)
+  if bitand(MASK_HEAP, v1.type_bits) == MASK_HEAP: eq_heap_value_generic(v1, v2)
   else: return v1.as_u64 == v2.as_u64
 proc `==`*(v: ImV, f: float64): bool = return v == f.as_v
 proc `==`*(f: float64, v: ImV): bool = return v == f.as_v
