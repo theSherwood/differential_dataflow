@@ -41,6 +41,7 @@ echo "============================================="
   --stackTrace:off \
   --exceptions:goto \
   --opt:speed \
+  --d:cpu32 \
   --d:wasm \
   --d:release \
   --d:useMalloc \
