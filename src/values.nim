@@ -6,100 +6,153 @@
 import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
-#[
-  Possible immediates:
-  float64, NaN, nil, bool, int, char, atom
-  Heap types:
-  string, bigint, bigfloat, array, map, set, user-defined
-
-  We don't need char and atom as atom subsumes char
-]#
-
-##  NaN-boxing scheme for 32-bit systems
+## # Immutable Value Types
+## =================
 ##
-##  32 bits                          | 32 bits
-##  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  float64
+## ## Priority
+## -----------
 ##
-##  0000 - plain NaN
+##   Immediates:
+##     number(float64), NaN, nil, bool, atom(small string)
 ##
-##  +- Immediate bit (1)
-##  |+- Exponent bits (11)
-##  ||          +- Quiet bit (1)
-##  ||          |+- Not int bit (1)
-##  ||          ||+- NaN bits (2)
-##  ||          ||| +- Payload bits (48)
-##  ||          ||| |
-##  01111111111110000000000000000000 | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  NaN
+##   Heaps:
+##     string, bignum, array, map, set
 ##
-##  Immediate types (3 bits, because atom needs a 48-bit payload)
-##  000 - (cannot use because of collision with NaN)
-##  001 - logical (nil | true | false)
-##  010 - atom (string of max 6 bytes)
-##  011-111 - (unused, 5 values)
+## ## Some additional types we could add later
+## --------------------------------
 ##
-##  Some types we could add:
-##  atom-symbol, timestamp(no timezone?), bitset(48-bit), binary(48-bit), int,
-##  small byte array (48-bit, useful for small tuples)
+##   Immediates:
+##     atom-symbol, timestamp(no timezone?), bitset(48-bit), binary(48-bit),
+##     int, small byte array (48-bit, useful for small tuples)
 ##
-##  If there are other types that don't need 6 bytes of payload, we could add
-##  a lot more types. If we only need 4 bytes of payload, for example, we
-##  could add thousands of types. So we really aren't short of bits for
-##  specifying types.
+##   Heaps:
+##     regex, time, date, datetime, pair, tuple, closure, symbol, tag, path,
+##     var/box(reactive?), email, version, typedesc/class, vector(homogenous),
+##     bitset, binary, unit(measurements), ...
+##     (...or mutable types?:)
+##     mut-array, mut-map, mut-set, mut-vector, ...
+##     (...or ruliad-specific:) 
+##     id, branch, patch
 ##
-##  +- Immediate bit (1)
-##  |+- Exponent bits (11)
-##  ||          +- Quiet bit (1)
-##  ||          |+- Immediate type bits (2)
-##  ||          || +- Payload bits (48)
-##  ||          || |
-##  01111111111110010000000000000000 | 00000000000000000000000000000000  nil
-##  01111111111110011000000000000000 | 00000000000000000000000000000000  false
-##  01111111111110011100000000000000 | 00000000000000000000000000000000  true
-##  0111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  atom
 ##
-##  # OPTION 1 : (4 bits, leaves 15-bit short hash, 32768 values)
-##  Heap types (4 bits)
-##  0000 - (cannot use because of collision with NaN)
-##  0001 - string
-##  0010 - bignum
-##  0011 - array
-##  0100 - set
-##  0101 - map
-##  0110-1111 - (unused, 10 values)
+## # NaN-boxing scheme for Immediates (it's the same for 32-bit and 64-bt)
+## =======================================================================
 ##
-##  # OPTION 2 : (3 bits, leaves 16-bit short hash, 65536 values)
-##  Heap types (3 bits)
-##  000 - (cannot use because of collision with NaN)
-##  001 - string
-##  010 - bignum
-##  011 - array
-##  100 - set
-##  101 - map
-##  110-111 - (unused, 2 values)
+## 32 bits                          | 32 bits
+## XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  number(float64)
 ##
-##  # Going with OPTION 1 for now
-##  The extra types may prove to be more useful than the extra bit in the short
-##  hash. Of course, we can also use one value as a Box for any number of
-##  other types.
-##  Some types we could add:
-##  regex, time, date, datetime, pair, tuple, closure, symbol, tag, path,
-##  var/box(reactive?), email, version, typedesc/class, vector(homogenous),
-##  bitset, binary, unit(measurements), ...
-##  (...or mutable types?:)
-##  mut-array, mut-map, mut-set, mut-vector, ...
-##  (...or ruliad-specific:) 
-##  id, branch, patch
+## 0000... - plain NaN
 ##
-##  +- Heap bit (1)
-##  |            +- Heap type bits (4)
-##  |            |   +- Short content hash (15 bits, only 32768 values)
-##  |            |   |                 +- Pointer (32)
-##  |            |   |                 |
-##  11111111111110001XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
-##  11111111111110010XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
-##  11111111111110011XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
-##  11111111111110100XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
-##  11111111111110101XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
+## +- Immediate bit (1)
+## |+- Exponent bits (11)
+## ||          +- Quiet bit (1)
+## ||          |
+## 01111111111110000000000000000000 | 00000000000000000000000000000000  NaN
+##
+## Immediate types (3 bits, because atom needs a 48-bit payload)
+## 000 - (cannot use because of collision with NaN)
+## 001 - logical (nil | true | false)
+## 010 - atom (string of max 6 bytes)
+## 011-111 - (unused, 5 values)
+##
+## If there are other types that don't need 6 bytes of payload, we could add
+## a lot more types. If we only need 4 bytes of payload, for example, we
+## could add thousands of types. So we really aren't short of bits for
+## specifying types.
+##
+## +- Immediate bit (1)
+## |+- Exponent bits (11)
+## ||          +- Quiet bit (1)
+## ||          |+- Immediate type bits (3)
+## ||          ||  +- Payload bits (48)
+## ||          ||  |
+## 01111111111110010000000000000000 | 00000000000000000000000000000000  nil
+## 01111111111110011000000000000000 | 00000000000000000000000000000000  false
+## 01111111111110011100000000000000 | 00000000000000000000000000000000  true
+## 0111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  atom
+##
+## 
+## # NaN-boxing scheme for Heaps (differs for 32-bit and 64-bt)
+## ============================================================
+##
+## Specifically, the smaller pointers of a 32-bit system let us take
+## advantage of the lower 15 or 16 bits of the top 32 bits to store a short
+## hash. This lets us do equality checks for values of the same type without
+## following the pointer and without interning/hash-consing. Each heap-
+## allocated value has a full hash as well.
+## 
+## With 64-bit systems, we make use of the lower 48-bits as a pointer. In
+## order to perform equality checks for values of the same type, we have to
+## dereference the pointer to get to the full hash.
+## 
+## Currently, the designs have the Heap types avoiding 000, but this may not
+## be necessary because we should be able to discriminate by using the
+## leading/sign/heap bit.
+## 
+## 
+## ## 32-bit systems
+## -----------------
+## 
+## ### OPTION 1 : (4 bits, leaves 15-bit short hash, 32768 values)
+## 
+## Heap types (4 bits)
+## 0000 - (cannot use because of collision with NaN)
+## 0001 - string
+## 0010 - bignum
+## 0011 - array
+## 0100 - set
+## 0101 - map
+## 0110-1111 - (unused, 10 values)
+##
+## ### OPTION 2 : (3 bits, leaves 16-bit short hash, 65536 values)
+## 
+## Heap types (3 bits)
+## 000 - (cannot use because of collision with NaN)
+## 001 - string
+## 010 - bignum
+## 011 - array
+## 100 - set
+## 101 - map
+## 110-111 - (unused, 2 values)
+##
+## ### Going with OPTION 1 for now
+## 
+## The extra types may prove to be more useful than the extra bit in the short
+## hash. Of course, we can also use one value as a Box for any number of
+## other types. Though OPTION 2 is more consistent with 64-bit systems.
+##
+## +- Heap bit (1)
+## |            +- Heap type bits (4)
+## |            |   +- Short content hash (15 bits, only 32768 values)
+## |            |   |                 +- Pointer (32)
+## |            |   |                 |
+## 11111111111110001XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
+## 11111111111110010XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
+## 11111111111110011XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
+## 11111111111110100XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
+## 11111111111110101XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
+##
+##
+## ## 64-bit systems
+## -----------------
+##
+## Heap types (3 bits)
+## 001 - string
+## 010 - bignum
+## 011 - array
+## 100 - set
+## 101 - map
+## 110-111 - (unused, 2 values)
+##
+## +- Heap bit (1)
+## |            +- Heap type bits (3)
+## |            |  +- Pointer (48 bits)
+## |            |  |
+## 1111111111111001XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
+## 1111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
+## 1111111111111011XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
+## 1111111111111100XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
+## 1111111111111101XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
 ##
 
 const NaN_boxing = true
@@ -125,8 +178,8 @@ type
     kNumber           # like js, we just have a float64 number type
     kAtom
     # Heap Kinds
-    kBigNum
     kString
+    kBigNum
     kArray
     kMap
     kSet
