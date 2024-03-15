@@ -156,14 +156,6 @@ import hashes
 const NaN_boxing = true
 const cpu_32 = defined(cpu32)
 
-# Utils #
-# ---------------------------------------------------------------------
-
-# XOR is commutative, associative, and is its own inverse.
-# So we can use this same function to unhash as well.
-proc calc_hash(i1, i2: uint64): uint64 = return bitxor(i1, i2)
-proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
-
 # Types #
 # ---------------------------------------------------------------------
 
@@ -265,18 +257,10 @@ when cpu_32:
   
 else:
   type
-    ImString* = object
-      tail*: ImStringPayloadRef
-      head*: uint32
-    ImArray* = object
-      tail*: ImArrayPayloadRef
-      head*: uint32
-    ImMap* = object
-      tail*: ImMapPayloadRef
-      head*: uint32
-    ImSet* = object
-      tail*: ImSetPayloadRef
-      head*: uint32
+    ImString* = distinct ImStringPayloadRef
+    ImArray* = distinct ImArrayPayloadRef
+    ImMap* = distinct ImMapPayloadRef
+    ImSet* = distinct ImSetPayloadRef
 
 type
   ImSV* = ImStackValue or ImNumber or ImNaN or ImNil or ImBool or ImAtom
@@ -361,23 +345,23 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
 when cpu_32:
   template is_float(head: uint32): bool =
-    return bitand(bitnot(head), MASK_EXPONENT) == 0
+    bitand(bitnot(head), MASK_EXPONENT) == 0
   template is_nil(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_NIL
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_NIL
   template is_bool(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_BOOL
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_BOOL
   template is_atom(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_ATOM
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_ATOM
   template is_string(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_STRING
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_STRING
   template is_bignum(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_BIGNUM
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_BIGNUM
   template is_array(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_ARRAY
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_ARRAY
   template is_set(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_SET
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_SET
   template is_map(head: uint32): bool =
-    return bitand(head, MASK_SIGNATURE) == MASK_SIG_MAP
+    bitand(head, MASK_SIGNATURE) == MASK_SIG_MAP
   template is_heap(head: uint32): bool =
     bitand(head, MASK_EXP_OR_Q) == MASK_HEAP
   
@@ -443,6 +427,32 @@ proc get_type(v: ImValue): ImValueKind =
     of MASK_SIG_MAP:    return kMap
     else:               discard
 
+# Conversions #
+# ---------------------------------------------------------------------
+
+when not cpu_32:
+  proc to_str_payload(v: ImValue): ImStringPayloadRef =
+    let clean_ptr = bitand(bitnot(MASK_SIG_STRING), v.as_u64)
+    return cast[ImStringPayloadRef](clean_ptr)
+  proc to_map_payload(v: ImValue): ImMapPayloadRef =
+    let clean_ptr = bitand(bitnot(MASK_SIG_MAP), v.as_u64)
+    return cast[ImMapPayloadRef](clean_ptr)
+  proc to_array_payload(v: ImValue): ImArrayPayloadRef =
+    let clean_ptr = bitand(bitnot(MASK_SIG_ARRAY), v.as_u64)
+    return cast[ImArrayPayloadRef](clean_ptr)
+  proc to_set_payload(v: ImValue): ImSetPayloadRef =
+    let clean_ptr = bitand(bitnot(MASK_SIG_SET), v.as_u64)
+    return cast[ImSetPayloadRef](clean_ptr)
+
+  proc tail(v: ImString): ImStringPayloadRef =
+    return to_str_payload(v.as_v)
+  proc tail(v: ImMap): ImMapPayloadRef =
+    return to_map_payload(v.as_v)
+  proc tail(v: ImArray): ImArrayPayloadRef =
+    return to_array_payload(v.as_v)
+  proc tail(v: ImSet): ImSetPayloadRef =
+    return to_set_payload(v.as_v)
+
 # Debug String Conversion #
 # ---------------------------------------------------------------------
 
@@ -459,11 +469,18 @@ proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
 proc `$`*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
   let kind = get_type(v)
-  case kind:
-    of kNumber: return "Num(" & $(v.as_f64) & ")"
-    of kString: return "Str(" & $(v.as_str.tail.data) & ")"
-    of kMap:    return "Map(" & $(v.as_map.tail.data) & ")"
-    else:       discard
+  when cpu_32:
+    case kind:
+      of kNumber: return "Num(" & $(v.as_f64) & ")"
+      of kString: return "Str(" & $(v.as_str.tail.data) & ")"
+      of kMap:    return "Map(" & $(v.as_map.tail.data) & ")"
+      else:       discard
+  else:
+    case kind:
+      of kNumber: return "Num(" & $(v.as_f64) & ")"
+      of kString: return "Str(" & $(v.to_str_payload.data) & ")"
+      of kMap:    return "Map(" & $(v.to_map_payload.data) & ")"
+      else:       discard
 
 proc debug*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
@@ -572,6 +589,12 @@ if false:
 # Hash Handling #
 # ---------------------------------------------------------------------
 
+# XOR is commutative, associative, and is its own inverse.
+# So we can use this same function to unhash as well.
+proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).Hash
+proc calc_hash(i1, i2: uint64): uint64 = return bitxor(i1, i2)
+proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
+
 proc hash*(v: ImValue): Hash =
   if is_heap(v):
     # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
@@ -638,15 +661,23 @@ proc size*(s: ImString): int32 =
 # ImMap Impl #
 # ---------------------------------------------------------------------
   
-var empty_map = ImMap(
-  head: MASK_SIG_MAP,
-  tail: ImMapPayloadRef(hash: 0)
-)
-var empty_map2 = ImMap()
-empty_map2.head = MASK_SIG_MAP
-empty_map2.tail = ImMapPayloadRef(hash: 0)
+when cpu_32:
+  let empty_map = ImMap(
+    head: MASK_SIG_MAP,
+    tail: ImMapPayloadRef(hash: 0)
+  )
+  var empty_map2 = ImMap()
+  empty_map2.head = MASK_SIG_MAP
+  empty_map2.tail = ImMapPayloadRef(hash: 0)
+else:
+  let empty_map_payload_ref = ImMapPayloadRef(hash: 0)
+  let empty_map_payload_ptr = addr empty_map_payload_ref
+  let empty_map = cast[ImMap](bitor(MASK_SIG_MAP, empty_map_payload_ptr.as_u64))
+  let empty_map_payload_ref2 = ImMapPayloadRef(hash: 0)
+  let empty_map_payload_ptr2 = addr empty_map_payload_ref2
+  let empty_map2 = cast[ImMap](bitor(MASK_SIG_MAP, empty_map_payload_ptr2.as_u64))
 
-if true:
+when cpu_32:
   echo "empty_map.head:         ", empty_map.head.to_bin_str
   echo "empty_map.tail:         ", empty_map.tail.as_i32.to_bin_str
   echo "empty_map:              ", empty_map.to_bin_str
@@ -674,28 +705,46 @@ proc init_map*(): ImMap =
 proc clear*(m: ImMap): ImMap =
   return empty_map
 
-proc `[]`*(m: ImMap, k: ImValue): ImValue = return m.tail.data.getOrDefault(k, Nil.as_v).as_v
-proc `[]`*(m: ImMap, k: float64): ImValue = return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
-proc get*(m: ImMap, k: ImValue): ImValue  = return m.tail.data.getOrDefault(k, Nil.as_v).as_v
-proc get*(m: ImMap, k: float64): ImValue  = return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
+template get_inner(m: ImMap, k: typed) =
+  when cpu_32:
+    return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
+  else:
+    let clean_m_ptr = bitand(bitnot(MASK_SIG_MAP), m.as_u64)
+    let m_payload_ref = cast[ImMapPayloadRef](clean_m_ptr)
+    return m_payload_ref.data.getOrDefault(k.as_v, Nil.as_v).as_v
+
+proc `[]`*(m: ImMap, k: ImValue): ImValue = get_inner(m, k)
+proc `[]`*(m: ImMap, k: float64): ImValue = get_inner(m, k)
+proc get*(m: ImMap, k: ImValue): ImValue  = get_inner(m, k)
+proc get*(m: ImMap, k: float64): ImValue  = get_inner(m, k)
+
+template produce_map_from_copy() {.dirty.} =
+  let k_hash = hash(k)
+  let v_hash = hash(v)
+  when cpu_32:
+    let entry_hash = (k_hash + v_hash).uint32
+  else:
+    let entry_hash = (k_hash + v_hash).Hash
+  let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
+  let new_m_payload = ImMapPayloadRef(
+    hash: new_m_map_hash,
+    data: table_copy
+  )
+  when cpu_32:
+    let new_m = ImMap( 
+      head: update_head(m.head, new_m_map_hash),
+      tail: new_m_payload
+    )
+  else:
+    let new_m_payload_ptr = addr new_m_payload
+    let new_m = cast[ImMap](bitor(MASK_SIG_MAP, new_m_payload_ptr.as_u64))
 
 proc del*(m: ImMap, k: ImValue): ImMap =
   if not(k in m.tail.data): return m
   let v = m.tail.data[k]
   var table_copy = m.tail.data
   table_copy.del(k)
-  let k_hash = hash(k)
-  let v_hash = hash(v)
-  let entry_hash = (k_hash + v_hash).uint32
-  let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
-  let new_m_payload = ImMapPayloadRef(
-    hash: new_m_map_hash,
-    data: table_copy
-  )
-  let new_m = ImMap( 
-    head: update_head(m.head, new_m_map_hash),
-    tail: new_m_payload
-  )
+  produce_map_from_copy()
   return new_m
 proc del*(m: ImMap, k: float64): ImMap = return m.del(k.as_v)
 
@@ -704,18 +753,7 @@ proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
   if m.tail.data.getOrDefault(k, Nil.as_v) == v: return m
   var table_copy = m.tail.data
   table_copy[k] = v
-  let k_hash = hash(k)
-  let v_hash = hash(v)
-  let entry_hash = (k_hash + v_hash).uint32
-  let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
-  let new_m_payload = ImMapPayloadRef(
-    hash: new_m_map_hash,
-    data: table_copy
-  )
-  let new_m = ImMap( 
-    head: update_head(m.head, new_m_map_hash),
-    tail: new_m_payload
-  )
+  produce_map_from_copy()
   return new_m
 proc set*(m: ImMap, k: float64, v: float64): ImMap = return m.set(k.as_v, v.as_v)
 proc set*(m: ImMap, k: ImValue, v: float64): ImMap = return m.set(k, v.as_v)
