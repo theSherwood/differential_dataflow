@@ -7,7 +7,7 @@ import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
 ## # Immutable Value Types
-## =================
+## =======================
 ##
 ## ## Priority
 ## -----------
@@ -19,7 +19,7 @@ import hashes
 ##     string, bignum, array, map, set
 ##
 ## ## Some additional types we could add later
-## --------------------------------
+## -------------------------------------------
 ##
 ##   Immediates:
 ##     atom-symbol, timestamp(no timezone?), bitset(48-bit), binary(48-bit),
@@ -96,7 +96,6 @@ import hashes
 ## ### OPTION 1 : (4 bits, leaves 15-bit short hash, 32768 values)
 ## 
 ## Heap types (4 bits)
-## 0000 - (cannot use because of collision with NaN)
 ## 0001 - string
 ## 0010 - bignum
 ## 0011 - array
@@ -107,7 +106,6 @@ import hashes
 ## ### OPTION 2 : (3 bits, leaves 16-bit short hash, 65536 values)
 ## 
 ## Heap types (3 bits)
-## 000 - (cannot use because of collision with NaN)
 ## 001 - string
 ## 010 - bignum
 ## 011 - array
@@ -172,7 +170,7 @@ proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
 type
   ImValueKind* = enum
     # Immediate Kinds
-    kPlainNaN
+    kNaN
     kNil
     kBool
     kNumber           # like js, we just have a float64 number type
@@ -184,110 +182,106 @@ type
     kMap
     kSet
 
-when NaN_boxing:
-  when cpu_32:
-    type
-      # Always put the tail first because we are targeting 32-bit little-endian
-      # systems. So tail, head lets us cast directly to and from float64.
-      ImValue* {.final, acyclic.} = object
-        tail*: uint32
-        head*: uint32
-      ImValueRef* = ref ImValue
-
-      ImStringPayloadRef* = ref object
-        hash: uint32
-        data: string
-      ImArrayPayloadRef* = ref object
-        hash: uint32
-        data: seq[ImValue]
-      ImMapPayloadRef* = ref object
-        hash: uint32
-        data: Table[ImValue, ImValue]
-      ImSetPayloadRef* = ref object
-        hash: uint32
-        data: HashSet[ImValue]
-
-  else:
-    type
-      # Always put the tail first because we are targeting 32-bit little-endian
-      # systems. So tail, head lets us cast directly to and from float64.
-      ImValue* {.final, acyclic.} = object
-        tail*: uint32
-        head*: uint32
-      ImValueRef* = ref ImValue
-
-      ImStringPayloadRef* = ref object
-        hash: uint32
-        data: string
-      ImArrayPayloadRef* = ref object
-        hash: uint32
-        data: seq[ImValue]
-      ImMapPayloadRef* = ref object
-        hash: uint32
-        data: Table[ImValue, ImValue]
-      ImSetPayloadRef* = ref object
-        hash: uint32
-        data: HashSet[ImValue]
-
-
-  when cpu_32:
-    type
-      ImStackValue* = object
-        tail*: uint32
-        head*: uint32
-      # TODO - change ImNumber to alias float64
-      ImNumber* {.borrow: `.`.} = distinct ImStackValue
-      ImNaN* {.borrow: `.`.} = distinct ImStackValue
-      ImNil* {.borrow: `.`.} = distinct ImStackValue
-      ImBool* {.borrow: `.`.} = distinct ImStackValue
-      ImAtom* {.borrow: `.`.} = distinct ImStackValue
-  
-  else:
-    type
-      ImStackValue* = object
-        tail*: uint32
-        head*: uint32
-      # TODO - change ImNumber to alias float64
-      ImNumber* {.borrow: `.`.} = distinct ImStackValue
-      ImNaN* {.borrow: `.`.} = distinct ImStackValue
-      ImNil* {.borrow: `.`.} = distinct ImStackValue
-      ImBool* {.borrow: `.`.} = distinct ImStackValue
-      ImAtom* {.borrow: `.`.} = distinct ImStackValue
-
-  when cpu_32:
-    type
-      ImString* = object
-        tail*: ImStringPayloadRef
-        head*: uint32
-      ImArray* = object
-        tail*: ImArrayPayloadRef
-        head*: uint32
-      ImMap* = object
-        tail*: ImMapPayloadRef
-        head*: uint32
-      ImSet* = object
-        tail*: ImSetPayloadRef
-        head*: uint32
-  
-  else:
-    type
-      ImString* = object
-        tail*: ImStringPayloadRef
-        head*: uint32
-      ImArray* = object
-        tail*: ImArrayPayloadRef
-        head*: uint32
-      ImMap* = object
-        tail*: ImMapPayloadRef
-        head*: uint32
-      ImSet* = object
-        tail*: ImSetPayloadRef
-        head*: uint32
-
+when cpu_32:
   type
-    ImSV* = ImStackValue or ImNumber or ImNaN or ImNil or ImBool or ImAtom
-    ImHV* = ImString or ImArray or ImMap or ImSet
-    ImV* = ImSV or ImHV
+    # Always put the tail first because we are targeting 32-bit little-endian
+    # systems. So tail, head lets us cast directly to and from float64.
+    ImValue* {.final, acyclic.} = object
+      tail*: uint32
+      head*: uint32
+
+    ImStringPayloadRef* = ref object
+      hash: uint32
+      data: string
+    ImArrayPayloadRef* = ref object
+      hash: uint32
+      data: seq[ImValue]
+    ImMapPayloadRef* = ref object
+      hash: uint32
+      data: Table[ImValue, ImValue]
+    ImSetPayloadRef* = ref object
+      hash: uint32
+      data: HashSet[ImValue]
+
+else:
+  type
+    # Always put the tail first because we are targeting 32-bit little-endian
+    # systems. So tail, head lets us cast directly to and from float64.
+    ImValue* {.final, acyclic.} = object
+      tail*: uint32
+      head*: uint32
+
+    ImStringPayloadRef* = ref object
+      hash: Hash
+      data: string
+    ImArrayPayloadRef* = ref object
+      hash: Hash
+      data: seq[ImValue]
+    ImMapPayloadRef* = ref object
+      hash: Hash
+      data: Table[ImValue, ImValue]
+    ImSetPayloadRef* = ref object
+      hash: Hash
+      data: HashSet[ImValue]
+
+when cpu_32:
+  type
+    ImStackValue* = object
+      tail*: uint32
+      head*: uint32
+    # TODO - change ImNumber to alias float64
+    ImNumber* {.borrow: `.`.} = distinct ImStackValue
+    ImNaN* {.borrow: `.`.} = distinct ImStackValue
+    ImNil* {.borrow: `.`.} = distinct ImStackValue
+    ImBool* {.borrow: `.`.} = distinct ImStackValue
+    ImAtom* {.borrow: `.`.} = distinct ImStackValue
+  
+else:
+  type
+    ImStackValue* = object
+      tail*: uint32
+      head*: uint32
+    # TODO - change ImNumber to alias float64
+    ImNumber* {.borrow: `.`.} = distinct ImStackValue
+    ImNaN* {.borrow: `.`.} = distinct ImStackValue
+    ImNil* {.borrow: `.`.} = distinct ImStackValue
+    ImBool* {.borrow: `.`.} = distinct ImStackValue
+    ImAtom* {.borrow: `.`.} = distinct ImStackValue
+
+when cpu_32:
+  type
+    ImString* = object
+      tail*: ImStringPayloadRef
+      head*: uint32
+    ImArray* = object
+      tail*: ImArrayPayloadRef
+      head*: uint32
+    ImMap* = object
+      tail*: ImMapPayloadRef
+      head*: uint32
+    ImSet* = object
+      tail*: ImSetPayloadRef
+      head*: uint32
+  
+else:
+  type
+    ImString* = object
+      tail*: ImStringPayloadRef
+      head*: uint32
+    ImArray* = object
+      tail*: ImArrayPayloadRef
+      head*: uint32
+    ImMap* = object
+      tail*: ImMapPayloadRef
+      head*: uint32
+    ImSet* = object
+      tail*: ImSetPayloadRef
+      head*: uint32
+
+type
+  ImSV* = ImStackValue or ImNumber or ImNaN or ImNil or ImBool or ImAtom
+  ImHV* = ImString or ImArray or ImMap or ImSet
+  ImV* = ImSV or ImHV
 
 # Casts #
 # ---------------------------------------------------------------------
@@ -307,26 +301,48 @@ template as_set*(v: typed): ImSet = cast[ImSet](cast[uint64](v))
 # Masks #
 # ---------------------------------------------------------------------
 
-const MASK_SIGN        = 0b10000000000000000000000000000000'u32
-const MASK_EXPONENT    = 0b01111111111100000000000000000000'u32
-const MASK_QUIET       = 0b00000000000010000000000000000000'u32
-const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u32
-const MASK_SIGNATURE   = 0b11111111111111111000000000000000'u32
-const MASK_SHORT_HASH  = 0b00000000000000000111111111111111'u32
-const MASK_HEAP        = 0b11111111111110000000000000000000'u32
+when cpu_32:
+  const MASK_SIGN        = 0b10000000000000000000000000000000'u32
+  const MASK_EXPONENT    = 0b01111111111100000000000000000000'u32
+  const MASK_QUIET       = 0b00000000000010000000000000000000'u32
+  const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u32
+  const MASK_SIGNATURE   = 0b11111111111111111000000000000000'u32
+  const MASK_SHORT_HASH  = 0b00000000000000000111111111111111'u32
+  const MASK_HEAP        = 0b11111111111110000000000000000000'u32
 
-const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u32
-const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u32
-const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u32
-const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u32
-const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u32
-const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u32
+  const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u32
+  const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u32
+  const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u32
+  const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u32
+  const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u32
+  const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u32
 
-const MASK_TYPE_STRING = 0b10000000000000001000000000000000'u32
-const MASK_TYPE_BIGNUM = 0b10000000000000010000000000000000'u32
-const MASK_TYPE_ARRAY  = 0b10000000000000011000000000000000'u32
-const MASK_TYPE_SET    = 0b10000000000000100000000000000000'u32
-const MASK_TYPE_MAP    = 0b10000000000000101000000000000000'u32
+  const MASK_TYPE_STRING = 0b10000000000000001000000000000000'u32
+  const MASK_TYPE_BIGNUM = 0b10000000000000010000000000000000'u32
+  const MASK_TYPE_ARRAY  = 0b10000000000000011000000000000000'u32
+  const MASK_TYPE_SET    = 0b10000000000000100000000000000000'u32
+  const MASK_TYPE_MAP    = 0b10000000000000101000000000000000'u32
+
+else:
+  const MASK_SIGN        = 0b10000000000000000000000000000000'u64 shl 32
+  const MASK_EXPONENT    = 0b01111111111100000000000000000000'u64 shl 32
+  const MASK_QUIET       = 0b00000000000010000000000000000000'u64 shl 32
+  const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u64 shl 32
+  const MASK_SIGNATURE   = 0b11111111111111110000000000000000'u64 shl 32
+  const MASK_HEAP        = 0b11111111111110000000000000000000'u64 shl 32
+
+  const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u64 shl 32
+  const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u64 shl 32
+  const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u64 shl 32
+  const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u64 shl 32
+  const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u64 shl 32
+  const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u64 shl 32
+
+  const MASK_TYPE_STRING = 0b10000000000000010000000000000000'u64 shl 32
+  const MASK_TYPE_BIGNUM = 0b10000000000000100000000000000000'u64 shl 32
+  const MASK_TYPE_ARRAY  = 0b10000000000000110000000000000000'u64 shl 32
+  const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u64 shl 32
+  const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u64 shl 32
 
 const MASK_SIG_NAN     = MASK_EXP_OR_Q
 const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
@@ -343,52 +359,79 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 # Type Detection #
 # ---------------------------------------------------------------------
 
-template is_float(head: uint32): bool =
-  return bitand(bitnot(head), MASK_EXPONENT) == 0
-template is_nil(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_NIL
-template is_bool(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_BOOL
-template is_atom(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_ATOM
-template is_string(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_STRING
-template is_bignum(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_BIGNUM
-template is_array(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_ARRAY
-template is_set(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_SET
-template is_map(head: uint32): bool =
-  return bitand(head, MASK_SIGNATURE) == MASK_TYPE_MAP
-proc is_heap(head: uint32): bool =
-  return bitand(head, MASK_EXP_OR_Q) == MASK_HEAP
+when cpu_32:
+  template is_float(head: uint32): bool =
+    return bitand(bitnot(head), MASK_EXPONENT) == 0
+  template is_nil(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_NIL
+  template is_bool(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_BOOL
+  template is_atom(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_ATOM
+  template is_string(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_STRING
+  template is_bignum(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_BIGNUM
+  template is_array(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_ARRAY
+  template is_set(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_SET
+  template is_map(head: uint32): bool =
+    return bitand(head, MASK_SIGNATURE) == MASK_SIG_MAP
+  template is_heap(head: uint32): bool =
+    bitand(head, MASK_EXP_OR_Q) == MASK_HEAP
   
-template is_float(v: ImValue): bool =
-  return v.head.is_float
-template is_nil(v: ImValue): bool =
-  return v.head.is_nil
-template is_bool(v: ImValue): bool =
-  return v.head.is_bool
-template is_atom(v: ImValue): bool =
-  return v.head.is_atom
-template is_string(v: ImValue): bool =
-  return v.head.is_string
-template is_bignum(v: ImValue): bool =
-  return v.head.is_bignum
-template is_array(v: ImValue): bool =
-  return v.head.is_array
-template is_set(v: ImValue): bool =
-  return v.head.is_set
-template is_map(v: ImValue): bool =
-  return v.head.is_map
-proc is_heap(v: ImValue): bool =
-  return v.head.is_heap
+  template is_float(v: ImValue): bool =
+    v.head.is_float
+  template is_nil(v: ImValue): bool =
+    v.head.is_nil
+  template is_bool(v: ImValue): bool =
+    v.head.is_bool
+  template is_atom(v: ImValue): bool =
+    v.head.is_atom
+  template is_string(v: ImValue): bool =
+    v.head.is_string
+  template is_bignum(v: ImValue): bool =
+    v.head.is_bignum
+  template is_array(v: ImValue): bool =
+    v.head.is_array
+  template is_set(v: ImValue): bool =
+    v.head.is_set
+  template is_map(v: ImValue): bool =
+    v.head.is_map
+  template is_heap(v: ImValue): bool =
+    v.head.is_heap
 
-proc get_type(head: uint32): ImValueKind =
-  echo toHex(head), " ", toHex(MASK_EXPONENT)
-  if bitand(bitnot(head), MASK_EXPONENT) != 0: return kNumber
-  let signature = bitand(head, MASK_SIGNATURE)
+else:
+  template is_float(v: typed): bool =
+    bitand(bitnot(v.as_u64), MASK_EXPONENT) == 0
+  template is_nil(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_NIL
+  template is_bool(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_BOOL
+  template is_atom(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_ATOM
+  template is_string(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_STRING
+  template is_bignum(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_BIGNUM
+  template is_array(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_ARRAY
+  template is_set(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_SET
+  template is_map(v: typed): bool =
+    bitand(v.as_u64, MASK_SIGNATURE) == MASK_SIG_MAP
+  template is_heap(v: typed): bool =
+    bitand(v.as_u64, MASK_EXP_OR_Q) == MASK_SIG_MAP
+
+proc get_type(v: ImValue): ImValueKind =
+  when cpu_32:
+    let type_carrier = v.head
+  else:
+    let type_carrier = v.as_u64
+  echo toHex(type_carrier), " ", toHex(MASK_EXPONENT)
+  if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
+  let signature = bitand(type_carrier, MASK_SIGNATURE)
   case signature:
     of MASK_SIG_NIL:    return kNil
     of MASK_SIG_BOOL:   return kBool
@@ -411,10 +454,11 @@ proc to_bin_str*(v: ImValue): string = return toBin(v.as_i64, 64)
 proc to_bin_str*(v: uint32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int64): string = return toBin(v, 64)
+proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
 
 proc `$`*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
-  let kind = get_type(v.head)
+  let kind = get_type(v)
   case kind:
     of kNumber: return "Num(" & $(v.as_f64) & ")"
     of kString: return "Str(" & $(v.as_str.tail.data) & ")"
@@ -424,7 +468,7 @@ proc `$`*(v: ImValue): string =
 proc debug*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
   # echo "bin: ", v.to_bin_str
-  let kind = get_type(v.head)
+  let kind = get_type(v)
   let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
   case kind:
     of kNumber: return "Num" & shallow_str
@@ -432,7 +476,7 @@ proc debug*(v: ImValue): string =
     of kMap:    return "Map" & shallow_str
     else:       discard
 
-if false:
+if true:
   echo "MASK_SIG_NIL    ", MASK_SIG_NIL.to_bin_str
   echo "MASK_SIG_BOOL   ", MASK_SIG_BOOL.to_bin_str
   echo "MASK_SIG_STRING ", MASK_SIG_STRING.to_bin_str
@@ -444,26 +488,30 @@ if false:
 # Equality Testing #
 # ---------------------------------------------------------------------
 
-template eq_heap_tail(v1, v2: typed) =
-  # echo v1.as_v.debug, " ", v2.as_v.debug
-  # echo "tail: ", as_byte_array(v1.ImV), "  ", as_byte_array(v2.ImV)
+template eq_heap_payload(t1, t2: typed) =
   result = false
-  if v1.tail.hash == v2.tail.hash:
-    result = v1.tail.data == v2.tail.data
+  if t1.hash == t2.hash:
+    result = t1.data == t2.data
 template eq_heap_value_specific(v1, v2: typed) =
-  # echo v1.as_v.debug, " ", v2.as_v.debug
   result = false
-  if v1.head == v2.head:
-    eq_heap_tail(v1, v2)
+  when cpu_32:
+    if v1.head == v2.head:
+      eq_heap_payload(v1.tail, v2.tail)
+  else:
+    if bitand(v1.as_u64, MASK_SIGNATURE) == bitand(v2.as_u64, MASK_SIGNATURE):
+      eq_heap_payload(v1.tail, v2.tail)
 template eq_heap_value_generic*(v1, v2: typed) =
   if v1.head == v2.head:
     echo v1, " ", v2
-    let signature = bitand(v1.head, MASK_SIGNATURE)
+    when cpu_32:
+      let signature = bitand(v1.head, MASK_SIGNATURE)
+    else:
+      let signature = bitand(v1.as_u64, MASK_SIGNATURE)
     case signature:
-      of MASK_SIG_STRING: eq_heap_tail(v1.as_str, v2.as_str)
-      of MASK_SIG_ARRAY:  eq_heap_tail(v1.as_arr, v2.as_arr)
-      of MASK_SIG_MAP:    eq_heap_tail(v1.as_map, v2.as_map)
-      of MASK_SIG_SET:    eq_heap_tail(v1.as_set, v2.as_set)
+      of MASK_SIG_STRING: eq_heap_payload(v1.as_str.tail, v2.as_str.tail)
+      of MASK_SIG_ARRAY:  eq_heap_payload(v1.as_arr.tail, v2.as_arr.tail)
+      of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.tail, v2.as_map.tail)
+      of MASK_SIG_SET:    eq_heap_payload(v1.as_set.tail, v2.as_set.tail)
       else:               discard
     
 proc `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
@@ -492,12 +540,16 @@ proc `==`*(f: float64, v: ImV): bool = return v == f.as_v
 # Globals #
 # ---------------------------------------------------------------------
 
-proc float_from_mask*(mask: uint32): float64 =
-  return (mask.as_u64 shl 32).as_f64
-
-let Nil* = cast[ImNil](float_from_mask(MASK_SIG_NIL))
-let True* = cast[ImBool](float_from_mask(MASK_SIG_TRUE))
-let False* = cast[ImBool](float_from_mask(MASK_SIG_FALSE))
+when cpu_32:
+  proc float_from_mask(mask: uint32): float64 =
+    return (mask.as_u64 shl 32).as_f64
+  let Nil* = cast[ImNil](float_from_mask(MASK_SIG_NIL))
+  let True* = cast[ImBool](float_from_mask(MASK_SIG_TRUE))
+  let False* = cast[ImBool](float_from_mask(MASK_SIG_FALSE))
+else:
+  let Nil* = cast[ImNil]((MASK_SIG_NIL))
+  let True* = cast[ImBool]((MASK_SIG_TRUE))
+  let False* = cast[ImBool]((MASK_SIG_FALSE))
 
 echo to_hex(Nil)
 echo to_hex(True)
@@ -526,14 +578,15 @@ proc hash*(v: ImValue): Hash =
     let vh = cast[ImString](v)
     result = cast[Hash](vh.tail.hash)
   else:
-    result = cast[Hash](v.head)
+    result = cast[Hash](v.as_u64)
   
-# full_hash is 32 bits
-# short_hash is something like 15 bits (top 17 are zeroed)
-proc update_head(previous_head: uint32, full_hash: uint32): uint32 =
-  let short_hash = bitand(full_hash.uint32, MASK_SHORT_HASH)
-  let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
-  return bitor(truncated_head, short_hash.uint32).uint32
+when cpu_32:
+  # full_hash is 32 bits
+  # short_hash is something like 15 bits (top 17 are zeroed)
+  proc update_head(previous_head: uint32, full_hash: uint32): uint32 =
+    let short_hash = bitand(full_hash.uint32, MASK_SHORT_HASH)
+    let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
+    return bitor(truncated_head, short_hash.uint32).uint32
 
 # ImNumber Impl #
 # ---------------------------------------------------------------------
@@ -545,18 +598,29 @@ proc init_number*(f: float64 = 0): ImNumber =
 # ImString Impl #
 # ---------------------------------------------------------------------
 
-let empty_string = ImString(
-  head: MASK_SIG_STRING,
-  tail: ImStringPayloadRef(hash: 0)
-)
+when cpu_32:
+  let empty_string = ImString(
+    head: MASK_SIG_STRING,
+    tail: ImStringPayloadRef(hash: 0)
+  )
+else:
+  let empty_str_payload_ref = ImArrayPayloadRef(hash: 0)
+  let empty_str_payload_ptr = addr empty_str_payload_ref
+  let empty_string = cast[ImString](bitor(MASK_SIG_STRING, empty_str_payload_ptr.as_u64))
 
 proc init_string*(s: string = ""): ImString =
   if s.len == 0: return empty_string
-  let hash = hash(s).uint32
-  return ImString(
-    head: update_head(MASK_SIG_STRING, hash),
-    tail: ImStringPayloadRef(hash: hash, data: s)
-  )
+  when cpu_32:
+    let hash = hash(s).uint32
+    return ImString(
+      head: update_head(MASK_SIG_STRING, hash),
+      tail: ImStringPayloadRef(hash: hash, data: s)
+    )
+  else:
+    let hash = hash(s)
+    let str_payload_ref = ImStringPayloadRef(hash: hash, data: s)
+    let str_payload_ptr = addr str_payload_ref
+    return cast[ImString](bitor(MASK_SIG_STRING, str_payload_ptr.as_u64))
 
 proc `[]`*(s: ImString, i: int32): ImValue =
   result = Nil.as_v
