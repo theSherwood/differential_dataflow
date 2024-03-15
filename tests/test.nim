@@ -18,6 +18,7 @@ proc main =
       check -99.156 == n4.as_f64
       check (3.45).as_v == n3.as_v
       check (-99.156).as_v == n4.as_v
+
   suite "map":
     test "immutable updates":
       var
@@ -46,15 +47,21 @@ proc main =
       check m3 == m4
       check m3.get(1.0) == Nil.as_v
       check m4.get(1.0) == Nil.as_v
+
   suite "string":
     test "simple":
-      var s = init_string("this")
-      check s.size == 4
-  suite "foo":
-    test "bar":
-      check 1 == get_one()
-      check @[1, 2, 3] == @[1, 2, 3]
-      check bitand(0b010, 0b011) == 0b010
-      # check 2 == get_one()
+      var
+        s1 = init_string("some string")
+        s2 = init_string(" and more")
+      check s1.size == 11
+      check s2.size == 9
+      check s1 != s2
+      var s3 = s1.concat(s2)
+      check s3.size == 20
+      check s3 == init_string("some string and more")
+      check s3[0] == init_string("s").as_v
+      # FIX - on 64-bit systems the ref of the payload (tail) is trampling
+      # everything
+      check s3[0] != init_string("n").as_v
 
 main()

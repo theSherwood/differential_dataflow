@@ -312,21 +312,38 @@ when NaN_boxing and system_32_bits:
   proc is_heap(v: ImValue): bool =
     return v.head.is_heap
 
-  template as_v*(v: typed): ImValue =
-    cast[ImValue](v)
-  template as_f64*(v: typed): float64 =
-    cast[float64](v)
-  template as_u64*(v: typed): uint64 =
-    cast[uint64](v)
+  template as_f64*(v: typed): float64 = cast[float64](v)
+  template as_u64*(v: typed): uint64 = cast[uint64](v)
+  template as_i64*(v: typed): int64 = cast[int64](v)
+  template as_u32*(v: typed): uint32 = cast[uint32](v)
+  template as_i32*(v: typed): int32 = cast[int32](v)
+  template as_v*(v: typed): ImValue = cast[ImValue](cast[uint64](v))
+  template as_str*(v: typed): ImString = cast[ImString](cast[uint64](v))
+  template as_arr*(v: typed): ImArray = cast[ImArray](cast[uint64](v))
+  template as_map*(v: typed): ImMap = cast[ImMap](cast[uint64](v))
+  template as_set*(v: typed): ImSet = cast[ImSet](cast[uint64](v))
 
-  proc to_hex*(f: float64): string =
-    return toHex(f.as_u64)
-  proc to_hex*(v: ImV): string =
-    return toHex(v.as_u64)
-  proc to_byte_array*(v: ImV): array[8, byte] =
-    return cast[array[8, byte]](v)
+  proc to_hex*(f: float64): string = return toHex(f.as_u64)
+  proc to_hex*(v: ImV): string = return toHex(v.as_u64)
+  proc to_hex*(v: ImValue): string = return toHex(v.as_u64)
+  proc to_byte_array*(v: ImV): array[8, byte] = return cast[array[8, byte]](v)
+  proc to_byte_array*(v: ImValue): array[8, byte] = return cast[array[8, byte]](v)
+  proc to_bin_str*(v: ImV): string = return toBin(v.as_i64, 64)
+  proc to_bin_str*(v: ImValue): string = return toBin(v.as_i64, 64)
+  proc to_bin_str*(v: uint32): string = return toBin(v.as_i64, 32)
+  proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
+
+  if false:
+    echo "MASK_SIG_NIL    ", MASK_SIG_NIL.to_bin_str
+    echo "MASK_SIG_BOOL   ", MASK_SIG_BOOL.to_bin_str
+    echo "MASK_SIG_STRING ", MASK_SIG_STRING.to_bin_str
+    echo "MASK_SIG_BIGNUM ", MASK_SIG_BIGNUM.to_bin_str
+    echo "MASK_SIG_ARRAY  ", MASK_SIG_ARRAY.to_bin_str
+    echo "MASK_SIG_SET    ", MASK_SIG_SET.to_bin_str
+    echo "MASK_SIG_MAP    ", MASK_SIG_MAP.to_bin_str
 
   proc get_kind(head: uint32): ImValueKind =
+    echo toHex(head), " ", toHex(MASK_EXPONENT)
     if bitand(bitnot(head), MASK_EXPONENT) != 0: return kNumber
     let signature = bitand(head, MASK_SIGNATURE)
     case signature:
@@ -338,73 +355,74 @@ when NaN_boxing and system_32_bits:
       of MASK_SIG_ARRAY:  return kArray
       of MASK_SIG_SET:    return kSet
       of MASK_SIG_MAP:    return kMap
-      else:
-        discard
+      else:               discard
+
+  proc `$`*(v: ImValue): string =
+    # echo "v: ", v.to_byte_array, " ", v.to_hex
+    let kind = get_kind(v.head)
+    case kind:
+      of kNumber: return "Num(" & $(v.as_f64) & ")"
+      of kString: return "Str(" & $(v.as_str.tail.data) & ")"
+      of kMap:    return "Map( TODO )"
+      else:       discard
+  proc debug*(v: ImValue): string =
+    # echo "v: ", v.to_byte_array, " ", v.to_hex
+    # echo "bin: ", v.to_bin_str
+    let kind = get_kind(v.head)
+    let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
+    case kind:
+      of kNumber: return "Num" & shallow_str
+      of kString: return "Str" & shallow_str
+      of kMap:    return "Map" & shallow_str
+      else:       discard
 
   template eq_heap_tail(v1, v2: typed) =
+    # echo v1.as_v.debug, " ", v2.as_v.debug
     # echo "tail: ", to_byte_array(v1.ImV), "  ", to_byte_array(v2.ImV)
     result = false
     if v1.tail.hash == v2.tail.hash:
       result = v1.tail.data == v2.tail.data
-  template eq_heap_value(v1, v2: typed) =
+  template eq_heap_value_specific(v1, v2: typed) =
+    # echo v1.as_v.debug, " ", v2.as_v.debug
     result = false
     if v1.head == v2.head:
       eq_heap_tail(v1, v2)
-    
-  proc `==`*(v1, v2: ImString): bool =
-    eq_heap_value(v1, v2)
-  proc `==`*(v1, v2: ImArray): bool =
-    eq_heap_value(v1, v2)
-  proc `==`*(v1, v2: ImMap): bool =
-    eq_heap_value(v1, v2)
-  proc `==`*(v1, v2: ImSet): bool =
-    eq_heap_value(v1, v2)
-  proc `==`*(v1, v2: ImHV): bool =
-    result = false
+  template eq_heap_value_generic*(v1, v2: typed) =
     if v1.head == v2.head:
+      echo v1, " ", v2
       let signature = bitand(v1.head, MASK_SIGNATURE)
       case signature:
-        of MASK_SIG_STRING:
-          eq_heap_tail(v1.ImString, v2.ImString)
-        of MASK_SIG_ARRAY:
-          eq_heap_tail(v1.ImArray, v2.ImArray)
-        of MASK_SIG_MAP:
-          eq_heap_tail(v1.ImMap, v2.ImMap)
-        of MASK_SIG_SET:
-          eq_heap_tail(v1.ImSet, v2.ImSet)
-        else:
-          discard
+        of MASK_SIG_STRING: eq_heap_tail(v1.as_str, v2.as_str)
+        of MASK_SIG_ARRAY:  eq_heap_tail(v1.as_arr, v2.as_arr)
+        of MASK_SIG_MAP:    eq_heap_tail(v1.as_map, v2.as_map)
+        of MASK_SIG_SET:    eq_heap_tail(v1.as_set, v2.as_set)
+        else:               discard
+    
+  proc `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
+  proc `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
+  proc `==`*(v1, v2: ImMap): bool = eq_heap_value_specific(v1, v2)
+  proc `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
-  proc `==`*(v1: ImSV, v2: float64): bool =
-    return v1.as_f64 == v2
-  proc `==`*(v1: float64, v2: ImSV): bool =
-    return v1 == v2.as_f64
-  proc `==`*(v1, v2: ImSV): bool =
-    return v1.as_u64 == v2.as_u64
+  proc `==`*(v1, v2: ImValue): bool =
+    if bitand(MASK_HEAP, v1.head) == MASK_HEAP: eq_heap_value_generic(v1, v2)
+    else: return v1.as_u64 == v2.as_u64
+  proc `==`*(v: ImValue, f: float64): bool = return v == f.as_v
+  proc `==`*(f: float64, v: ImValue): bool = return v == f.as_v
+
+  proc `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
+
+  proc `==`*(v1: ImSV, v2: float64): bool = return v1.as_f64 == v2
+  proc `==`*(v1: float64, v2: ImSV): bool = return v1 == v2.as_f64
+  proc `==`*(v1, v2: ImSV): bool = return v1.as_u64 == v2.as_u64
   
   proc `==`*(v1, v2: ImV): bool =
-    if bitand(MASK_HEAP, v1.head) == MASK_HEAP:
-      return v1.ImHV == v2.ImHV
-    else:
-      return v1.ImSV == v2.ImSV
-  proc `==`*(v1: ImV, v2: float64): bool =
-    return v1 == v2.as_v
-  proc `==`*(v1: float64, v2: ImV): bool =
-    return v1.as_v == v2
-  
-  # TODO - figure out how to make this work so we get some handy coercion
-  #proc `==`*(v1, v2: ImValue): bool =
-    #if bitand(MASK_HEAP, v1.head) == MASK_HEAP:
-      #return v1.ImHV == v2.ImHV
-    #else:
-      #return v1.ImSV == v2.ImSV
-  proc `==`*(v: ImValue, f: float64): bool =
-    return cast[float64](v) == f
-  proc `==`*(f: float64, v: ImValue): bool =
-    return cast[float64](v) == f
+    if bitand(MASK_HEAP, v1.head) == MASK_HEAP: eq_heap_value_generic(v1, v2)
+    else: return v1.as_u64 == v2.as_u64
+  proc `==`*(v: ImV, f: float64): bool = return v == f.as_v
+  proc `==`*(f: float64, v: ImV): bool = return v == f.as_v
 
   proc float_from_mask*(mask: uint32): float64 =
-    return cast[float64](cast[uint64](mask) shl 32)
+    return (mask.as_u64 shl 32).as_f64
 
   proc hash*(v: ImValue): Hash =
     if is_heap(v):
@@ -431,26 +449,17 @@ when NaN_boxing and system_32_bits:
   echo to_byte_array(Nil)
   echo to_byte_array(True)
   echo to_byte_array(False)
+  echo to_bin_str(Nil)
+  echo to_bin_str(True)
+  echo to_bin_str(False)
 
-  proc `$`*(v: ImValue): string =
-    let kind = get_kind(v.head)
-    case kind:
-      of kNumber:
-        result = "Num(" & $(cast[float64](v)) & ")"
-      of kMap:
-        result = "Map( TODO )"
-      else:
-        discard
-  proc debug*(v: ImValue): string =
-    let kind = get_kind(v.head)
-    let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
-    case kind:
-      of kNumber:
-        result = "Num" & shallow_str
-      of kMap:
-        result = "Map" & shallow_str
-      else:
-        discard
+  if false:
+    echo "Nil.head: ", Nil.head.to_bin_str
+    echo "Nil.tail: ", Nil.tail.as_i32.to_bin_str
+    echo "Nil:      ", Nil.to_bin_str
+    echo "True.head: ", True.head.to_bin_str
+    echo "True.tail: ", True.tail.as_i32.to_bin_str
+    echo "True:      ", True.to_bin_str
 
   # TODO - eliminate this completely by just using floats?
   proc init_number*(f: float64 = 0): ImNumber =
@@ -469,6 +478,12 @@ when NaN_boxing and system_32_bits:
       tail: ImStringPayloadRef(hash: hash, data: s)
     )
 
+  proc `[]`*(s: ImString, i: int32): ImValue =
+    result = Nil.as_v
+    if i < s.tail.data.len:
+      if i >= 0:
+        result = (init_string($s.tail.data[i])).as_v
+
   proc concat*(s1, s2: ImString): ImString =
     let new_s = s1.tail.data & s2.tail.data
     return init_string(new_s)
@@ -476,10 +491,20 @@ when NaN_boxing and system_32_bits:
   proc size*(s: ImString): int32 =
     return s.tail.data.len.int32
   
-  let empty_map = ImMap(
+  var empty_map = ImMap(
     head: MASK_SIG_MAP,
     tail: ImMapPayloadRef(hash: 0)
   )
+  var empty_map2 = ImMap()
+  empty_map2.head = MASK_SIG_MAP
+
+  if false:
+    echo "empty_map.head: ", empty_map.head.to_bin_str
+    echo "empty_map.tail: ", empty_map.tail.as_i32.to_bin_str
+    echo "empty_map:      ", empty_map.to_bin_str
+    echo "empty_map2.head: ", empty_map2.head.to_bin_str
+    echo "empty_map2.tail: ", empty_map2.tail.as_i32.to_bin_str
+    echo "empty_map2:      ", empty_map2.to_bin_str
 
   proc init_map*(): ImMap =
     return empty_map
@@ -555,8 +580,8 @@ else:
       kBool
       # Heap Kinds
       kNumber
-      kAtom
-      # BigNum
+      kAtom                # TODO
+      kBigNum
       kString
       kArray
       kMap
