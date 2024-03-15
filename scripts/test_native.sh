@@ -9,7 +9,7 @@ set -e
 # At some point, move to a dockerized or otherwise reproducible build system.
 source "scripts/build_user_settings.sh"
 
-export PATH_TO_C_ASSETS="./nimcache/tests"
+export PATH_TO_C_ASSETS="./nimcache/tests_native"
 
 (
   # Clean previous compilation results

@@ -11,7 +11,7 @@ set -e
 # At some point, move to a dockerized or otherwise reproducible build system.
 source "scripts/build_user_settings.sh"
 
-export PATH_TO_C_ASSETS="./nimcache"
+export PATH_TO_C_ASSETS="./nimcache/dist_native"
 export C_ENTRY_FILE="${PATH_TO_C_ASSETS}/@mdida.nim.c"
 
 export OPTIMIZE="-Os"

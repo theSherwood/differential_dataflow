@@ -11,8 +11,9 @@ set -e
 # At some point, move to a dockerized or otherwise reproducible build system.
 source "scripts/build_user_settings.sh"
 
-export PATH_TO_C_ASSETS="./nimcache/wasm"
-export C_ENTRY_FILE="${PATH_TO_C_ASSETS}/@mdida.nim.c"
+export PATH_TO_C_ASSETS="./nimcache/dist_wasm"
+export C_ENTRY_FILE="@mdida.nim.c"
+export C_ENTRY_FILE_PATH="${PATH_TO_C_ASSETS}/${C_ENTRY_FILE}"
 
 export OPTIMIZE="-Os"
 export LDFLAGS="${OPTIMIZE}"
@@ -55,6 +56,14 @@ echo "============================================="
 echo "Compiling wasm with Emscripten"
 echo "============================================="
 
+# Get all the c files other than the entry file in a list
+c_libs=()
+for file in ${PATH_TO_C_ASSETS}/*.c
+do
+  ! [[ -e "$file" ]] || [[ "$file" = ${C_ENTRY_FILE_PATH} ]] || c_libs+=("$file")
+done
+# echo "${c_libs[@]}"
+
 (
   # -s MALLOC=emmalloc-verbose \
   # -g \
@@ -74,8 +83,8 @@ echo "============================================="
   -s RELOCATABLE=0 \
   --no-entry \
   -o out.wasm \
-  ${PATH_TO_C_ASSETS}/[!@]*.c \
-  ${C_ENTRY_FILE}
+  "${c_libs[@]}" \
+  ${C_ENTRY_FILE_PATH}
 
   # Create output folder
   # mkdir -p dist

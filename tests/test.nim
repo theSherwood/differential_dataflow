@@ -1,4 +1,5 @@
-import std/[unittest, bitops]
+import std/[bitops]
+import test_utils
 import values
 
 proc main =
@@ -60,8 +61,7 @@ proc main =
       check s3.size == 20
       check s3 == init_string("some string and more")
       check s3[0] == init_string("s").as_v
-      # FIX - on 64-bit systems the ref of the payload (tail) is trampling
-      # everything
+      # FIX - on 64-bit systems the ref of the payload (tail) is trampling everything
       check s3[0] != init_string("n").as_v
 
 main()

@@ -21,8 +21,15 @@ scripts/test.sh
 OR
 
 ```sh
-wach scripts/test.sh
+wach scripts/test_native.sh
 ```
+
+OR (to test in wasm)
+
+```sh
+wach -o "src/**" scripts/test_wasm.sh
+```
+
 
 ## Start the server
 

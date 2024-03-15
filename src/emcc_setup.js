@@ -35,7 +35,7 @@ function on_instance_init(wasi, instance, imports) {
   wasi.initialize(fake_instance);
   let new_exports = fake_instance.exports;
   /* cannot forget this step */
-  exports.setup_state();
+  new_exports.NimMain()
   {
     /* TODO */
   }

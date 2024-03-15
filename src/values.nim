@@ -1,3 +1,9 @@
+# TODO
+# 
+# -[ ] Handle 64-bit systems so that refs don't trample the struct
+#
+
+
 import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
@@ -168,17 +174,16 @@ when NaN_boxing and system_32_bits:
       kSet
       kUserDefined
 
-    ImHeapPayloadRef* = ref object of RootObj
-    ImStringPayloadRef* = ref object of ImHeapPayloadRef
+    ImStringPayloadRef* = ref object
       hash: uint32
       data: string
-    ImArrayPayloadRef* = ref object of ImHeapPayloadRef
+    ImArrayPayloadRef* = ref object
       hash: uint32
       data: seq[ImValue]
-    ImMapPayloadRef* = ref object of ImHeapPayloadRef
+    ImMapPayloadRef* = ref object
       hash: uint32
       data: Table[ImValue, ImValue]
-    ImSetPayloadRef* = ref object of ImHeapPayloadRef
+    ImSetPayloadRef* = ref object
       hash: uint32
       data: HashSet[ImValue]
 
@@ -208,23 +213,21 @@ when NaN_boxing and system_32_bits:
     ImBoolRef* = ref ImBool
     ImAtomRef* = ref ImAtom
 
-    ImHeapValue* = object of RootObj
-    ImString* = object of ImHeapValue
+    ImString* = object
       tail*: ImStringPayloadRef
       head*: uint32
-    ImArray* = object of ImHeapValue
+    ImArray* = object
       tail*: ImArrayPayloadRef
       head*: uint32
-    ImMap* = object of ImHeapValue
+    ImMap* = object
       tail*: ImMapPayloadRef
       head*: uint32
-    ImSet* = object of ImHeapValue
+    ImSet* = object
       tail*: ImSetPayloadRef
       head*: uint32
 
-    ImHV* = ImHeapValue or ImString or ImArray or ImMap or ImSet
+    ImHV* = ImString or ImArray or ImMap or ImSet
 
-    ImHeapValueRef* = ref ImHeapValue
     ImStringRef* = ref ImString
     ImArrayRef* = ref ImArray
     ImMapRef* = ref ImMap
@@ -497,14 +500,26 @@ when NaN_boxing and system_32_bits:
   )
   var empty_map2 = ImMap()
   empty_map2.head = MASK_SIG_MAP
+  empty_map2.tail = ImMapPayloadRef(hash: 0)
 
-  if false:
-    echo "empty_map.head: ", empty_map.head.to_bin_str
-    echo "empty_map.tail: ", empty_map.tail.as_i32.to_bin_str
-    echo "empty_map:      ", empty_map.to_bin_str
-    echo "empty_map2.head: ", empty_map2.head.to_bin_str
-    echo "empty_map2.tail: ", empty_map2.tail.as_i32.to_bin_str
-    echo "empty_map2:      ", empty_map2.to_bin_str
+  if true:
+    echo "empty_map.head:         ", empty_map.head.to_bin_str
+    echo "empty_map.tail:         ", empty_map.tail.as_i32.to_bin_str
+    echo "empty_map:              ", empty_map.to_bin_str
+    echo "sizeof empty_map:       ", sizeof empty_map
+    echo "empty_map2.head:        ", empty_map2.head.to_bin_str
+    echo "empty_map2.tail:        ", empty_map2.tail.as_i32.to_bin_str
+    echo "empty_map2:             ", empty_map2.to_bin_str
+    echo "sizeof empty_map2:      ", sizeof empty_map2
+    echo "sizeof ImValue:         ", sizeof ImValue
+    echo "sizeof Nil:             ", sizeof Nil
+    echo "typeof empty_map.tail:  ", typeof empty_map.tail
+    echo "addr empty_map.tail:    ", (addr empty_map.tail).as_i32.to_bin_str
+    echo "empty_map.as_v.tail:    ", empty_map.as_v.tail.as_i32.to_bin_str
+    echo "sizeof empty_map.head   ", sizeof empty_map.head
+    echo "sizeof empty_map.tail   ", sizeof empty_map.tail
+    echo "addr empty_map.head:    ", (addr empty_map.head).as_i32
+    echo "addr empty_map.tail:    ", (addr empty_map.tail).as_i32
 
   proc init_map*(): ImMap =
     return empty_map
