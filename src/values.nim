@@ -658,11 +658,11 @@ proc init_string*(s: string = ""): ImString =
     )
   else:
     let hash = hash(s)
-    var re = new ImStringPayloadRef
+    var re = new ImStringPayload
     GC_ref(re)
     re.hash = hash
     re.data = s
-    return ImString(p: bitor(MASK_SIG_STRING, re.addr.as_u64).as_p)
+    return ImString(p: bitor(MASK_SIG_STRING, re.as_p.as_u64).as_p)
 
 proc `[]`*(s: ImString, i: int32): ImValue =
   result = Nil.as_v
