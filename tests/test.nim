@@ -64,5 +64,13 @@ proc main =
       check s3 == init_string("some string and more")
       check s3[0] == init_string("s").as_v
       check s3[0] != init_string("n").as_v
+    test "concat":
+      var
+        s1 = init_string("foobar")
+        s2 = init_string("foo")
+      check s1 != s2
+      var s3 = s2.concat(init_string("bar"))
+      check s3 != s2
+      check s3 == s1
 
 main()
