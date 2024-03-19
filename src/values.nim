@@ -297,7 +297,7 @@ else:
   const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u64 shl 32
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u64 shl 32
 
-  const MASK_PAYLOAD     = 0x0000ffffffffffff'u64
+  const MASK_POINTER     = 0x0000ffffffffffff'u64
 
 const MASK_SIG_NAN     = MASK_EXP_OR_Q
 const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
@@ -316,7 +316,7 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
 when not cpu_32:
   template to_clean_ptr(v: typed): pointer =
-    cast[pointer](bitand((v).as_u64, MASK_PAYLOAD))
+    cast[pointer](bitand((v).as_u64, MASK_POINTER))
 
   proc `=destroy`[T](x: var MaskedRef[T]) =
     GC_unref(cast[ref T](to_clean_ptr(x.p)))
@@ -563,24 +563,9 @@ if false:
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
 when cpu_32:
-  proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
-  proc calc_hash(i1: Hash, i2: uint32): uint32 = return bitxor(i1.as_u32, i2)
-  proc calc_hash(i1: uint32, i2: Hash): uint32 = return bitxor(i1, i2.as_u32)
-  proc calc_hash(i1: uint64, i2: uint32): uint32 = return bitxor(i1.as_u32, i2)
-  proc calc_hash(i1: uint32, i2: uint64): uint32 = return bitxor(i1, i2.as_u32)
-  proc calc_hash(i1: int, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
-  #
-  # proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).as_u32
-  proc calc_hash(i1, i2: uint64): uint32 = return bitxor(i1, i2).as_u32
-  proc calc_hash(i1: Hash, i2: uint64): uint32 = return bitxor(i1.as_u64, i2).as_u32
-  proc calc_hash(i1: uint64, i2: Hash): uint32 = return bitxor(i1, i2.as_u64).as_u32
-  # proc calc_hash(i1: int, i2: uint32): uint32 = return bitxor(i1.as_u32, i2.as_u32)
-  # proc calc_hash(i1: uint32, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
+  template calc_hash(i1, i2: typed): uint32 = bitxor(i1.as_u32, i2.as_u32).as_u32
 else:
-  proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).Hash
-  proc calc_hash(i1, i2: uint64): Hash = return bitxor(i1, i2).Hash
-  proc calc_hash(i1: Hash, i2: uint64): Hash = return bitxor(i1.as_u64, i2).Hash
-  proc calc_hash(i1: uint64, i2: Hash): Hash = return bitxor(i1, i2.as_u64).Hash
+  template calc_hash(i1, i2: typed): Hash = bitxor(i1.as_u64, i2.as_u64).Hash
 
 when cpu_32:
   echo "3.0:  ", 3.0.as_u32.to_bin_str
