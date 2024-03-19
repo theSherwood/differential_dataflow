@@ -614,7 +614,7 @@ proc init_string*(s: string = ""): ImString =
   buildImString(hash, s)
   return new_string
 
-proc `[]`*(s: ImString, i: int32): ImValue =
+proc `[]`*(s: ImString, i: int): ImValue =
   result = Nil.as_v
   if i < s.payload.data.len:
     if i >= 0:
@@ -623,9 +623,12 @@ proc `[]`*(s: ImString, i: int32): ImValue =
 proc concat*(s1, s2: ImString): ImString =
   let new_s = s1.payload.data & s2.payload.data
   return init_string(new_s)
+proc `&`*(s1, s2: ImString): ImString =
+  let new_s = s1.payload.data & s2.payload.data
+  return init_string(new_s)
 
-func size*(s: ImString): int32 =
-  return s.payload.data.len.int32
+func size*(s: ImString): int =
+  return s.payload.data.len.int
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
@@ -731,15 +734,15 @@ proc init_array*(new_data: seq[ImValue]): ImArray =
 ## - ImValue indices
 ## - Negative indices
 ## - range indices
-template get_impl(a: ImArray, i: int32) =
+template get_impl(a: ImArray, i: int) =
   let data = a.payload.data
   if i >= data.len:
     return Nil.as_v
   else:
     return data[i]
 
-proc `[]`*(a: ImArray, i: int32): ImValue = get_impl(a, i)
-proc get*(a: ImArray, i: int32): ImValue  = get_impl(a, i)
+proc `[]`*(a: ImArray, i: int): ImValue = get_impl(a, i)
+proc get*(a: ImArray, i: int): ImValue  = get_impl(a, i)
 
 # proc `[]`*(m: ImArray, k: float64): ImValue = get_impl(m, k)
 # proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
@@ -750,7 +753,7 @@ proc get*(a: ImArray, i: int32): ImValue  = get_impl(a, i)
 ## - Negative indices
 ## - range indices???
 ## - indices beyond the end of the sequence (fill the gap with Nil)
-proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
+proc set*(a: ImArray, i: int, v: ImValue): ImArray =
   let derefed = a.payload
   # hash the previous version's hash with the new value and the old value
   let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
@@ -758,6 +761,13 @@ proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
   new_data[i] = v
   buildImArray(new_hash, new_data)
   return new_array
+
+proc concat*(a1, a2: ImArray): ImArray =
+  let new_a = a1.payload.data & a2.payload.data
+  return init_array(new_a)
+proc `&`*(a1, a2: ImArray): ImArray =
+  let new_a = a1.payload.data & a2.payload.data
+  return init_array(new_a)
 
 proc size*(a: ImArray): int =
   return a.payload.data.len.int
