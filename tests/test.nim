@@ -15,10 +15,8 @@ proc main =
         n3 = init_number(3.45)
         n4 = init_number(-99.156)
       check n3 != n4
-      check n3.as_f64 == 3.45
-      check -99.156 == n4.as_f64
-      check (3.45).as_v == n3.as_v
-      check (-99.156).as_v == n4.as_v
+      check n3 == 3.45
+      check -99.156 == n4
 
   suite "map":
     test "immutable updates":
