@@ -94,4 +94,34 @@ proc main =
       check a1[1] == 3.0.as_v
       check a2[1] == 11.5.as_v
 
+  suite "set":
+    test "simple":
+      var
+        s1 = init_set()
+        s2 = init_set()
+      check s1 == s2
+      check s1.has(1.0) == False
+    test "add and del":
+      var
+        s1 = init_set()
+        s2 = s1.add(3.0.as_v)
+        s3 = s1.add(3.0.as_v)
+      check s1 != s2
+      check s2 == s3
+      check s1.size == 0
+      check s2.size == 1
+      check s3.size == 1
+      var
+        s4 = s1.del(3.0.as_v)
+        s5 = s2.del(3.0.as_v)
+        s6 = s3.del(3.0.as_v)
+      check s4 == s1
+      check s5 == s1
+      check s6 == s1
+      check s5 != s2
+      check s6 != s3
+      check s5.size == 0
+      check s6.size == 0
+
+
 main()

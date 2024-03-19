@@ -876,3 +876,67 @@ proc size*(a: ImArray): int =
 
 # ImSet Impl #
 # ---------------------------------------------------------------------
+
+when cpu_32:
+  let empty_set = ImSet(
+    head: MASK_SIG_SET,
+    tail: ImSetPayloadRef(hash: 0)
+  )
+else:
+  proc init_set_inner(): ImSet =
+    var re = new ImSetPayload
+    GC_ref(re)
+    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+  let empty_set = init_set_inner()
+
+proc init_set*(): ImSet =
+  return empty_set
+
+template has_inner(s: ImSet, k: typed) =
+  let derefed = s.tail
+  if k.as_v in derefed.data: return True
+  return False
+
+proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
+proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
+
+proc add*(s: ImSet, k: ImValue): ImSet =
+  let derefed = s.tail
+  if k.as_v in derefed.data: return s
+  let hash = calc_hash(derefed.hash, k.hash)
+  when cpu_32:
+    var re = ImSetPayloadRef(hash: hash, data: derefed.data)
+    re.data.incl(k.as_v)
+    return ImSet(
+      head: update_head(MASK_SIG_SET, hash),
+      tail: re
+    )
+  else:
+    var re = new ImSetPayload
+    GC_ref(re)
+    re.hash = hash
+    re.data = derefed.data
+    re.data.incl(k.as_v)
+    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+
+proc del*(s: ImSet, k: ImValue): ImSet =
+  let derefed = s.tail
+  if not(k.as_v in derefed.data): return s
+  let hash = calc_hash(derefed.hash, k.hash)
+  when cpu_32:
+    var re = ImSetPayloadRef(hash: hash, data: derefed.data)
+    re.data.excl(k.as_v)
+    return ImSet(
+      head: update_head(MASK_SIG_SET, hash),
+      tail: re
+    )
+  else:
+    var re = new ImSetPayload
+    GC_ref(re)
+    re.hash = hash
+    re.data = derefed.data
+    re.data.excl(k.as_v)
+    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+
+proc size*(s: ImSet): int =
+  return s.tail.data.len.int
