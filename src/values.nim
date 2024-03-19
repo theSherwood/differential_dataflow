@@ -159,6 +159,14 @@ const cpu_32 = defined(cpu32)
 # Types #
 # ---------------------------------------------------------------------
 
+
+when cpu_32:
+  type
+    ImHash = uint32
+else:
+  type
+    ImHash = Hash
+
 type
   ImValueKind* = enum
     # Immediate Kinds
@@ -174,21 +182,8 @@ type
     kMap
     kSet
 
-when cpu_32:
-  type
-    ImHash = uint32
-    # Always put the tail first because we are targeting 32-bit little-endian
-    # systems. So tail, head lets us cast directly to and from float64.
-    ImValue* {.final, acyclic.} = object
-      tail*: uint32
-      head*: uint32
+  ImValue* = distinct uint64
 
-else:
-  type
-    ImHash = Hash
-    ImValue* = distinct uint64
-
-type
   ImStringPayload* = object
     hash: ImHash
     data: string
@@ -331,6 +326,23 @@ when not cpu_32:
     GC_ref(cast[ref T](to_clean_ptr(y.p)))
     x.p = y.p
 
+# Get Payload #
+# ---------------------------------------------------------------------
+
+when cpu_32:
+  template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
+  template tail(v: typed): uint32 = v.as_u32
+
+  template payload(v: ImString): ref ImStringPayload = v.tail
+  template payload(v: ImMap): ref ImMapPayload       = v.tail
+  template payload(v: ImArray): ref ImArrayPayload   = v.tail
+  template payload(v: ImSet): ref ImSetPayload       = v.tail
+else:
+  template payload(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](v.p.to_clean_ptr)
+  template payload(v: ImMap): ref ImMapPayload       = cast[ref ImMapPayload](v.p.to_clean_ptr)
+  template payload(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](v.p.to_clean_ptr)
+  template payload(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](v.p.to_clean_ptr)
+
 # Type Detection #
 # ---------------------------------------------------------------------
 
@@ -422,19 +434,6 @@ proc get_type(v: ImValue): ImValueKind =
     of MASK_SIG_MAP:    return kMap
     else:               discard
 
-# Conversions #
-# ---------------------------------------------------------------------
-
-when not cpu_32:
-  template tail(v: ImString): ref ImStringPayload =
-    cast[ref ImStringPayload](v.p.to_clean_ptr)
-  template tail(v: ImMap): ref ImMapPayload =
-    cast[ref ImMapPayload](v.p.to_clean_ptr)
-  template tail(v: ImArray): ref ImArrayPayload =
-    cast[ref ImArrayPayload](v.p.to_clean_ptr)
-  template tail(v: ImSet): ref ImSetPayload =
-    cast[ref ImSetPayload](v.p.to_clean_ptr)
-
 # Debug String Conversion #
 # ---------------------------------------------------------------------
 
@@ -454,14 +453,14 @@ proc `$`*(v: ImValue): string =
   when cpu_32:
     case kind:
       of kNumber: return "Num(" & $(v.as_f64) & ")"
-      of kString: return "Str(" & $(v.as_str.tail.data) & ")"
-      of kMap:    return "Map(" & $(v.as_map.tail.data) & ")"
+      of kString: return "Str(" & $(v.as_str.payload.data) & ")"
+      of kMap:    return "Map(" & $(v.as_map.payload.data) & ")"
       else:       discard
   else:
     case kind:
       of kNumber: return "Num(" & $(v.as_f64) & ")"
-      of kString: return "Str(" & $(v.as_str.tail.data) & ")"
-      of kMap:    return "Map(" & $(v.as_map.tail.data) & ")"
+      of kString: return "Str(" & $(v.as_str.payload.data) & ")"
+      of kMap:    return "Map(" & $(v.as_map.payload.data) & ")"
       else:       discard
 
 proc debug*(v: ImValue): string =
@@ -500,7 +499,7 @@ template eq_heap_payload(t1, t2: typed) =
 template eq_heap_value_specific(v1, v2: typed) =
   result = false
   if initial_eq_heap_value(v1, v2):
-    eq_heap_payload(v1.tail, v2.tail)
+    eq_heap_payload(v1.payload, v2.payload)
 template eq_heap_value_generic*(v1, v2: typed) =
   if initial_eq_heap_value(v1, v2):
     when cpu_32:
@@ -508,10 +507,10 @@ template eq_heap_value_generic*(v1, v2: typed) =
     else:
       let signature = bitand(v1.as_u64, MASK_SIGNATURE)
     case signature:
-      of MASK_SIG_STRING: eq_heap_payload(v1.as_str.tail, v2.as_str.tail)
-      of MASK_SIG_ARRAY:  eq_heap_payload(v1.as_arr.tail, v2.as_arr.tail)
-      of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.tail, v2.as_map.tail)
-      of MASK_SIG_SET:    eq_heap_payload(v1.as_set.tail, v2.as_set.tail)
+      of MASK_SIG_STRING: eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
+      of MASK_SIG_ARRAY:  eq_heap_payload(v1.as_arr.payload, v2.as_arr.payload)
+      of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.payload, v2.as_map.payload)
+      of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
 
 template complete_eq(v1, v2: typed): bool =
@@ -611,7 +610,7 @@ proc hash*(v: ImValue): Hash =
   if is_heap(v):
     # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
     let vh = cast[ImString](v)
-    result = cast[Hash](vh.tail.hash)
+    result = cast[Hash](vh.payload.hash)
   else:
     result = cast[Hash](v.as_u64)
   
@@ -661,16 +660,16 @@ proc init_string*(s: string = ""): ImString =
 
 proc `[]`*(s: ImString, i: int32): ImValue =
   result = Nil.as_v
-  if i < s.tail.data.len:
+  if i < s.payload.data.len:
     if i >= 0:
-      result = (init_string($s.tail.data[i])).as_v
+      result = (init_string($s.payload.data[i])).as_v
 
 proc concat*(s1, s2: ImString): ImString =
-  let new_s = s1.tail.data & s2.tail.data
+  let new_s = s1.payload.data & s2.payload.data
   return init_string(new_s)
 
 proc size*(s: ImString): int32 =
-  return s.tail.data.len.int32
+  return s.payload.data.len.int32
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
@@ -692,24 +691,26 @@ else:
 
 when cpu_32:
   echo "empty_map.head:         ", empty_map.head.to_bin_str
-  echo "empty_map.tail:         ", empty_map.tail.as_i32.to_bin_str
+  echo "empty_map.payload:      ", empty_map.payload.as_i32.to_bin_str
   echo "empty_map:              ", empty_map.to_bin_str
   echo "sizeof empty_map:       ", sizeof empty_map
   echo "empty_map2.head:        ", empty_map2.head.to_bin_str
-  echo "empty_map2.tail:        ", empty_map2.tail.as_i32.to_bin_str
+  echo "empty_map2.head2:       ", empty_map2.as_u64.head.to_bin_str
+  echo "empty_map2.payload:     ", empty_map2.payload.as_u32.to_bin_str
+  echo "empty_map2.tail:        ", empty_map2.as_u64.tail.to_bin_str
   echo "empty_map2:             ", empty_map2.to_bin_str
   echo "sizeof empty_map2:      ", sizeof empty_map2
   echo "sizeof ImValue:         ", sizeof ImValue
   echo "sizeof Nil:             ", sizeof Nil
-  echo "typeof empty_map.tail:  ", typeof empty_map.tail
-  echo "addr empty_map.tail:    ", (addr empty_map.tail).as_i32.to_bin_str
-  echo "empty_map.as_v.tail:    ", empty_map.as_v.tail.as_i32.to_bin_str
+  echo "typeof empty_map.payload:  ", typeof empty_map.payload
+  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i32.to_bin_str
+  echo "empty_map.as_v.payload:    ", empty_map.payload.as_i32.to_bin_str
   echo "sizeof empty_map.head   ", sizeof empty_map.head
-  echo "sizeof empty_map.tail   ", sizeof empty_map.tail
+  echo "sizeof empty_map.payload   ", sizeof empty_map.payload
   echo "addr empty_map.head:    ", (addr empty_map.head).as_i64
-  echo "addr empty_map.tail:    ", (addr empty_map.tail).as_i64
+  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i64
   echo "addr empty_map.head:    ", (addr empty_map.head).as_i64.to_bin_str
-  echo "addr empty_map.tail:    ", (addr empty_map.tail).as_i64.to_bin_str
+  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i64.to_bin_str
 else:
   discard
 
@@ -722,7 +723,7 @@ proc clear*(m: ImMap): ImMap =
 
 template get_inner(m: ImMap, k: typed) =
   when cpu_32:
-    return m.tail.data.getOrDefault(k.as_v, Nil.as_v).as_v
+    return m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
   else:
     let clean_m_ptr = bitand(bitnot(MASK_SIG_MAP), m.as_u64)
     let m_payload_ref = cast[ImMapPayloadRef](clean_m_ptr)
@@ -740,7 +741,7 @@ template produce_map_from_copy() {.dirty.} =
     let entry_hash = (k_hash + v_hash).uint32
   else:
     let entry_hash = (k_hash + v_hash).Hash
-  let new_m_map_hash = calc_hash(m.tail.hash, entry_hash)
+  let new_m_map_hash = calc_hash(m.payload.hash, entry_hash)
   when cpu_32:
     let new_m_payload = ImMapPayloadRef(
       hash: new_m_map_hash,
@@ -758,9 +759,9 @@ template produce_map_from_copy() {.dirty.} =
     let new_m = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
 
 proc del*(m: ImMap, k: ImValue): ImMap =
-  if not(k in m.tail.data): return m
-  let v = m.tail.data[k]
-  var table_copy = m.tail.data
+  if not(k in m.payload.data): return m
+  let v = m.payload.data[k]
+  var table_copy = m.payload.data
   table_copy.del(k)
   produce_map_from_copy()
   return new_m
@@ -768,8 +769,8 @@ proc del*(m: ImMap, k: float64): ImMap = return m.del(k.as_v)
 
 proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
   if v == Nil.as_v: return m.del(k)
-  if m.tail.data.getOrDefault(k, Nil.as_v) == v: return m
-  var table_copy = m.tail.data
+  if m.payload.data.getOrDefault(k, Nil.as_v) == v: return m
+  var table_copy = m.payload.data
   table_copy[k] = v
   produce_map_from_copy()
   return new_m
@@ -778,7 +779,7 @@ proc set*(m: ImMap, k: ImValue, v: float64): ImMap = return m.set(k, v.as_v)
 proc set*(m: ImMap, k: float64, v: ImValue): ImMap = return m.set(k.as_v, v)
 
 proc size*(m: ImMap): int32 =
-  return m.tail.data.len.int32
+  return m.payload.data.len.int32
 
 # ImArray Impl #
 # ---------------------------------------------------------------------
@@ -818,7 +819,7 @@ proc init_array*(a: seq[ImValue]): ImArray =
 ## - Negative indices
 ## - range indices
 template get_inner(a: ImArray, i: int32) =
-  let data = a.tail.data
+  let data = a.payload.data
   if i >= data.len:
     return Nil.as_v
   else:
@@ -837,7 +838,7 @@ proc get*(a: ImArray, i: int32): ImValue  = get_inner(a, i)
 ## - range indices???
 ## - indices beyond the end of the sequence (fill the gap with Nil)
 proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
-  let derefed = a.tail
+  let derefed = a.payload
   # hash the previous version's hash with the new value and the old value
   let hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
   when cpu_32:
@@ -856,7 +857,7 @@ proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
     return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
 
 proc size*(a: ImArray): int =
-  return a.tail.data.len.int
+  return a.payload.data.len.int
 
 # ImSet Impl #
 # ---------------------------------------------------------------------
@@ -877,7 +878,7 @@ proc init_set*(): ImSet =
   return empty_set
 
 template has_inner(s: ImSet, k: typed) =
-  let derefed = s.tail
+  let derefed = s.payload
   if k.as_v in derefed.data: return True
   return False
 
@@ -885,7 +886,7 @@ proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
 proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 
 proc add*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.tail
+  let derefed = s.payload
   if k.as_v in derefed.data: return s
   let hash = calc_hash(derefed.hash, k.hash)
   when cpu_32:
@@ -904,7 +905,7 @@ proc add*(s: ImSet, k: ImValue): ImSet =
     return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
 
 proc del*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.tail
+  let derefed = s.payload
   if not(k.as_v in derefed.data): return s
   let hash = calc_hash(derefed.hash, k.hash)
   when cpu_32:
@@ -923,4 +924,4 @@ proc del*(s: ImSet, k: ImValue): ImSet =
     return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
 
 proc size*(s: ImSet): int =
-  return s.tail.data.len.int
+  return s.payload.data.len.int
