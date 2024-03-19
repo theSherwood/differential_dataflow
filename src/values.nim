@@ -1,6 +1,6 @@
 # TODO
 # 
-# -[ ] Handle 64-bit systems so that refs don't trample the struct
+# -[ ] Add Infinity, -Infinity
 #
 
 import std/[tables, sets, bitops, strutils, strbasics]
@@ -555,7 +555,7 @@ if false:
 if false:
   echo "Nil:       ", Nil.to_bin_str
   echo "True:      ", True.to_bin_str
-  echo "False:      ", True.to_bin_str
+  echo "False:     ", False.to_bin_str
 
 # Hash Handling #
 # ---------------------------------------------------------------------
@@ -567,10 +567,28 @@ when cpu_32:
 else:
   template calc_hash(i1, i2: typed): Hash = bitxor(i1.as_u64, i2.as_u64).Hash
 
+proc hash*(v: ImValue): ImHash =
+  if is_heap(v):
+    # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
+    let vh = cast[ImString](v)
+    result = cast[ImHash](vh.payload.hash)
+  else:
+    when cpu_32:
+      # We fold it and hash it for 32-bit stack values because a lot of them
+      # don't have anything interesting happening in the top 32 bits.
+      result = cast[ImHash](calc_hash(v.head, v.tail))
+    else:
+      result = cast[ImHash](v.as_u64)
+
 when cpu_32:
   echo "3.0:  ", 3.0.as_u32.to_bin_str
   echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u32.to_bin_str
   echo "3.0:  ", (3.0 * 3173).as_u32.to_bin_str
+  echo "3.0:  ", 3.0.as_v.hash.to_bin_str
+  echo "3.1:  ", 3.1.as_v.hash.to_bin_str
+  echo "3.1:  ", 3.1.as_v.hash
+  echo "5.0:  ", 5.0.as_v.hash.to_bin_str
+  echo "30.0: ", 30.0.as_v.hash.to_bin_str
 else:
   echo "3.0:  ", 3.0.as_u64.to_bin_str
   echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u64.to_bin_str
@@ -580,13 +598,6 @@ else:
   echo "MAX:  ", 9007199254740991.0 + 1
   echo "MAX:  ", 9007199254740991.0 + 2
 
-proc hash*(v: ImValue): Hash =
-  if is_heap(v):
-    # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
-    let vh = cast[ImString](v)
-    result = cast[Hash](vh.payload.hash)
-  else:
-    result = cast[Hash](v.as_u64)
   
 when cpu_32:
   # full_hash is 32 bits
