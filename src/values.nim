@@ -176,47 +176,37 @@ type
 
 when cpu_32:
   type
+    ImHash = uint32
     # Always put the tail first because we are targeting 32-bit little-endian
     # systems. So tail, head lets us cast directly to and from float64.
     ImValue* {.final, acyclic.} = object
       tail*: uint32
       head*: uint32
 
-    ImStringPayloadRef* = ref object
-      hash: uint32
-      data: string
-    ImArrayPayloadRef* = ref object
-      hash: uint32
-      data: seq[ImValue]
-    ImMapPayloadRef* = ref object
-      hash: uint32
-      data: Table[ImValue, ImValue]
-    ImSetPayloadRef* = ref object
-      hash: uint32
-      data: HashSet[ImValue]
-
 else:
   type
+    ImHash = Hash
     # Always put the tail first because we are targeting 32-bit little-endian
     # systems. So tail, head lets us cast directly to and from float64.
     ImValue* = distinct uint64
 
-    ImStringPayload* = object
-      hash: Hash
-      data: string
-    ImArrayPayload* = object
-      hash: Hash
-      data: seq[ImValue]
-    ImMapPayload* = object
-      hash: Hash
-      data: Table[ImValue, ImValue]
-    ImSetPayload* = object
-      hash: Hash
-      data: HashSet[ImValue]
-    ImStringPayloadRef* = ref ImStringPayload
-    ImArrayPayloadRef* = ref ImArrayPayload
-    ImMapPayloadRef* = ref ImMapPayload
-    ImSetPayloadRef* = ref ImSetPayload
+type
+  ImStringPayload* = object
+    hash: ImHash
+    data: string
+  ImArrayPayload* = object
+    hash: ImHash
+    data: seq[ImValue]
+  ImMapPayload* = object
+    hash: ImHash
+    data: Table[ImValue, ImValue]
+  ImSetPayload* = object
+    hash: ImHash
+    data: HashSet[ImValue]
+  ImStringPayloadRef* = ref ImStringPayload
+  ImArrayPayloadRef* = ref ImArrayPayload
+  ImMapPayloadRef* = ref ImMapPayload
+  ImSetPayloadRef* = ref ImSetPayload
 
 when cpu_32:
   type
@@ -615,6 +605,11 @@ when cpu_32:
   proc calc_hash(i1: uint64, i2: uint32): uint32 = return bitxor(i1.as_u32, i2)
   proc calc_hash(i1: uint32, i2: uint64): uint32 = return bitxor(i1, i2.as_u32)
   proc calc_hash(i1: int, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
+  #
+  # proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).as_u32
+  proc calc_hash(i1, i2: uint64): uint32 = return bitxor(i1, i2).as_u32
+  proc calc_hash(i1: Hash, i2: uint64): uint32 = return bitxor(i1.as_u64, i2).as_u32
+  proc calc_hash(i1: uint64, i2: Hash): uint32 = return bitxor(i1, i2.as_u64).as_u32
   # proc calc_hash(i1: int, i2: uint32): uint32 = return bitxor(i1.as_u32, i2.as_u32)
   # proc calc_hash(i1: uint32, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
 else:
@@ -622,6 +617,19 @@ else:
   proc calc_hash(i1, i2: uint64): Hash = return bitxor(i1, i2).Hash
   proc calc_hash(i1: Hash, i2: uint64): Hash = return bitxor(i1.as_u64, i2).Hash
   proc calc_hash(i1: uint64, i2: Hash): Hash = return bitxor(i1, i2.as_u64).Hash
+
+when cpu_32:
+  echo "3.0:  ", 3.0.as_u32.to_bin_str
+  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u32.to_bin_str
+  echo "3.0:  ", (3.0 * 3173).as_u32.to_bin_str
+else:
+  echo "3.0:  ", 3.0.as_u64.to_bin_str
+  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u64.to_bin_str
+  echo "3.0:  ", (3.0 * 3173).as_u64.to_bin_str
+  echo "3.0:  ", (3.0.as_u64 * 3173).as_u64.to_bin_str
+  echo "3.0:  ", (3.0.as_u64 * 3173.as_u64).as_u64.to_bin_str
+  echo "MAX:  ", 9007199254740991.0 + 1
+  echo "MAX:  ", 9007199254740991.0 + 2
 
 proc hash*(v: ImValue): Hash =
   if is_heap(v):
