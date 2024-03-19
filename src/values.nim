@@ -606,31 +606,33 @@ proc init_number*(f: float64 = 0): ImNumber =
 # ImString Impl #
 # ---------------------------------------------------------------------
 
-when cpu_32:
-  let empty_string = ImString(
-    head: MASK_SIG_STRING,
-    tail: ImStringPayloadRef(hash: 0)
-  )
-else:
-  let empty_str_payload_ref = ImArrayPayloadRef(hash: 0)
-  let empty_str_payload_ptr = addr empty_str_payload_ref
-  let empty_string = cast[ImString](bitor(MASK_SIG_STRING, empty_str_payload_ptr.as_u64))
+template buildImString(new_hash, new_data: typed) {.dirty.} =
+  when cpu_32:
+    let h = new_hash.uint32
+    var new_string = ImString(
+      head: update_head(MASK_SIG_STRING, h),
+      tail: ImStringPayloadRef(hash: h, data: new_data)
+    )
+  else:
+    var re = new ImStringPayload
+    GC_ref(re)
+    re.hash = new_hash
+    re.data = new_data
+    var new_string = ImString(p: bitor(MASK_SIG_STRING, re.as_p.as_u64).as_p)
+  
+proc init_string_empty(): ImString =
+  let hash = 0
+  let data = ""
+  buildImString(hash, data)
+  return new_string
+
+let empty_string = init_string_empty()
 
 proc init_string*(s: string = ""): ImString =
   if s.len == 0: return empty_string
-  when cpu_32:
-    let hash = hash(s).uint32
-    return ImString(
-      head: update_head(MASK_SIG_STRING, hash),
-      tail: ImStringPayloadRef(hash: hash, data: s)
-    )
-  else:
-    let hash = hash(s)
-    var re = new ImStringPayload
-    GC_ref(re)
-    re.hash = hash
-    re.data = s
-    return ImString(p: bitor(MASK_SIG_STRING, re.as_p.as_u64).as_p)
+  let hash = hash(s)
+  buildImString(hash, s)
+  return new_string
 
 proc `[]`*(s: ImString, i: int32): ImValue =
   result = Nil.as_v
@@ -647,46 +649,30 @@ proc size*(s: ImString): int32 =
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
-  
-when cpu_32:
-  let empty_map = ImMap(
-    head: MASK_SIG_MAP,
-    tail: ImMapPayloadRef(hash: 0)
-  )
-  var empty_map2 = ImMap()
-  empty_map2.head = MASK_SIG_MAP
-  empty_map2.tail = ImMapPayloadRef(hash: 0)
-else:
-  proc init_map_inner(): ImMap =
+
+
+template buildImMap(new_hash, new_data: typed) {.dirty.} =
+  when cpu_32:
+    let h = new_hash.uint32
+    var new_map = ImMap(
+      head: update_head(MASK_SIG_MAP, h),
+      tail: ImMapPayloadRef(hash: h, data: new_data)
+    )
+  else:
     var re = new ImMapPayload
     GC_ref(re)
-    return ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
-  let empty_map = init_map_inner()
+    re.hash = new_hash
+    re.data = new_data
+    var new_map = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
 
-when cpu_32:
-  echo "empty_map.head:         ", empty_map.head.to_bin_str
-  echo "empty_map.payload:      ", empty_map.payload.as_i32.to_bin_str
-  echo "empty_map:              ", empty_map.to_bin_str
-  echo "sizeof empty_map:       ", sizeof empty_map
-  echo "empty_map2.head:        ", empty_map2.head.to_bin_str
-  echo "empty_map2.head2:       ", empty_map2.as_u64.head.to_bin_str
-  echo "empty_map2.payload:     ", empty_map2.payload.as_u32.to_bin_str
-  echo "empty_map2.tail:        ", empty_map2.as_u64.tail.to_bin_str
-  echo "empty_map2:             ", empty_map2.to_bin_str
-  echo "sizeof empty_map2:      ", sizeof empty_map2
-  echo "sizeof ImValue:         ", sizeof ImValue
-  echo "sizeof Nil:             ", sizeof Nil
-  echo "typeof empty_map.payload:  ", typeof empty_map.payload
-  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i32.to_bin_str
-  echo "empty_map.as_v.payload:    ", empty_map.payload.as_i32.to_bin_str
-  echo "sizeof empty_map.head   ", sizeof empty_map.head
-  echo "sizeof empty_map.payload   ", sizeof empty_map.payload
-  echo "addr empty_map.head:    ", (addr empty_map.head).as_i64
-  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i64
-  echo "addr empty_map.head:    ", (addr empty_map.head).as_i64.to_bin_str
-  echo "addr empty_map.payload:    ", (addr empty_map.payload).as_i64.to_bin_str
-else:
-  discard
+proc init_map_empty(): ImMap =
+  let hash = 0
+  let data = initTable[ImValue, ImValue]()
+  buildImMap(hash, data)
+  return new_map
+  
+let empty_map = init_map_empty()
+let empty_map2 = init_map_empty()
 
 proc init_map*(): ImMap =
   return empty_map
@@ -695,50 +681,22 @@ proc init_map*(): ImMap =
 proc clear*(m: ImMap): ImMap =
   return empty_map
 
-template get_inner(m: ImMap, k: typed) =
-  when cpu_32:
-    return m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
-  else:
-    let clean_m_ptr = bitand(bitnot(MASK_SIG_MAP), m.as_u64)
-    let m_payload_ref = cast[ImMapPayloadRef](clean_m_ptr)
-    return m_payload_ref.data.getOrDefault(k.as_v, Nil.as_v).as_v
-
-proc `[]`*(m: ImMap, k: ImValue): ImValue = get_inner(m, k)
-proc `[]`*(m: ImMap, k: float64): ImValue = get_inner(m, k)
-proc get*(m: ImMap, k: ImValue): ImValue  = get_inner(m, k)
-proc get*(m: ImMap, k: float64): ImValue  = get_inner(m, k)
-
-template produce_map_from_copy() {.dirty.} =
-  let k_hash = hash(k)
-  let v_hash = hash(v)
-  when cpu_32:
-    let entry_hash = (k_hash + v_hash).uint32
-  else:
-    let entry_hash = (k_hash + v_hash).Hash
-  let new_m_map_hash = calc_hash(m.payload.hash, entry_hash)
-  when cpu_32:
-    let new_m_payload = ImMapPayloadRef(
-      hash: new_m_map_hash,
-      data: table_copy
-    )
-    let new_m = ImMap( 
-      head: update_head(m.head, new_m_map_hash),
-      tail: new_m_payload
-    )
-  else:
-    var re = new ImMapPayload
-    re.hash = new_m_map_hash
-    re.data = table_copy
-    GC_ref(re)
-    let new_m = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
+template get_impl(m: ImMap, k: typed): ImValue =
+  m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
+proc `[]`*(m: ImMap, k: ImValue): ImValue = return get_impl(m, k)
+proc `[]`*(m: ImMap, k: float64): ImValue = return get_impl(m, k)
+proc get*(m: ImMap, k: ImValue): ImValue  = return get_impl(m, k)
+proc get*(m: ImMap, k: float64): ImValue  = return get_impl(m, k)
 
 proc del*(m: ImMap, k: ImValue): ImMap =
   if not(k in m.payload.data): return m
   let v = m.payload.data[k]
   var table_copy = m.payload.data
   table_copy.del(k)
-  produce_map_from_copy()
-  return new_m
+  let entry_hash = hash(k) + hash(v)
+  let new_hash = calc_hash(m.payload.hash, entry_hash)
+  buildImMap(new_hash, table_copy)
+  return new_map
 proc del*(m: ImMap, k: float64): ImMap = return m.del(k.as_v)
 
 proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
@@ -746,8 +704,10 @@ proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
   if m.payload.data.getOrDefault(k, Nil.as_v) == v: return m
   var table_copy = m.payload.data
   table_copy[k] = v
-  produce_map_from_copy()
-  return new_m
+  let entry_hash = hash(k) + hash(v)
+  let new_hash = calc_hash(m.payload.hash, entry_hash)
+  buildImMap(new_hash, table_copy)
+  return new_map
 proc set*(m: ImMap, k: float64, v: float64): ImMap = return m.set(k.as_v, v.as_v)
 proc set*(m: ImMap, k: ImValue, v: float64): ImMap = return m.set(k, v.as_v)
 proc set*(m: ImMap, k: float64, v: ImValue): ImMap = return m.set(k.as_v, v)
@@ -758,53 +718,54 @@ proc size*(m: ImMap): int32 =
 # ImArray Impl #
 # ---------------------------------------------------------------------
 
-when cpu_32:
-  let empty_array = ImArray(
-    head: MASK_SIG_ARRAY,
-    tail: ImArrayPayloadRef(hash: 0)
-  )
-else:
-  proc init_array_inner(): ImArray =
-    var re = new ImArrayPayload
-    GC_ref(re)
-    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
-  let empty_array = init_array_inner()
 
-proc init_array*(a: seq[ImValue]): ImArray =
-  if a.len == 0: return empty_array
-  var hash = 0.Hash
-  for v in a:
-    hash = calc_hash(hash, v.hash).Hash
+template buildImArray(new_hash, new_data: typed) {.dirty.} =
   when cpu_32:
-    let h = hash.uint32
-    return ImArray(
+    let h = new_hash.uint32
+    var new_array = ImArray(
       head: update_head(MASK_SIG_ARRAY, h),
-      tail: ImArrayPayloadRef(hash: h, data: a)
+      tail: ImArrayPayloadRef(hash: h, data: new_data)
     )
   else:
     var re = new ImArrayPayload
     GC_ref(re)
-    re.hash = hash
-    re.data = a
-    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+    re.hash = new_hash
+    re.data = new_data
+    var new_array = ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+
+proc init_array_empty(): ImArray =
+  let new_hash = 0
+  let new_data: seq[ImValue] = @[]
+  buildImArray(new_hash, new_data)
+  return new_array
+
+let empty_array = init_array_empty()
+
+proc init_array*(new_data: seq[ImValue]): ImArray =
+  if new_data.len == 0: return empty_array
+  var new_hash = 0.Hash
+  for v in new_data:
+    new_hash = calc_hash(new_hash, v.hash).Hash
+  buildImArray(new_hash, new_data)
+  return new_array
 
 ## TODO
 ## - ImValue indices
 ## - Negative indices
 ## - range indices
-template get_inner(a: ImArray, i: int32) =
+template get_impl(a: ImArray, i: int32) =
   let data = a.payload.data
   if i >= data.len:
     return Nil.as_v
   else:
     return data[i]
 
-proc `[]`*(a: ImArray, i: int32): ImValue = get_inner(a, i)
-proc get*(a: ImArray, i: int32): ImValue  = get_inner(a, i)
+proc `[]`*(a: ImArray, i: int32): ImValue = get_impl(a, i)
+proc get*(a: ImArray, i: int32): ImValue  = get_impl(a, i)
 
-# proc `[]`*(m: ImArray, k: float64): ImValue = get_inner(m, k)
-# proc get*(m: ImArray, k: ImValue): ImValue  = get_inner(m, k)
-# proc get*(m: ImArray, k: float64): ImValue  = get_inner(m, k)
+# proc `[]`*(m: ImArray, k: float64): ImValue = get_impl(m, k)
+# proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
+# proc get*(m: ImArray, k: float64): ImValue  = get_impl(m, k)
 
 ## TODO
 ## - ImValue indices
@@ -814,21 +775,11 @@ proc get*(a: ImArray, i: int32): ImValue  = get_inner(a, i)
 proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
   let derefed = a.payload
   # hash the previous version's hash with the new value and the old value
-  let hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
-  when cpu_32:
-    var re = ImArrayPayloadRef(hash: hash, data: derefed.data)
-    re.data[i] = v
-    return ImArray(
-      head: update_head(MASK_SIG_ARRAY, hash),
-      tail: re
-    )
-  else:
-    var re = new ImArrayPayload
-    GC_ref(re)
-    re.hash = hash
-    re.data = derefed.data
-    re.data[i] = v
-    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+  let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
+  var new_data = derefed.data
+  new_data[i] = v
+  buildImArray(new_hash, new_data)
+  return new_array
 
 proc size*(a: ImArray): int =
   return a.payload.data.len.int
@@ -836,17 +787,27 @@ proc size*(a: ImArray): int =
 # ImSet Impl #
 # ---------------------------------------------------------------------
 
-when cpu_32:
-  let empty_set = ImSet(
-    head: MASK_SIG_SET,
-    tail: ImSetPayloadRef(hash: 0)
-  )
-else:
-  proc init_set_inner(): ImSet =
+template buildImSet(new_hash, new_data: typed) {.dirty.} =
+  when cpu_32:
+    let h = new_hash.uint32
+    var new_set = ImSet(
+      head: update_head(MASK_SIG_SET, h),
+      tail: ImSetPayloadRef(hash: h, data: new_data)
+    )
+  else:
     var re = new ImSetPayload
     GC_ref(re)
-    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
-  let empty_set = init_set_inner()
+    re.hash = new_hash
+    re.data = new_data
+    var new_set = ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+
+proc init_set_empty(): ImSet =
+  let new_hash = 0
+  var new_data: HashSet[ImValue]
+  buildImSet(new_hash, new_data)
+  return new_set
+
+let empty_set = init_set_empty()
 
 proc init_set*(): ImSet =
   return empty_set
@@ -862,40 +823,20 @@ proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 proc add*(s: ImSet, k: ImValue): ImSet =
   let derefed = s.payload
   if k.as_v in derefed.data: return s
-  let hash = calc_hash(derefed.hash, k.hash)
-  when cpu_32:
-    var re = ImSetPayloadRef(hash: hash, data: derefed.data)
-    re.data.incl(k.as_v)
-    return ImSet(
-      head: update_head(MASK_SIG_SET, hash),
-      tail: re
-    )
-  else:
-    var re = new ImSetPayload
-    GC_ref(re)
-    re.hash = hash
-    re.data = derefed.data
-    re.data.incl(k.as_v)
-    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+  let new_hash = calc_hash(derefed.hash, k.hash)
+  var new_data = derefed.data
+  new_data.incl(k.as_v)
+  buildImSet(new_hash, new_data)
+  return new_set
 
 proc del*(s: ImSet, k: ImValue): ImSet =
   let derefed = s.payload
   if not(k.as_v in derefed.data): return s
-  let hash = calc_hash(derefed.hash, k.hash)
-  when cpu_32:
-    var re = ImSetPayloadRef(hash: hash, data: derefed.data)
-    re.data.excl(k.as_v)
-    return ImSet(
-      head: update_head(MASK_SIG_SET, hash),
-      tail: re
-    )
-  else:
-    var re = new ImSetPayload
-    GC_ref(re)
-    re.hash = hash
-    re.data = derefed.data
-    re.data.excl(k.as_v)
-    return ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+  let new_hash = calc_hash(derefed.hash, k.hash)
+  var new_data = derefed.data
+  new_data.excl(k.as_v)
+  buildImSet(new_hash, new_data)
+  return new_set
 
 proc size*(s: ImSet): int =
   return s.payload.data.len.int
