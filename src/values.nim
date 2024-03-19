@@ -186,8 +186,6 @@ when cpu_32:
 else:
   type
     ImHash = Hash
-    # Always put the tail first because we are targeting 32-bit little-endian
-    # systems. So tail, head lets us cast directly to and from float64.
     ImValue* = distinct uint64
 
 type
@@ -204,33 +202,15 @@ type
     hash: ImHash
     data: HashSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
-  ImArrayPayloadRef* = ref ImArrayPayload
-  ImMapPayloadRef* = ref ImMapPayload
-  ImSetPayloadRef* = ref ImSetPayload
+  ImArrayPayloadRef*  = ref ImArrayPayload
+  ImMapPayloadRef*    = ref ImMapPayload
+  ImSetPayloadRef*    = ref ImSetPayload
 
-when cpu_32:
-  type
-    ImStackValue* = object
-      tail*: uint32
-      head*: uint32
-    # TODO - change ImNumber to alias float64
-    ImNumber* {.borrow: `.`.} = distinct ImStackValue
-    ImNaN* {.borrow: `.`.} = distinct ImStackValue
-    ImNil* {.borrow: `.`.} = distinct ImStackValue
-    ImBool* {.borrow: `.`.} = distinct ImStackValue
-    ImAtom* {.borrow: `.`.} = distinct ImStackValue
-  
-else:
-  type
-    ImStackValue* = object
-      tail*: uint32
-      head*: uint32
-    # TODO - change ImNumber to alias float64
-    ImNumber* {.borrow: `.`.} = distinct ImStackValue
-    ImNaN* {.borrow: `.`.} = distinct ImStackValue
-    ImNil* {.borrow: `.`.} = distinct ImStackValue
-    ImBool* {.borrow: `.`.} = distinct ImStackValue
-    ImAtom* {.borrow: `.`.} = distinct ImStackValue
+  ImNumber* = distinct float64
+  ImNaN*    = distinct float64
+  ImNil*    = distinct float64
+  ImBool*   = distinct float64
+  ImAtom*   = distinct float64
 
 when cpu_32:
   type
@@ -248,7 +228,6 @@ when cpu_32:
       head*: uint32
   
 else:
-
   type
     MaskedRef*[T] = object
       # distinct should work in theory, but I'm not entirely sure how well phantom types work with distinct at the moment
@@ -259,7 +238,7 @@ else:
     ImSet*    = MaskedRef[ImSetPayload]
 
 type
-  ImSV* = ImStackValue or ImNumber or ImNaN or ImNil or ImBool or ImAtom
+  ImSV* = ImNumber or ImNaN or ImNil or ImBool or ImAtom
   ImHV* = ImString or ImArray or ImMap or ImSet
   ImV* = ImSV or ImHV
 
@@ -586,12 +565,9 @@ if false:
   echo to_bin_str(False)
 
 if false:
-  echo "Nil.head: ", Nil.head.to_bin_str
-  echo "Nil.tail: ", Nil.tail.as_i32.to_bin_str
-  echo "Nil:      ", Nil.to_bin_str
-  echo "True.head: ", True.head.to_bin_str
-  echo "True.tail: ", True.tail.as_i32.to_bin_str
+  echo "Nil:       ", Nil.to_bin_str
   echo "True:      ", True.to_bin_str
+  echo "False:      ", True.to_bin_str
 
 # Hash Handling #
 # ---------------------------------------------------------------------
@@ -652,7 +628,7 @@ when cpu_32:
 
 # TODO - eliminate this completely by just using floats?
 proc init_number*(f: float64 = 0): ImNumber =
-  return (cast[ImStackValue](f)).ImNumber
+  return (cast[ImNumber](f))
 
 # ImString Impl #
 # ---------------------------------------------------------------------
