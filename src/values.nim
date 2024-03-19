@@ -113,11 +113,9 @@ import hashes
 ## 101 - map
 ## 110-111 - (unused, 2 values)
 ##
-## ### Going with OPTION 1 for now
+## ### Going with OPTION 2 for now
 ## 
-## The extra types may prove to be more useful than the extra bit in the short
-## hash. Of course, we can also use one value as a Box for any number of
-## other types. Though OPTION 2 is more consistent with 64-bit systems.
+## Option 2 is more consistent with 64-bit systems
 ##
 ## +- Heap bit (1)
 ## |            +- Heap type bits (4)
@@ -202,10 +200,10 @@ type
   ImSetPayloadRef*    = ref ImSetPayload
 
   ImNumber* = distinct float64
-  ImNaN*    = distinct float64
-  ImNil*    = distinct float64
-  ImBool*   = distinct float64
-  ImAtom*   = distinct float64
+  ImNaN*    = distinct uint64
+  ImNil*    = distinct uint64
+  ImBool*   = distinct uint64
+  ImAtom*   = distinct uint64
 
 when cpu_32:
   type
@@ -272,11 +270,11 @@ when cpu_32:
   const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u32
   const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u32
 
-  const MASK_TYPE_STRING = 0b10000000000000001000000000000000'u32
-  const MASK_TYPE_BIGNUM = 0b10000000000000010000000000000000'u32
-  const MASK_TYPE_ARRAY  = 0b10000000000000011000000000000000'u32
-  const MASK_TYPE_SET    = 0b10000000000000100000000000000000'u32
-  const MASK_TYPE_MAP    = 0b10000000000000101000000000000000'u32
+  const MASK_TYPE_STRING = 0b10000000000000010000000000000000'u32
+  const MASK_TYPE_BIGNUM = 0b10000000000000100000000000000000'u32
+  const MASK_TYPE_ARRAY  = 0b10000000000000110000000000000000'u32
+  const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u32
+  const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
 
 else:
   const MASK_SIGN        = 0b10000000000000000000000000000000'u64 shl 32
@@ -347,47 +345,26 @@ else:
 # ---------------------------------------------------------------------
 
 when cpu_32:
-  template is_float(head: uint32): bool =
-    bitand(bitnot(head), MASK_EXPONENT) == 0
-  template is_nil(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_NIL
-  template is_bool(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_BOOL
-  template is_atom(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_ATOM
-  template is_string(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_STRING
-  template is_bignum(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_BIGNUM
-  template is_array(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_ARRAY
-  template is_set(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_SET
-  template is_map(head: uint32): bool =
-    bitand(head, MASK_SIGNATURE) == MASK_SIG_MAP
-  template is_heap(head: uint32): bool =
-    bitand(head, MASK_EXP_OR_Q) == MASK_HEAP
-  
   template is_float(v: ImValue): bool =
-    v.head.is_float
+    bitand(bitnot(v.head), MASK_EXPONENT) == 0
   template is_nil(v: ImValue): bool =
-    v.head.is_nil
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_NIL
   template is_bool(v: ImValue): bool =
-    v.head.is_bool
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_BOOL
   template is_atom(v: ImValue): bool =
-    v.head.is_atom
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_ATOM
   template is_string(v: ImValue): bool =
-    v.head.is_string
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_STRING
   template is_bignum(v: ImValue): bool =
-    v.head.is_bignum
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_BIGNUM
   template is_array(v: ImValue): bool =
-    v.head.is_array
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_ARRAY
   template is_set(v: ImValue): bool =
-    v.head.is_set
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_SET
   template is_map(v: ImValue): bool =
-    v.head.is_map
+    bitand(v.head, MASK_SIGNATURE) == MASK_SIG_MAP
   template is_heap(v: ImValue): bool =
-    v.head.is_heap
+    bitand(v.head, MASK_EXP_OR_Q) == MASK_HEAP
 
 else:
   template is_float(v: typed): bool =
@@ -432,7 +409,8 @@ proc get_type(v: ImValue): ImValueKind =
     of MASK_SIG_ARRAY:  return kArray
     of MASK_SIG_SET:    return kSet
     of MASK_SIG_MAP:    return kMap
-    else:               discard
+    else:
+      echo "Unknown Type!"
 
 # Debug String Conversion #
 # ---------------------------------------------------------------------
@@ -446,6 +424,17 @@ proc to_bin_str*(v: uint32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int64): string = return toBin(v, 64)
 proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
+
+proc `$`*(k: ImValueKind): string =
+  case k:
+    of kNumber: return "Number"
+    of kNil:    return "Nil"
+    of kString: return "String"
+    of kMap:    return "Map"
+    of kArray:  return "Array"
+    of kSet:    return "Set"
+    of kBool:   return "Boolean"
+    else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
   # echo "v: ", v.as_byte_array, " ", v.to_hex
