@@ -532,9 +532,9 @@ if false:
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
 when cpu_32:
-  template calc_hash(i1, i2: typed): uint32 = bitxor(i1.as_u32, i2.as_u32).as_u32
+  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u32, i2.as_u32))
 else:
-  template calc_hash(i1, i2: typed): Hash = bitxor(i1.as_u64, i2.as_u64).Hash
+  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u64, i2.as_u64))
 
 func hash*(v: ImValue): ImHash =
   if is_heap(v):
@@ -656,8 +656,18 @@ func init_map_empty(): ImMap =
 let empty_map = init_map_empty()
 let empty_map2 = init_map_empty()
 
+template hash_entry(k, v: typed): ImHash = cast[ImHash](hash(k).as_u64 + hash(v).as_u64)
+
 proc init_map*(): ImMap =
   return empty_map
+proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
+  if init_data.len == 0: return empty_map
+  let new_data = toTable(init_data)
+  var new_hash = cast[ImHash](0)
+  for (k, v) in init_data:
+    new_hash = calc_hash(new_hash, hash_entry(k, v))
+  buildImMap(new_hash, new_data)
+  return new_map
   
 # There's probably no point in having this. It suggests reference semantics.
 proc clear*(m: ImMap): ImMap =
@@ -675,7 +685,8 @@ proc del*(m: ImMap, k: ImValue): ImMap =
   let v = m.payload.data[k]
   var table_copy = m.payload.data
   table_copy.del(k)
-  let entry_hash = hash(k) + hash(v)
+  let entry_hash = hash_entry(k, v)
+  # let entry_hash = hash(k) + hash(v)
   let new_hash = calc_hash(m.payload.hash, entry_hash)
   buildImMap(new_hash, table_copy)
   return new_map
@@ -686,7 +697,8 @@ proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
   if m.payload.data.getOrDefault(k, Nil.as_v) == v: return m
   var table_copy = m.payload.data
   table_copy[k] = v
-  let entry_hash = hash(k) + hash(v)
+  let entry_hash = hash_entry(k, v)
+  # let entry_hash = hash(k) + hash(v)
   let new_hash = calc_hash(m.payload.hash, entry_hash)
   buildImMap(new_hash, table_copy)
   return new_map
@@ -696,6 +708,32 @@ proc set*(m: ImMap, k: float64, v: ImValue): ImMap = return m.set(k.as_v, v)
 
 func size*(m: ImMap): int =
   return m.payload.data.len.int
+
+## Asymmetric. Entries in m2 overwrite m1
+proc `&`*(m1, m2: ImMap): ImMap =
+  if m2.size == 0: return m1
+  if m1.size == 0: return m2
+  if m1.size > m2.size:
+    var new_data = m1.payload.data
+    var new_hash = m1.payload.hash
+    for k, v in m2.payload.data.pairs:
+      if k in new_data:
+        new_hash = calc_hash(calc_hash(new_hash, hash_entry(k, v)), hash_entry(k, new_data[k]))
+      else:
+        new_hash = calc_hash(new_hash, hash_entry(k, v))
+      new_data[k] = v
+    buildImMap(new_hash, new_data)
+    return new_map
+  else:
+    var new_data = m2.payload.data
+    var new_hash = m2.payload.hash
+    for k, v in m1.payload.data.pairs:
+      if k in new_data:
+        continue
+      new_hash = calc_hash(new_hash, hash_entry(k, v))
+      new_data[k] = v
+    buildImMap(new_hash, new_data)
+    return new_map
 
 # ImArray Impl #
 # ---------------------------------------------------------------------

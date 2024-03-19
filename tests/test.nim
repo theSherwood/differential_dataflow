@@ -48,6 +48,23 @@ proc main =
       check m3 == m4
       check m3.get(1.0) == Nil.v
       check m4.get(1.0) == Nil.v
+    test "init":
+      var m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
+      check m1.size == 2
+      check m1[4.5.v] == 13.5.v
+    test "merge":
+      var
+        m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
+        m2 = init_map([(1.0.v, 5.0.v), (5.5.v, 13.5.v)])
+        m3 = m1 & m2
+        m4 = m2 & m1
+        m5 = m1 & m1
+      check m3.size == 3
+      check m4.size == 3
+      check m3 != m4
+      check m3[1.0.v] == 5.0.v
+      check m4[1.0.v] == 3.0.v
+      check m5 == m1
 
   suite "string":
     test "simple":
