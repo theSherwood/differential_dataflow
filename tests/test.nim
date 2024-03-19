@@ -73,4 +73,25 @@ proc main =
       check s3 != s2
       check s3 == s1
 
+  suite "array":
+    test "get":
+      var a1 = init_array(@[1.0.as_v, 3.0.as_v, 9.7.as_v])
+      check a1.size == 3
+      check a1[0] == 1.0.as_v
+      check a1[100] == Nil.as_v
+    test "set":
+      var
+        a1 = init_array(@[1.0.as_v, 3.0.as_v, 9.7.as_v])
+        a2 = a1.set(1, 11.5.as_v)
+        a3 = a2.set(1, 3.0.as_v)
+      check a1 != a2
+      check a2 != a3
+      check a1 == a3
+      check a1[0] == a2[0]
+      check a1[2] == a2[2]
+      check a1.size == 3
+      check a2.size == 3
+      check a1[1] == 3.0.as_v
+      check a2[1] == 11.5.as_v
+
 main()

@@ -608,9 +608,20 @@ if false:
 
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
-proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).Hash
-proc calc_hash(i1, i2: uint64): uint64 = return bitxor(i1, i2)
-proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
+when cpu_32:
+  proc calc_hash(i1, i2: uint32): uint32 = return bitxor(i1, i2)
+  proc calc_hash(i1: Hash, i2: uint32): uint32 = return bitxor(i1.as_u32, i2)
+  proc calc_hash(i1: uint32, i2: Hash): uint32 = return bitxor(i1, i2.as_u32)
+  proc calc_hash(i1: uint64, i2: uint32): uint32 = return bitxor(i1.as_u32, i2)
+  proc calc_hash(i1: uint32, i2: uint64): uint32 = return bitxor(i1, i2.as_u32)
+  proc calc_hash(i1: int, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
+  # proc calc_hash(i1: int, i2: uint32): uint32 = return bitxor(i1.as_u32, i2.as_u32)
+  # proc calc_hash(i1: uint32, i2: int): uint32 = return bitxor(i1.as_u32, i2.as_u32)
+else:
+  proc calc_hash(i1, i2: Hash): Hash = return bitxor(i1.as_u64, i2.as_u64).Hash
+  proc calc_hash(i1, i2: uint64): Hash = return bitxor(i1, i2).Hash
+  proc calc_hash(i1: Hash, i2: uint64): Hash = return bitxor(i1.as_u64, i2).Hash
+  proc calc_hash(i1: uint64, i2: Hash): Hash = return bitxor(i1, i2.as_u64).Hash
 
 proc hash*(v: ImValue): Hash =
   if is_heap(v):
@@ -787,6 +798,81 @@ proc size*(m: ImMap): int32 =
 
 # ImArray Impl #
 # ---------------------------------------------------------------------
+
+when cpu_32:
+  let empty_array = ImArray(
+    head: MASK_SIG_ARRAY,
+    tail: ImArrayPayloadRef(hash: 0)
+  )
+else:
+  proc init_array_inner(): ImArray =
+    var re = new ImArrayPayload
+    GC_ref(re)
+    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+  let empty_array = init_array_inner()
+
+proc init_array*(a: seq[ImValue]): ImArray =
+  if a.len == 0: return empty_array
+  var hash = 0.Hash
+  for v in a:
+    hash = calc_hash(hash, v.hash).Hash
+  when cpu_32:
+    let h = hash.uint32
+    return ImArray(
+      head: update_head(MASK_SIG_ARRAY, h),
+      tail: ImArrayPayloadRef(hash: h, data: a)
+    )
+  else:
+    var re = new ImArrayPayload
+    GC_ref(re)
+    re.hash = hash
+    re.data = a
+    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+
+## TODO
+## - ImValue indices
+## - Negative indices
+## - range indices
+template get_inner(a: ImArray, i: int32) =
+  let data = a.tail.data
+  if i >= data.len:
+    return Nil.as_v
+  else:
+    return data[i]
+
+proc `[]`*(a: ImArray, i: int32): ImValue = get_inner(a, i)
+proc get*(a: ImArray, i: int32): ImValue  = get_inner(a, i)
+
+# proc `[]`*(m: ImArray, k: float64): ImValue = get_inner(m, k)
+# proc get*(m: ImArray, k: ImValue): ImValue  = get_inner(m, k)
+# proc get*(m: ImArray, k: float64): ImValue  = get_inner(m, k)
+
+## TODO
+## - ImValue indices
+## - Negative indices
+## - range indices???
+## - indices beyond the end of the sequence (fill the gap with Nil)
+proc set*(a: ImArray, i: int32, v: ImValue): ImArray =
+  let derefed = a.tail
+  # hash the previous version's hash with the new value and the old value
+  let hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
+  when cpu_32:
+    var re = ImArrayPayloadRef(hash: hash, data: derefed.data)
+    re.data[i] = v
+    return ImArray(
+      head: update_head(MASK_SIG_ARRAY, hash),
+      tail: re
+    )
+  else:
+    var re = new ImArrayPayload
+    GC_ref(re)
+    re.hash = hash
+    re.data = derefed.data
+    re.data[i] = v
+    return ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+
+proc size*(a: ImArray): int =
+  return a.tail.data.len.int
 
 # ImSet Impl #
 # ---------------------------------------------------------------------
