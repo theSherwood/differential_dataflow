@@ -52,6 +52,13 @@ proc main =
       var m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
       check m1.size == 2
       check m1[4.5.v] == 13.5.v
+    test "init with duplicates":
+      var
+        m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v), (4.5.v, 15.5.v)])
+        m2 = init_map([(1.0.v, 3.0.v), (4.5.v, 15.5.v)])
+      check m1.size == 2
+      check m1[4.5.v] == 15.5.v
+      check m1 == m2
     test "merge":
       var
         m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
@@ -91,6 +98,13 @@ proc main =
       check s4 == s3
 
   suite "array":
+    test "init":
+      var
+        a1 = init_array(@[])
+        a2 = init_array([])
+        a3 = init_array()
+      check a1 == a2
+      check a3 == a2
     test "get":
       var a1 = init_array(@[1.0.v, 3.0.v, 9.7.v])
       check a1.size == 3
@@ -98,7 +112,7 @@ proc main =
       check a1[100] == Nil.v
     test "set":
       var
-        a1 = init_array(@[1.0.v, 3.0.v, 9.7.v])
+        a1 = init_array([1.0.v, 3.0.v, 9.7.v])
         a2 = a1.set(1, 11.5.v)
         a3 = a2.set(1, 3.0.v)
       check a1 != a2
@@ -122,9 +136,15 @@ proc main =
     test "simple":
       var
         s1 = init_set()
-        s2 = init_set()
+        s2 = init_set([])
       check s1 == s2
       check s1.has(1.0) == False
+    test "init":
+      var
+        s1 = init_set([1.0.v, 2.0.v, 3.0.v, 3.0.v, 2.0.v, 1.0.v])
+        s2 = init_set([1.0.v, 2.0.v, 3.0.v])
+      check s1.size == 3
+      check s1 == s2
     test "add and del":
       var
         s1 = init_set()

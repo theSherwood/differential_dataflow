@@ -654,17 +654,15 @@ func init_map_empty(): ImMap =
   return new_map
   
 let empty_map = init_map_empty()
-let empty_map2 = init_map_empty()
 
 template hash_entry(k, v: typed): ImHash = cast[ImHash](hash(k).as_u64 + hash(v).as_u64)
 
-proc init_map*(): ImMap =
-  return empty_map
+proc init_map*(): ImMap = return empty_map
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   let new_data = toTable(init_data)
   var new_hash = cast[ImHash](0)
-  for (k, v) in init_data:
+  for (k, v) in new_data.pairs:
     new_hash = calc_hash(new_hash, hash_entry(k, v))
   buildImMap(new_hash, new_data)
   return new_map
@@ -760,11 +758,21 @@ proc init_array_empty(): ImArray =
 
 let empty_array = init_array_empty()
 
+proc init_array*(): ImArray = return empty_array
+proc init_array*(init_data: openArray[ImValue]): ImArray =
+  if init_data.len == 0: return empty_array
+  var new_hash = cast[ImHash](0)
+  var new_data = newSeq[ImValue]()
+  for v in init_data:
+    new_hash = calc_hash(new_hash, v.hash)
+    new_data.add(v)
+  buildImArray(new_hash, new_data)
+  return new_array
 proc init_array*(new_data: seq[ImValue]): ImArray =
   if new_data.len == 0: return empty_array
-  var new_hash = 0.Hash
+  var new_hash = cast[ImHash](0)
   for v in new_data:
-    new_hash = calc_hash(new_hash, v.hash).Hash
+    new_hash = calc_hash(new_hash, v.hash)
   buildImArray(new_hash, new_data)
   return new_array
 
@@ -835,8 +843,15 @@ proc init_set_empty(): ImSet =
 
 let empty_set = init_set_empty()
 
-proc init_set*(): ImSet =
-  return empty_set
+proc init_set*(): ImSet = return empty_set
+proc init_set*(init_data: openArray[ImValue]): ImSet =
+  if init_data.len == 0: return empty_set
+  var new_hash = cast[ImHash](0)
+  var new_data = toHashSet(init_data)
+  for v in new_data:
+    new_hash = calc_hash(new_hash, v.hash)
+  buildImSet(new_hash, new_data)
+  return new_set
 
 template has_inner(s: ImSet, k: typed) =
   let derefed = s.payload
