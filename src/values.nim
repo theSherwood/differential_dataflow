@@ -1,7 +1,8 @@
-# TODO
-# 
-# -[ ] Add Infinity, -Infinity
-#
+## TODO
+## 
+## -[ ] add Infinity, -Infinity
+## -[ ] add a converter from int to ImValue
+## -[ ] add an ability to push onto the end of an array
 
 import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
@@ -369,11 +370,11 @@ template is_set(v: typed): bool =
 template is_map(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_MAP
 template is_heap(v: typed): bool =
-  bitand(v.type_bits, MASK_EXP_OR_Q) == MASK_HEAP
+  bitand(bitor(v.type_bits, MASK_EXP_OR_Q), MASK_HEAP) == MASK_HEAP
 
-proc get_type(v: ImValue): ImValueKind =
+proc get_type*(v: ImValue): ImValueKind =
   let type_carrier = v.type_bits
-  echo toHex(type_carrier), " ", toHex(MASK_EXPONENT)
+  # echo toHex(type_carrier), " ", toHex(MASK_EXPONENT)
   if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
   let signature = bitand(type_carrier, MASK_SIGNATURE)
   case signature:
@@ -472,6 +473,86 @@ proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int64): string = return toBin(v, 64)
 proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
 
+proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void
+
+const MAX_PRINT_WIDTH = 50
+proc pprint(m: ImMap, indent: Natural, results: var seq[string]): void =
+  results.add("M[")
+  # for (k, v) in m.payload.data.pairs:
+  #   var i_results = newSeq[string]()
+  #   pprint(k, 0, i_results)
+  #   i_results.add(": ")
+  #   pprint(v, 0, i_results)
+  #   var tall = false
+  #   var sum = 0
+  #   for r in i_results:
+  #     if '\n' in r:
+  #       tall = true
+  #       break
+  #     sum = sum + r.len
+  #     if sum > MAX_PRINT_WIDTH:
+  #       tall = true
+  #       break
+  #   i_results.add("( ")
+  #   i_results.add(": ")
+  #   i_results.add(" )")
+  # results.add("]")
+
+  for (k, v) in m.payload.data.pairs:
+    results.add("\n")
+    results.add("( ".indent(indent + 2))
+    pprint(k, indent + 4, results)
+    if v.is_heap:
+      results.add(" :\n")
+      results.add("".indent(indent + 4))
+    else:
+      results.add(" : ")
+    pprint(v, indent + 4, results)
+    results.add(" ),")
+  results.add("]")
+
+proc pprint(a: ImArray, indent: Natural, results: var seq[string]): void =
+  results.add("A[")
+  for v in a.payload.data:
+    results.add("\n")
+    results.add("".indent(indent + 2))
+    pprint(v, indent + 2, results)
+    results.add(",")
+  results.add("]")
+
+proc pprint(s: ImSet, indent: Natural, results: var seq[string]): void =
+  results.add("S[")
+  for v in s.payload.data:
+    results.add("\n")
+    results.add("".indent(indent + 2))
+    pprint(v, indent + 2, results)
+    results.add(",")
+  results.add("]")
+
+proc pprint(s: ImString, indent: Natural, results: var seq[string]): void =
+  results.add("Str[".indent(indent))
+  results.add($s.payload.data)
+  results.add("]")
+
+proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void =
+  let kind = get_type(v)
+  case kind:
+    of kNumber:  results.add($(v.as_f64))
+    of kNil:     results.add("Nil")
+    of kString:  pprint(v.as_str, indent, results)
+    of kMap:     pprint(v.as_map, indent, results)
+    of kArray:   pprint(v.as_arr, indent, results)
+    of kSet:     pprint(v.as_set, indent, results)
+    of kBool:
+      if v == True.v:      results.add("True")
+      elif v == False.v:   results.add("False")
+      else: discard
+    else:        discard
+proc pprint*(v: ImValue): string =
+  var results = newSeq[string]()
+  pprint(v, 0, results)
+  return results.join("")
+
 proc `$`*(k: ImValueKind): string =
   case k:
     of kNumber: return "Number"
@@ -484,19 +565,20 @@ proc `$`*(k: ImValueKind): string =
     else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
-  let kind = get_type(v)
-  case kind:
-    of kNumber:           return "Num(" & $(v.as_f64) & ")"
-    of kNil:              return "Nil"
-    of kBool:
-      if v == True.as_v:  return "True"
-      if v == False.as_v: return "False"
-      # TODO - type error
-    of kString:           return "Str(" & $(v.as_str.payload.data) & ")"
-    of kMap:              return "Map(" & $(v.as_map.payload.data) & ")"
-    of kArray:            return "Arr(" & $(v.as_arr.payload.data) & ")" 
-    of kSet:              return "Set(" & $(v.as_set.payload.data) & ")" 
-    else:                 discard
+  return pprint(v)
+  # let kind = get_type(v)
+  # case kind:
+  #   of kNumber:           return $(v.as_f64)
+  #   of kNil:              return "Nil"
+  #   of kBool:
+  #     if v == True.as_v:  return "True"
+  #     if v == False.as_v: return "False"
+  #     # TODO - type error
+  #   of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
+  #   of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
+  #   of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
+  #   of kSet:              return "S[" & $(v.as_set.payload.data) & "]" 
+  #   else:                 discard
 
 proc debug*(v: ImValue): string =
   let kind = get_type(v)
@@ -804,7 +886,6 @@ template get_impl(a: ImArray, i: float64) =
     # TODO - raise exception
     discard
 
-
 proc `[]`*(a: ImArray, i: int): ImValue = get_impl(a, i)
 proc `[]`*(a: ImArray, i: ImValue): ImValue = get_impl(a, i)
 proc `[]`*(a: ImArray, i: float64): ImValue = get_impl(a, i)
@@ -816,12 +897,7 @@ proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
 # proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
 # proc get*(m: ImArray, k: float64): ImValue  = get_impl(m, k)
 
-## TODO
-## - ImValue indices
-## - Negative indices
-## - range indices???
-## - indices beyond the end of the sequence (fill the gap with Nil)
-proc set*(a: ImArray, i: int, v: ImValue): ImArray =
+template set_impl*(a: ImArray, i: int, v: ImValue) =
   let derefed = a.payload
   # hash the previous version's hash with the new value and the old value
   let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
@@ -829,6 +905,25 @@ proc set*(a: ImArray, i: int, v: ImValue): ImArray =
   new_data[i] = v
   buildImArray(new_hash, new_data)
   return new_array
+template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
+  if i.is_float: set_impl(a, i.as_f64.int, v)
+  else:
+    # TODO - raise exception
+    discard
+template set_impl*(a: ImArray, i: float64, v: ImValue) =
+  if i.is_float: set_impl(a, i.as_f64.int, v)
+  else:
+    # TODO - raise exception
+    discard
+
+## TODO
+## - ImValue indices
+## - Negative indices
+## - range indices???
+## - indices beyond the end of the sequence (fill the gap with Nil)
+proc set*(a: ImArray, i: int, v: ImValue): ImArray = set_impl(a, i, v)
+proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
+proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
 proc concat*(a1, a2: ImArray): ImArray =
   let new_a = a1.payload.data & a2.payload.data
@@ -915,28 +1010,53 @@ proc size*(s: ImSet): int =
 # ---------------------------------------------------------------------
 
 proc get_in(it: ImValue, path: openArray[ImValue], i: int, default: ImValue): ImValue =
-  if it.is_map:
-    let new_it = it.as_map.get(path[i].v)
-    if i == path.high:
-      if new_it != Nil.v: return new_it
-      return default
-    else: return get_in(new_it, path, i + 1, default)
-  if it.is_array:
-    let new_it = it.as_arr.get(path[i].v)
-    if i == path.high:
-      if new_it != Nil.v: return new_it
-      return default
-    else: return get_in(new_it, path, i + 1, default)
-  if it.is_set:
-    let new_it = it.as_set.get(path[i].v)
-    if i == path.high:
-      if new_it != Nil.v: return new_it
-      return default
-    else: return get_in(new_it, path, i + 1, default)
-  if it == Nil.v:
+  var new_it: ImValue
+  if it.is_map:     new_it = it.as_map.get(path[i].v)
+  elif it.is_array: new_it = it.as_arr.get(path[i].v)
+  elif it.is_set:   new_it = it.as_set.get(path[i].v)
+  elif it == Nil.v:
     return default
-  # TODO - error
+  else:
+    # TODO - error
+    discard
+  if i == path.high:
+    if new_it != Nil.v: return new_it
+    return default
+  else: return get_in(new_it, path, i + 1, default)
 proc get_in*(it: ImValue, path: openArray[ImValue], default: ImValue): ImValue =
   return get_in(it, path, 0, default)
 proc get_in*(it: ImValue, path: openArray[ImValue]): ImValue =
   return get_in(it, path, 0, Nil.v)
+
+## If a key in the path does not exist, maps are created
+proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
+  var payload = v
+  var stack = newSeq[ImValue]()
+  var k: ImValue
+  var curr = it
+  var max = 0
+  for i in 0..path.high:
+    k = path[i]
+    if curr.is_map:
+      stack.add(curr)
+      curr = curr.as_map.get(k)
+    elif curr.is_array:
+      stack.add(curr)
+      curr = curr.as_arr.get(k)
+    elif curr == Nil.v:
+      for j in countdown(path.high, i):
+        k = path[j]
+        payload = init_map([(k, payload)]).v
+      break
+    else:
+      echo "TODO - add exceptions"
+    max = i
+  for i in countdown(max, 0):
+    k = path[i]
+    curr = stack[i]
+    if curr.is_map:     payload = curr.as_map.set(k, payload).v
+    elif curr.is_array: payload = curr.as_arr.set(k, payload).v
+    else:               echo "TODO - add exceptions2"
+  return payload
+
+

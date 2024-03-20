@@ -213,7 +213,7 @@ proc main =
       check not(s2.v in s5)
 
   suite "mixed nesting":
-    test "simple":
+    test "get_in":
       var
         m1 = init_map([(1.0.v, 2.0.v)])
         a1 = init_array([m1.v, m1.v])
@@ -227,5 +227,37 @@ proc main =
       check get_in(s2.v, [a2.v, 3.0.v, s1.v]) == a1.v 
       check get_in(s2.v, [a2.v, 3.0.v, s1.v, 1.0.v]) == m1.v
       check get_in(s2.v, [a2.v, 3.0.v, s1.v, 1.0.v, 1.0.v]) == 2.0.v
+    test "set_in":
+      var
+        m1 = init_map([(1.0.v, 2.0.v)])
+        a1 = init_array([m1.v, m1.v])
+        m2 = init_map([(m1.v, a1.v), (a1.v, m1.v)])
+        a2 = init_array([m1.v, a1.v, m2.v])
+        # the path exists until the last key (excl)
+        a3 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 3.0.v], 4.0.v)
+        # the path exists until the last key (excl) but we set to Nil
+        a4 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 3.0.v], Nil.v)
+        # the path exists up to the last key (incl)
+        a5 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 1.0.v], 4.0.v)
+        # the path exists until the last key (incl) but we set to Nil
+        a6 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 1.0.v], Nil.v)
+        # the path doesn't exist in m2 (multiple maps are created)
+        a7 = a2.v.set_in([2.0.v, m2.v, 1.0.v, 1.0.v], 4.0.v)
+        # the path doesn't exist in m2 (multiple maps are created) but we set Nil
+        a8 = a2.v.set_in([2.0.v, m2.v, 1.0.v, 1.0.v], Nil.v)
+      check a3.get_in([2.0.v, m1.v, 1.0.v, 3.0.v]) == 4.0.v
+      check a4.get_in([2.0.v, m1.v, 1.0.v, 3.0.v]) == Nil.v
+      check a4.v == a2.v
+      check a5.get_in([2.0.v, m1.v, 1.0.v, 1.0.v]) == 4.0.v
+      check a5.get_in([2.0.v, m1.v, 1.0.v]).as_map.size == 1
+      check a6.get_in([2.0.v, m1.v, 1.0.v, 1.0.v]) == Nil.v
+      check a6.get_in([2.0.v, m1.v, 1.0.v]).as_map.size == 0
+      check a7.get_in([2.0.v, m2.v, 1.0.v, 1.0.v]) == 4.0.v
+      check a7.get_in([2.0.v, m2.v]).get_type == kMap
+      check a7.get_in([2.0.v, m2.v, 1.0.v]).get_type == kMap
+      check a8.get_in([2.0.v, m2.v, 1.0.v, 1.0.v]) == Nil.v
+      check a8.get_in([2.0.v, m2.v]).get_type == kMap
+      check a8.get_in([2.0.v, m2.v, 1.0.v]).get_type == kMap
+      check a8.get_in([2.0.v, m2.v, 1.0.v]).as_map.size == 0
 
 main()
