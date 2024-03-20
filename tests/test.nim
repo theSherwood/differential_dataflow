@@ -59,6 +59,11 @@ proc main =
       check m1.size == 2
       check m1[4.5.v] == 15.5.v
       check m1 == m2
+    test "init with Nil values":
+      var
+        m1 = init_map([(1.0.v, Nil.v), (4.5.v, 13.5.v), (4.5.v, Nil.v)])
+        m2 = init_map()
+      check m1 == m2
     test "merge":
       var
         m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
@@ -72,6 +77,15 @@ proc main =
       check m3[1.0.v] == 5.0.v
       check m4[1.0.v] == 3.0.v
       check m5 == m1
+    test "nested":
+      var
+        m1 = init_map()
+        m2 = init_map([(1.0.v, 5.0.v), (5.5.v, 13.5.v)])
+        m3 = init_map([(init_string("foo").v, init_string("bar").v)])
+        m4 = init_map([(m1.v, m2.v), (Nil.v, m3.v)])
+      check m4[m1.v] == m2.v
+      check m4[Nil.v] == m3.v
+      check m4[m2.v] == Nil.v
 
   suite "string":
     test "simple":

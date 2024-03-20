@@ -660,10 +660,14 @@ template hash_entry(k, v: typed): ImHash = cast[ImHash](hash(k).as_u64 + hash(v)
 proc init_map*(): ImMap = return empty_map
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
-  let new_data = toTable(init_data)
+  var new_data = toTable(init_data)
   var new_hash = cast[ImHash](0)
+  var deletions = newSeq[ImValue]()
   for (k, v) in new_data.pairs:
-    new_hash = calc_hash(new_hash, hash_entry(k, v))
+    if v.v == Nil.v: deletions.add(k.v)
+    else:            new_hash = calc_hash(new_hash, hash_entry(k, v))
+  for k in deletions:
+    new_data.del(k)
   buildImMap(new_hash, new_data)
   return new_map
   
@@ -684,7 +688,6 @@ proc del*(m: ImMap, k: ImValue): ImMap =
   var table_copy = m.payload.data
   table_copy.del(k)
   let entry_hash = hash_entry(k, v)
-  # let entry_hash = hash(k) + hash(v)
   let new_hash = calc_hash(m.payload.hash, entry_hash)
   buildImMap(new_hash, table_copy)
   return new_map
@@ -696,7 +699,6 @@ proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
   var table_copy = m.payload.data
   table_copy[k] = v
   let entry_hash = hash_entry(k, v)
-  # let entry_hash = hash(k) + hash(v)
   let new_hash = calc_hash(m.payload.hash, entry_hash)
   buildImMap(new_hash, table_copy)
   return new_map
