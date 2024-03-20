@@ -860,6 +860,8 @@ template has_inner(s: ImSet, k: typed) =
   if k.as_v in derefed.data: return True
   return False
 
+proc contains*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
+proc contains*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
 proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 

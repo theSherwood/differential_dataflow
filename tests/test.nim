@@ -18,6 +18,30 @@ proc main =
       check n3 == 3.45
       check -99.156 == n4
 
+  suite "string":
+    test "simple":
+      var
+        s1 = init_string("some string")
+        s2 = init_string(" and more")
+      check s1.size == 11
+      check s2.size == 9
+      check s1 != s2
+      var s3 = s1.concat(s2)
+      check s3.size == 20
+      check s3 == init_string("some string and more")
+      check s3[0] == init_string("s").v
+      check s3[0] != init_string("n").v
+    test "concat":
+      var
+        s1 = init_string("foobar")
+        s2 = init_string("foo")
+      check s1 != s2
+      var s3 = s2.concat(init_string("bar"))
+      var s4 = s2 & init_string("bar")
+      check s3 != s2
+      check s3 == s1
+      check s4 == s3
+
   suite "map":
     test "immutable updates":
       var
@@ -86,30 +110,10 @@ proc main =
       check m4[m1.v] == m2.v
       check m4[Nil.v] == m3.v
       check m4[m2.v] == Nil.v
-
-  suite "string":
-    test "simple":
-      var
-        s1 = init_string("some string")
-        s2 = init_string(" and more")
-      check s1.size == 11
-      check s2.size == 9
-      check s1 != s2
-      var s3 = s1.concat(s2)
-      check s3.size == 20
-      check s3 == init_string("some string and more")
-      check s3[0] == init_string("s").v
-      check s3[0] != init_string("n").v
-    test "concat":
-      var
-        s1 = init_string("foobar")
-        s2 = init_string("foo")
-      check s1 != s2
-      var s3 = s2.concat(init_string("bar"))
-      var s4 = s2 & init_string("bar")
-      check s3 != s2
-      check s3 == s1
-      check s4 == s3
+      var m5 = m4.set(m4.v, m2.v)
+      check m5.size == m4.size + 1
+      check m5.get(m4.v) == m2.v
+      check m5[m4.v].as_map[1.0.v] == 5.0.v
 
   suite "array":
     test "init":
@@ -145,6 +149,14 @@ proc main =
         a4 = a1 & a1
       check a3 == a4
       check a3.size == 6
+    test "nested":
+      var
+        a1 = init_array([1.0.v, 2.0.v])
+        a2 = init_array([a1.v, a1.v, 3.0.v])
+        a3 = a2.set(0, a2.v)
+      check a3[0].v == a2.v
+      check a2[0] == a2[1]
+      check a2[0].as_arr[0] == 1.0.v
 
   suite "set":
     test "simple":
@@ -180,6 +192,20 @@ proc main =
       check s6 != s3
       check s5.size == 0
       check s6.size == 0
+    test "nested":
+      var
+        s1 = init_set()
+        s2 = init_set([3.0.v, s1.v, s1.v])
+        s3 = init_set([s1.v, s2.v, 4.0.v])
+        s4 = s3.add(s3.v)
+        s5 = s4.del(s2.v)
+      check s2.size == 2
+      check s1.v in s2 == True
+      check s1.v in s3 == True
+      check s2.v in s3 == True
+      check s3.v in s4 == True
+      check s2.v in s5 == False
+
 
 
 main()
