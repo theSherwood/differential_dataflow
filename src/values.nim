@@ -351,7 +351,7 @@ else:
     v.as_u64
 
 template is_float(v: typed): bool =
-  bitand(bitnot(v.type_bits), MASK_EXPONENT) == 0
+  bitand(bitnot(v.type_bits), MASK_EXPONENT) != 0
 template is_nil(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_NIL
 template is_bool(v: typed): bool =
@@ -675,6 +675,9 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
 proc clear*(m: ImMap): ImMap =
   return empty_map
 
+proc contains*(m: ImMap, k: ImValue): bool = k.as_v in m.payload.data
+proc contains*(m: ImMap, k: float64): bool = k.as_v in m.payload.data
+
 template get_impl(m: ImMap, k: typed): ImValue =
   m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
 proc `[]`*(m: ImMap, k: ImValue): ImValue = return get_impl(m, k)
@@ -788,9 +791,26 @@ template get_impl(a: ImArray, i: int) =
     return Nil.as_v
   else:
     return data[i]
+template get_impl(a: ImArray, i: ImValue) =
+  if i.is_float:
+    get_impl(a, i.as_f64.int)
+  else:
+    # TODO - raise exception
+    discard
+template get_impl(a: ImArray, i: float64) =
+  if i.is_float:
+    get_impl(a, i.as_f64.int)
+  else:
+    # TODO - raise exception
+    discard
+
 
 proc `[]`*(a: ImArray, i: int): ImValue = get_impl(a, i)
+proc `[]`*(a: ImArray, i: ImValue): ImValue = get_impl(a, i)
+proc `[]`*(a: ImArray, i: float64): ImValue = get_impl(a, i)
 proc get*(a: ImArray, i: int): ImValue  = get_impl(a, i)
+proc get*(a: ImArray, i: ImValue): ImValue  = get_impl(a, i)
+proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
 
 # proc `[]`*(m: ImArray, k: float64): ImValue = get_impl(m, k)
 # proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
@@ -855,15 +875,20 @@ proc init_set*(init_data: openArray[ImValue]): ImSet =
   buildImSet(new_hash, new_data)
   return new_set
 
+proc contains*(s: ImSet, k: ImValue): bool = k.as_v in s.payload.data
+proc contains*(s: ImSet, k: float64): bool = k.as_v in s.payload.data
+
 template has_inner(s: ImSet, k: typed) =
   let derefed = s.payload
   if k.as_v in derefed.data: return True
   return False
-
-proc contains*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
-proc contains*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
 proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
+
+proc get*(s: ImSet, k: ImValue): ImValue =
+  if k.v in s: return k.v else: return Nil.v
+proc get*(s: ImSet, k: float): ImValue =
+  if k.v in s: return k.v else: return Nil.v
 
 proc add*(s: ImSet, k: ImValue): ImSet =
   let derefed = s.payload
@@ -885,3 +910,33 @@ proc del*(s: ImSet, k: ImValue): ImSet =
 
 proc size*(s: ImSet): int =
   return s.payload.data.len.int
+
+# ImValue Fns #
+# ---------------------------------------------------------------------
+
+proc get_in(it: ImValue, path: openArray[ImValue], i: int, default: ImValue): ImValue =
+  if it.is_map:
+    let new_it = it.as_map.get(path[i].v)
+    if i == path.high:
+      if new_it != Nil.v: return new_it
+      return default
+    else: return get_in(new_it, path, i + 1, default)
+  if it.is_array:
+    let new_it = it.as_arr.get(path[i].v)
+    if i == path.high:
+      if new_it != Nil.v: return new_it
+      return default
+    else: return get_in(new_it, path, i + 1, default)
+  if it.is_set:
+    let new_it = it.as_set.get(path[i].v)
+    if i == path.high:
+      if new_it != Nil.v: return new_it
+      return default
+    else: return get_in(new_it, path, i + 1, default)
+  if it == Nil.v:
+    return default
+  # TODO - error
+proc get_in*(it: ImValue, path: openArray[ImValue], default: ImValue): ImValue =
+  return get_in(it, path, 0, default)
+proc get_in*(it: ImValue, path: openArray[ImValue]): ImValue =
+  return get_in(it, path, 0, Nil.v)

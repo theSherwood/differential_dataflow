@@ -72,6 +72,9 @@ proc main =
       check m3 == m4
       check m3.get(1.0) == Nil.v
       check m4.get(1.0) == Nil.v
+      check not(1.0 in m3)
+      check not(1.0 in m4)
+      check 1.0 in m2
     test "init":
       var m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
       check m1.size == 2
@@ -128,6 +131,9 @@ proc main =
       check a1.size == 3
       check a1[0] == 1.0.v
       check a1[100] == Nil.v
+      check a1[1.0] == 3.0
+      check a1[2.0] == 9.7
+      check a1[3.0] == Nil.v
     test "set":
       var
         a1 = init_array([1.0.v, 3.0.v, 9.7.v])
@@ -200,12 +206,26 @@ proc main =
         s4 = s3.add(s3.v)
         s5 = s4.del(s2.v)
       check s2.size == 2
-      check s1.v in s2 == True
-      check s1.v in s3 == True
-      check s2.v in s3 == True
-      check s3.v in s4 == True
-      check s2.v in s5 == False
+      check s1.v in s2
+      check s1.v in s3
+      check s2.v in s3
+      check s3.v in s4
+      check not(s2.v in s5)
 
-
+  suite "mixed nesting":
+    test "simple":
+      var
+        m1 = init_map([(1.0.v, 2.0.v)])
+        a1 = init_array([m1.v, m1.v])
+        s1 = init_set([m1.v, a1.v])
+        m2 = init_map([(m1.v, s1.v), (a1.v, m1.v), (s1.v, a1.v)])
+        a2 = init_array([m1.v, a1.v, s1.v, m2.v])
+        s2 = init_set([m1.v, a1.v, s1.v, m2.v, a2.v])
+      check get_in(s2.v, [s2.v, m2.v]) == Nil.v
+      check get_in(s2.v, [a2.v]) == a2.v
+      check get_in(s2.v, [a2.v, 3.0.v]) == m2.v
+      check get_in(s2.v, [a2.v, 3.0.v, s1.v]) == a1.v 
+      check get_in(s2.v, [a2.v, 3.0.v, s1.v, 1.0.v]) == m1.v
+      check get_in(s2.v, [a2.v, 3.0.v, s1.v, 1.0.v, 1.0.v]) == 2.0.v
 
 main()
