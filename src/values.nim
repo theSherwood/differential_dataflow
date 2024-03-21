@@ -118,10 +118,11 @@ proc `$`*(v: ImValue): string =
 var im_map_destroy_count = 0
 proc `=destroy`(x: var ImMapPayload) {.nodestroy.} =
   im_map_destroy_count += 1
-  echo "start destroy ImMapPayload ", im_map_destroy_count, ": ", x.data
+  let i = im_map_destroy_count
+  echo "start destroy ImMapPayload ", i, ": ", x.data
   `=destroy`(x.data)
   writeStackTrace()
-  echo "end destroy ImMapPayload"
+  echo "end destroy ImMapPayload ", i
 # proc `=copy`(x: var ImMapPayload, y: ImMapPayload) {.nodestroy.} =
 #   echo "start copy ImMapPayload ", x.data
 #   `=destroy`(x)
@@ -132,25 +133,27 @@ proc `=destroy`(x: var ImMapPayload) {.nodestroy.} =
 var im_v_destroy_count = 0
 proc `=destroy`(x: var ImValue) =
   im_v_destroy_count += 1
-  echo "start =destroy ", im_v_destroy_count, ": ", x
+  let i = im_v_destroy_count
+  echo "start =destroy ", i, ": ", x
   if x.is_map:
     GC_unref(cast[ImMapPayloadRef](x.tail))
-  echo "end =destroy "
+  echo "end =destroy ", i
 var im_v_copy_count = 0
 proc `=copy`(x: var ImValue, y: ImValue) =
   im_v_copy_count += 1
-  echo "start =copy ", im_v_copy_count, ": ", x, " ", y
+  let i = im_v_copy_count
+  echo "start =copy ", i, ": ", x, " ", y
   if x.as_u64 == y.as_u64:
     writeStackTrace()
-    echo "abort =copy"
+    echo "abort =copy ", i
     return
   if y.is_map:
-    echo im_v_copy_count, " is map"
+    echo i, " is map"
     GC_ref(cast[ImMapPayloadRef](y.tail))
   `=destroy`(x)
   x.head = y.head
   x.tail = y.tail
-  echo "end =copy"
+  echo "end =copy ", i
 
 # Hash Handling #
 # ---------------------------------------------------------------------

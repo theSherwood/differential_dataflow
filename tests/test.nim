@@ -18,5 +18,11 @@ proc main =
   echo "m3.v:      ", m3.v
   echo "========================================"
   doAssert m3.v == m4.v
+  var
+    m6 = m3.v.set_in([m2.v], m3.v)
+    m7 = init_map([(init_map([]).v, init_map([(1.0.v, 4.0.v)]).v), (1.0.v, 4.0.v)])
+  echo "m6.v:      ", m6.v
+  echo "m7.v:      ", m7.v
+  doAssert m6.v == m7.v
 
 main()
