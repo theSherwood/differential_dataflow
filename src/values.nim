@@ -21,6 +21,7 @@ type
 proc `=destroy`(x: var ImValue)
 proc `=copy`(x: var ImValue, y: ImValue)
 
+
 type
   ImMapPayload* = object
     hash: ImHash
@@ -34,18 +35,8 @@ type
     tail*: ImMapPayloadRef
     head*: uint32
 
-proc `=destroy`(x: var ImMapPayload) {.nodestroy.} =
-  echo "start destroy ImMapPayload ", x.data
-  `=destroy`(x.data)
-  writeStackTrace()
-  echo "end destroy ImMapPayload"
-proc `=copy`(x: var ImMapPayload, y: ImMapPayload) {.nodestroy.} =
-  echo "start copy ImMapPayload ", x.data
-  `=destroy`(x)
-  `=copy`(x.data, y.data)
-  writeStackTrace()
-  echo "end copy ImMapPayload"
-
+proc `=destroy`(x: var ImMapPayload) {.nodestroy.}
+proc `=copy`(x: var ImMapPayload, y: ImMapPayload) {.nodestroy.}
 
 # Masks #
 # ---------------------------------------------------------------------
@@ -123,6 +114,18 @@ proc `$`*(v: ImValue): string =
 
 # GC Hooks #
 # ---------------------------------------------------------------------
+
+proc `=destroy`(x: var ImMapPayload) {.nodestroy.} =
+  echo "start destroy ImMapPayload ", x.data
+  `=destroy`(x.data)
+  writeStackTrace()
+  echo "end destroy ImMapPayload"
+proc `=copy`(x: var ImMapPayload, y: ImMapPayload) {.nodestroy.} =
+  echo "start copy ImMapPayload ", x.data
+  `=destroy`(x)
+  `=copy`(x.data, y.data)
+  writeStackTrace()
+  echo "end copy ImMapPayload"
 
 proc `=destroy`(x: var ImValue) =
   echo "=destroy: ", x
