@@ -1,30 +1,6 @@
 import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
-when defined(isNimSkull) or true:
-  {.pragma: ex, exportc, dynlib.}
-else:
-  import std/[macros]
-  macro ex*(t: typed): untyped =
-    if t.kind notin {nnkProcDef, nnkFuncDef}:
-      error("Can only export procedures", t)
-    let
-      newProc = copyNimTree(t)
-      codeGen = nnkExprColonExpr.newTree(ident"codegendecl",
-          newLit"EMSCRIPTEN_KEEPALIVE $# $#$#")
-    if newProc[4].kind == nnkEmpty:
-      newProc[4] = nnkPragma.newTree(codeGen)
-    else:
-      newProc[4].add codeGen
-    newProc[4].add ident"exportC"
-    result = newStmtList()
-    result.add:
-      quote do:
-        {.emit: "/*INCLUDESECTION*/\n#include <emscripten.h>".}
-    result.add:
-      newProc
-  # {.pragma: ex, exportc, dynlib.}
-
 # Types #
 # ---------------------------------------------------------------------
 
@@ -33,53 +9,34 @@ type
 
   ImValueKind* = enum
     # Immediate Kinds
-    kNaN
     kNil
-    kNumber           # like js, we just have a float64 number type
+    kNumber
     # Heap Kinds
     kMap
 
-  ImValue* = distinct uint64
+  ImValue* = object
+    tail*: pointer
+    head*: uint32
 
   ImMapPayload* = object
     hash: ImHash
     data*: Table[ImValue, ImValue]
-  ImMapPayloadRef*    = ref ImMapPayload
+  ImMapPayloadRef* = ref ImMapPayload
 
   ImNumber* = distinct float64
-  ImNaN*    = distinct uint64
   ImNil*    = distinct uint64
 
   ImMap* = object
     tail*: ImMapPayloadRef
     head*: uint32
 
-type
-  ImSV* = ImNumber or ImNaN or ImNil
-  ImV* = ImSV or ImMap
-
-# Casts #
-# ---------------------------------------------------------------------
-
-template as_f64*(v: typed): float64 = cast[float64](v)
-template as_u64*(v: typed): uint64 = cast[uint64](v)
-template as_i64*(v: typed): int64 = cast[int64](v)
-template as_u32*(v: typed): uint32 = cast[uint32](v)
-template as_i32*(v: typed): int32 = cast[int32](v)
-template as_v*(v: typed): ImValue = cast[ImValue](cast[uint64](v))
-template v*(v: typed): ImValue = cast[ImValue](cast[uint64](v))
-template as_map*(v: typed): ImMap = cast[ImMap](cast[uint64](v))
-
 # Masks #
 # ---------------------------------------------------------------------
 
-const MASK_SIGN        = 0b10000000000000000000000000000000'u32
 const MASK_EXPONENT    = 0b01111111111100000000000000000000'u32
-const MASK_QUIET       = 0b00000000000010000000000000000000'u32
 const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u32
-const MASK_SIGNATURE   = 0b11111111111111111000000000000000'u32
-const MASK_SHORT_HASH  = 0b00000000000000000111111111111111'u32
 const MASK_HEAP        = 0b11111111111110000000000000000000'u32
+const MASK_SIGNATURE   = 0b11111111111111111000000000000000'u32
 
 const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u32
 const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
@@ -87,34 +44,50 @@ const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
 const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
+# Casts #
+# ---------------------------------------------------------------------
+
+template v*(v: typed): ImValue = cast[ImValue](cast[uint64](v))
+template as_f64*(v: typed): float64 = cast[float64](v)
+template as_u64*(v: typed): uint64 = cast[uint64](v)
+template as_u32*(v: typed): uint32 = cast[uint32](v)
+template as_map*(v: typed): ImMap = cast[ImMap](cast[uint64](v))
+
 # Get Payload #
 # ---------------------------------------------------------------------
 
-template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
-template tail(v: typed): uint32 = v.as_u32
-
-template payload*(v: ImMap): ref ImMapPayload       = v.tail
+template payload*(v: ImMap): ref ImMapPayload = v.tail
 
 # Type Detection #
 # ---------------------------------------------------------------------
 
-template type_bits(v: typed): uint32 =
-  v.head
-
 template is_map(v: typed): bool =
-  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_MAP
+  bitand(v.head, MASK_SIGNATURE) == MASK_SIG_MAP
 template is_heap(v: typed): bool =
-  bitand(bitor(v.type_bits, MASK_EXP_OR_Q), MASK_HEAP) == MASK_HEAP
+  bitand(bitor(v.head, MASK_EXP_OR_Q), MASK_HEAP) == MASK_HEAP
 
 proc get_type*(v: ImValue): ImValueKind =
-  let type_carrier = v.type_bits
-  if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
-  let signature = bitand(type_carrier, MASK_SIGNATURE)
+  if bitand(bitnot(v.head), MASK_EXPONENT) != 0: return kNumber
+  let signature = bitand(v.head, MASK_SIGNATURE)
   case signature:
     of MASK_SIG_NIL:    return kNil
     of MASK_SIG_MAP:    return kMap
     else:
       echo "Unknown Type!"
+
+# GC Hooks #
+# ---------------------------------------------------------------------
+
+proc `=destroy`(x: var ImValue) =
+  if x.is_map:
+    GC_unref(cast[ImMapPayloadRef](x.tail))
+proc `=copy`(x: var ImValue, y: ImValue) =
+  if x.tail.as_u32 == y.tail.as_u32: return
+  if x.is_map and y.is_map:
+    GC_ref(cast[ImMapPayloadRef](y.tail))
+    `=destroy`(x.as_map)
+  else:
+    `=destroy`(x)
 
 # Globals #
 # ---------------------------------------------------------------------
@@ -136,13 +109,6 @@ func `==`*(v1, v2: ImValue): bool =
 
 # Debug String Conversion #
 # ---------------------------------------------------------------------
-
-proc `$`*(k: ImValueKind): string =
-  case k:
-    of kNumber: return "Number"
-    of kNil:    return "Nil"
-    of kMap:    return "Map"
-    else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
   let kind = get_type(v)
@@ -193,12 +159,8 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   var new_data = toTable(init_data)
   var new_hash = cast[ImHash](0)
-  var deletions = newSeq[ImValue]()
   for (k, v) in new_data.pairs:
-    if v.v == Nil.v: deletions.add(k.v)
-    else:            new_hash = calc_hash(new_hash, hash_entry(k, v))
-  for k in deletions:
-    new_data.del(k)
+    new_hash = calc_hash(new_hash, hash_entry(k, v))
   buildImMap(new_hash, new_data)
   return new_map
   
@@ -206,26 +168,15 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
 proc clear*(m: ImMap): ImMap =
   return empty_map
 
-proc contains*(m: ImMap, k: ImValue): bool = k.as_v in m.payload.data
+proc contains*(m: ImMap, k: ImValue): bool = k.v in m.payload.data
 
 template get_impl(m: ImMap, k: typed): ImValue =
-  m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
+  m.payload.data.getOrDefault(k.v, Nil.v).v
 proc `[]`*(m: ImMap, k: ImValue): ImValue = return get_impl(m, k)
 proc get*(m: ImMap, k: ImValue): ImValue  = return get_impl(m, k)
 
-proc del*(m: ImMap, k: ImValue): ImMap =
-  if not(k in m.payload.data): return m
-  let v = m.payload.data[k]
-  var table_copy = m.payload.data
-  table_copy.del(k)
-  let entry_hash = hash_entry(k, v)
-  let new_hash = calc_hash(m.payload.hash, entry_hash)
-  buildImMap(new_hash, table_copy)
-  return new_map
-
 proc set*(m: ImMap, k: ImValue, v: ImValue): ImMap =
-  if v == Nil.as_v: return m.del(k)
-  if m.payload.data.getOrDefault(k, Nil.as_v) == v: return m
+  if m.payload.data.getOrDefault(k, Nil.v) == v: return m
   var table_copy = m.payload.data
   table_copy[k] = v
   let entry_hash = hash_entry(k, v)
@@ -239,32 +190,34 @@ func size*(m: ImMap): int =
 # ImValue Fns #
 # ---------------------------------------------------------------------
 
-## If a key in the path does not exist, maps are created
-proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue {.ex.} =
-  var payload: ImValue = v
-  var stack = newSeq[ImValue]()
-  var k: ImValue
-  var curr = it
-  var max = 0
-  for i in 0..path.high:
-    k = path[i]
-    echo "i: ", i
-    if curr.is_map:
-      stack.add(curr)
-      curr = curr.as_map.get(k)
-    else:
-      echo "TODO - add exceptions"
-    max = i
-  for i in countdown(max, 0):
-    k = path[i]
-    curr = stack[i]
-    if curr.is_map:
-      payload = curr.as_map.set(k, payload).v
-    else:               echo "TODO - add exceptions2"
-  echo "pay.len: ", payload.as_map.payload.data.len
-  echo "pay: ", payload
-  echo "payload.tail: ", payload.v.tail.as_u32
-  echo "pay.len: ", payload.as_map.payload.data.len
-  echo "pay: ", payload
-  echo "payload.tail: ", payload.v.tail.as_u32
-  return payload
+proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
+  # var stuff: ImValue = v
+  result = v
+  var stack = @[it]
+  if it.is_map:
+    echo "\nit:"
+    echo "v.head: ", it.head
+    echo "v.tail: ", it.tail.as_u32
+    echo "m.head: ", it.as_map.head.as_u32
+    echo "m.tail: ", it.as_map.tail.as_u32
+    let m = it.as_map.set(path[0], result)
+    # GC_ref(m.tail)
+    result = m.v
+  echo "\nresult:"
+  echo "v.head: ", result.head
+  echo "v.tail: ", result.tail.as_u32
+  echo "m.head: ", result.as_map.head.as_u32
+  echo "m.tail: ", result.as_map.tail.as_u32
+  echo "\nstack:"
+  echo "v.head: ", stack[0].head
+  echo "v.tail: ", stack[0].tail.as_u32
+  echo "m.head: ", stack[0].as_map.head.as_u32
+  echo "m.tail: ", stack[0].as_map.tail.as_u32
+  echo "\nresult:"
+  echo "result.len:  ", result.as_map.payload.data.len
+  echo "result:      ", result
+  echo "result.tail: ", result.v.tail.as_u32
+  echo "result.len:  ", result.as_map.payload.data.len
+  echo "result:      ", result
+  echo "result.tail: ", result.v.tail.as_u32
+  # return stuff
