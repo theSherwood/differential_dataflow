@@ -140,7 +140,7 @@ var im_v_copy_count = 0
 proc `=copy`(x: var ImValue, y: ImValue) =
   im_v_copy_count += 1
   echo "start =copy ", im_v_copy_count, ": ", x, " ", y
-  if x.tail.as_u32 == y.tail.as_u32:
+  if x.as_u64 == y.as_u64:
     writeStackTrace()
     echo "abort =copy"
     return
@@ -191,6 +191,7 @@ template hash_entry(k, v: typed): ImHash = cast[ImHash](hash(k).as_u64 + hash(v)
 proc init_map*(): ImMap = return empty_map
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
+  echo "BEFORE new_table"
   var new_data = toTable(init_data)
   echo "new_data: ", new_data
   echo "init_data: ", init_data
