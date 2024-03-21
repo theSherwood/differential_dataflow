@@ -177,9 +177,12 @@ func hash*(v: ImValue): ImHash =
 
 template buildImMap(new_hash, new_data: typed) {.dirty.} =
   let h = new_hash.uint32
+  debugEcho "BEFORE RE"
+  let re = ImMapPayloadRef(hash: h, data: new_data) 
+  debugEcho "AFTER RE"
   var new_map = ImMap(
     head: MASK_SIG_MAP,
-    tail: ImMapPayloadRef(hash: h, data: new_data)
+    tail: re 
   )
 
 func init_map_empty(): ImMap =
@@ -196,6 +199,7 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   echo "BEFORE new_table"
   var new_data = toTable(init_data)
+  echo "AFTER new_table"
   echo "new_data: ", new_data
   echo "init_data: ", init_data
   var new_hash = cast[ImHash](0)

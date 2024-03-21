@@ -24,5 +24,9 @@ proc main =
   echo "m6.v:      ", m6.v
   echo "m7.v:      ", m7.v
   doAssert m6.v == m7.v
+  var m8 = init_map([])
+  echo "ZERO ", m8[0.0.v]
+  var m9 = m8.set(0.0.v, 0.0.v)
+  echo "ZERO ", m9[0.0.v]
 
 main()
