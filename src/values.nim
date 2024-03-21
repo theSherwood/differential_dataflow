@@ -1,156 +1,29 @@
-## TODO
-## 
-## -[ ] add Infinity, -Infinity
-## -[ ] add a converter from int to ImValue
-## -[ ] add an ability to push onto the end of an array
-
 import std/[tables, sets, bitops, strutils, strbasics]
 import hashes
 
-## # Immutable Value Types
-## =======================
-##
-## ## Priority
-## -----------
-##
-##   Immediates:
-##     number(float64), NaN, nil, bool, atom(small string)
-##
-##   Heaps:
-##     string, bignum, array, map, set
-##
-## ## Some additional types we could add later
-## -------------------------------------------
-##
-##   Immediates:
-##     atom-symbol, timestamp(no timezone?), bitset(48-bit), binary(48-bit),
-##     int, small byte array (48-bit, useful for small tuples)
-##
-##   Heaps:
-##     regex, time, date, datetime, pair, tuple, closure, symbol, tag, path,
-##     var/box(reactive?), email, version, typedesc/class, vector(homogenous),
-##     bitset, binary, unit(measurements), ...
-##     (...or mutable types?:)
-##     mut-array, mut-map, mut-set, mut-vector, ...
-##     (...or ruliad-specific:) 
-##     id, branch, patch
-##
-##
-## # NaN-boxing scheme for Immediates (it's the same for 32-bit and 64-bt)
-## =======================================================================
-##
-## 32 bits                          | 32 bits
-## XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  number(float64)
-##
-## 0000... - plain NaN
-##
-## +- Immediate bit (1)
-## |+- Exponent bits (11)
-## ||          +- Quiet bit (1)
-## ||          |
-## 01111111111110000000000000000000 | 00000000000000000000000000000000  NaN
-##
-## Immediate types (3 bits, because atom needs a 48-bit payload)
-## 000 - (cannot use because of collision with NaN)
-## 001 - logical (nil | true | false)
-## 010 - atom (string of max 6 bytes)
-## 011-111 - (unused, 5 values)
-##
-## If there are other types that don't need 6 bytes of payload, we could add
-## a lot more types. If we only need 4 bytes of payload, for example, we
-## could add thousands of types. So we really aren't short of bits for
-## specifying types.
-##
-## +- Immediate bit (1)
-## |+- Exponent bits (11)
-## ||          +- Quiet bit (1)
-## ||          |+- Immediate type bits (3)
-## ||          ||  +- Payload bits (48)
-## ||          ||  |
-## 01111111111110010000000000000000 | 00000000000000000000000000000000  nil
-## 01111111111110011000000000000000 | 00000000000000000000000000000000  false
-## 01111111111110011100000000000000 | 00000000000000000000000000000000  true
-## 0111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  atom
-##
-## 
-## # NaN-boxing scheme for Heaps (differs for 32-bit and 64-bt)
-## ============================================================
-##
-## Specifically, the smaller pointers of a 32-bit system let us take
-## advantage of the lower 15 or 16 bits of the top 32 bits to store a short
-## hash. This lets us do equality checks for values of the same type without
-## following the pointer and without interning/hash-consing. Each heap-
-## allocated value has a full hash as well.
-## 
-## With 64-bit systems, we make use of the lower 48-bits as a pointer. In
-## order to perform equality checks for values of the same type, we have to
-## dereference the pointer to get to the full hash.
-## 
-## Currently, the designs have the Heap types avoiding 000, but this may not
-## be necessary because we should be able to discriminate by using the
-## leading/sign/heap bit.
-## 
-## 
-## ## 32-bit systems
-## -----------------
-## 
-## ### OPTION 1 : (4 bits, leaves 15-bit short hash, 32768 values)
-## 
-## Heap types (4 bits)
-## 0001 - string
-## 0010 - bignum
-## 0011 - array
-## 0100 - set
-## 0101 - map
-## 0110-1111 - (unused, 10 values)
-##
-## ### OPTION 2 : (3 bits, leaves 16-bit short hash, 65536 values)
-## 
-## Heap types (3 bits)
-## 001 - string
-## 010 - bignum
-## 011 - array
-## 100 - set
-## 101 - map
-## 110-111 - (unused, 2 values)
-##
-## ### Going with OPTION 2 for now
-## 
-## Option 2 is more consistent with 64-bit systems
-##
-## +- Heap bit (1)
-## |            +- Heap type bits (4)
-## |            |   +- Short content hash (15 bits, only 32768 values)
-## |            |   |                 +- Pointer (32)
-## |            |   |                 |
-## 11111111111110001XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
-## 11111111111110010XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
-## 11111111111110011XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
-## 11111111111110100XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
-## 11111111111110101XXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
-##
-##
-## ## 64-bit systems
-## -----------------
-##
-## Heap types (3 bits)
-## 001 - string
-## 010 - bignum
-## 011 - array
-## 100 - set
-## 101 - map
-## 110-111 - (unused, 2 values)
-##
-## +- Heap bit (1)
-## |            +- Heap type bits (3)
-## |            |  +- Pointer (48 bits)
-## |            |  |
-## 1111111111111001XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  string
-## 1111111111111010XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  bignum
-## 1111111111111011XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  array
-## 1111111111111100XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  set
-## 1111111111111101XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
-##
+when defined(isNimSkull) or true:
+  {.pragma: ex, exportc, dynlib.}
+else:
+  import std/[macros]
+  macro ex*(t: typed): untyped =
+    if t.kind notin {nnkProcDef, nnkFuncDef}:
+      error("Can only export procedures", t)
+    let
+      newProc = copyNimTree(t)
+      codeGen = nnkExprColonExpr.newTree(ident"codegendecl",
+          newLit"EMSCRIPTEN_KEEPALIVE $# $#$#")
+    if newProc[4].kind == nnkEmpty:
+      newProc[4] = nnkPragma.newTree(codeGen)
+    else:
+      newProc[4].add codeGen
+    newProc[4].add ident"exportC"
+    result = newStmtList()
+    result.add:
+      quote do:
+        {.emit: "/*INCLUDESECTION*/\n#include <emscripten.h>".}
+    result.add:
+      newProc
+  # {.pragma: ex, exportc, dynlib.}
 
 const cpu_32 = defined(cpu32)
 
@@ -183,16 +56,16 @@ type
 
   ImStringPayload* = object
     hash: ImHash
-    data: string
+    data*: string
   ImArrayPayload* = object
     hash: ImHash
-    data: seq[ImValue]
+    data*: seq[ImValue]
   ImMapPayload* = object
     hash: ImHash
-    data: Table[ImValue, ImValue]
+    data*: Table[ImValue, ImValue]
   ImSetPayload* = object
     hash: ImHash
-    data: HashSet[ImValue]
+    data*: HashSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
   ImMapPayloadRef*    = ref ImMapPayload
@@ -327,19 +200,11 @@ when not cpu_32:
 # Get Payload #
 # ---------------------------------------------------------------------
 
-when cpu_32:
-  template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
-  template tail(v: typed): uint32 = v.as_u32
+template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
+template tail(v: typed): uint32 = v.as_u32
 
-  template payload(v: ImString): ref ImStringPayload = v.tail
-  template payload(v: ImMap): ref ImMapPayload       = v.tail
-  template payload(v: ImArray): ref ImArrayPayload   = v.tail
-  template payload(v: ImSet): ref ImSetPayload       = v.tail
-else:
-  template payload(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](v.p.to_clean_ptr)
-  template payload(v: ImMap): ref ImMapPayload       = cast[ref ImMapPayload](v.p.to_clean_ptr)
-  template payload(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](v.p.to_clean_ptr)
-  template payload(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](v.p.to_clean_ptr)
+template payload*(v: ImMap): ref ImMapPayload       = v.tail
+template payload*(v: ImArray): ref ImArrayPayload   = v.tail
 
 # Type Detection #
 # ---------------------------------------------------------------------
@@ -392,25 +257,17 @@ proc get_type*(v: ImValue): ImValueKind =
 # Globals #
 # ---------------------------------------------------------------------
 
-when cpu_32:
-  proc u64_from_mask(mask: uint32): uint64 =
-    return (mask.as_u64 shl 32).as_u64
-  let Nil* = cast[ImNil](u64_from_mask(MASK_SIG_NIL))
-  let True* = cast[ImBool](u64_from_mask(MASK_SIG_TRUE))
-  let False* = cast[ImBool](u64_from_mask(MASK_SIG_FALSE))
-else:
-  let Nil* = cast[ImNil]((MASK_SIG_NIL))
-  let True* = cast[ImBool]((MASK_SIG_TRUE))
-  let False* = cast[ImBool]((MASK_SIG_FALSE))
+proc u64_from_mask(mask: uint32): uint64 =
+  return (mask.as_u64 shl 32).as_u64
+let Nil* = cast[ImNil](u64_from_mask(MASK_SIG_NIL))
+let True* = cast[ImBool](u64_from_mask(MASK_SIG_TRUE))
+let False* = cast[ImBool](u64_from_mask(MASK_SIG_FALSE))
 
 # Equality Testing #
 # ---------------------------------------------------------------------
 
 template initial_eq_heap_value(v1, v2: typed): bool =
-  when cpu_32:
-    v1.head == v2.head
-  else:
-    bitand(v1.as_u64, MASK_SIGNATURE) == bitand(v2.as_u64, MASK_SIGNATURE)
+  v1.head == v2.head
 template eq_heap_payload(t1, t2: typed) =
   result = false
   if t1.hash == t2.hash:
@@ -426,10 +283,8 @@ template eq_heap_value_generic*(v1, v2: typed) =
     else:
       let signature = bitand(v1.as_u64, MASK_SIGNATURE)
     case signature:
-      of MASK_SIG_STRING: eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
       of MASK_SIG_ARRAY:  eq_heap_payload(v1.as_arr.payload, v2.as_arr.payload)
       of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.payload, v2.as_map.payload)
-      of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
 
 template complete_eq(v1, v2: typed): bool =
@@ -440,10 +295,8 @@ func `==`*(v1, v2: ImValue): bool =
 func `==`*(v: ImValue, f: float64): bool = return v == f.as_v
 func `==`*(f: float64, v: ImValue): bool = return v == f.as_v
     
-func `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImMap): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
-func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
 
@@ -473,86 +326,6 @@ proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int64): string = return toBin(v, 64)
 proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
 
-proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void
-
-const MAX_PRINT_WIDTH = 50
-proc pprint(m: ImMap, indent: Natural, results: var seq[string]): void =
-  results.add("M[")
-  # for (k, v) in m.payload.data.pairs:
-  #   var i_results = newSeq[string]()
-  #   pprint(k, 0, i_results)
-  #   i_results.add(": ")
-  #   pprint(v, 0, i_results)
-  #   var tall = false
-  #   var sum = 0
-  #   for r in i_results:
-  #     if '\n' in r:
-  #       tall = true
-  #       break
-  #     sum = sum + r.len
-  #     if sum > MAX_PRINT_WIDTH:
-  #       tall = true
-  #       break
-  #   i_results.add("( ")
-  #   i_results.add(": ")
-  #   i_results.add(" )")
-  # results.add("]")
-
-  for (k, v) in m.payload.data.pairs:
-    results.add("\n")
-    results.add("( ".indent(indent + 2))
-    pprint(k, indent + 4, results)
-    if v.is_heap:
-      results.add(" :\n")
-      results.add("".indent(indent + 4))
-    else:
-      results.add(" : ")
-    pprint(v, indent + 4, results)
-    results.add(" ),")
-  results.add("]")
-
-proc pprint(a: ImArray, indent: Natural, results: var seq[string]): void =
-  results.add("A[")
-  for v in a.payload.data:
-    results.add("\n")
-    results.add("".indent(indent + 2))
-    pprint(v, indent + 2, results)
-    results.add(",")
-  results.add("]")
-
-proc pprint(s: ImSet, indent: Natural, results: var seq[string]): void =
-  results.add("S[")
-  for v in s.payload.data:
-    results.add("\n")
-    results.add("".indent(indent + 2))
-    pprint(v, indent + 2, results)
-    results.add(",")
-  results.add("]")
-
-proc pprint(s: ImString, indent: Natural, results: var seq[string]): void =
-  results.add("Str[".indent(indent))
-  results.add($s.payload.data)
-  results.add("]")
-
-proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void =
-  let kind = get_type(v)
-  case kind:
-    of kNumber:  results.add($(v.as_f64))
-    of kNil:     results.add("Nil")
-    of kString:  pprint(v.as_str, indent, results)
-    of kMap:     pprint(v.as_map, indent, results)
-    of kArray:   pprint(v.as_arr, indent, results)
-    of kSet:     pprint(v.as_set, indent, results)
-    of kBool:
-      if v == True.v:      results.add("True")
-      elif v == False.v:   results.add("False")
-      else: discard
-    else:        discard
-proc pprint*(v: ImValue): string =
-  var results = newSeq[string]()
-  pprint(v, 0, results)
-  return results.join("")
-
 proc `$`*(k: ImValueKind): string =
   case k:
     of kNumber: return "Number"
@@ -565,169 +338,47 @@ proc `$`*(k: ImValueKind): string =
     else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
-  return pprint(v)
-  # let kind = get_type(v)
-  # case kind:
-  #   of kNumber:           return $(v.as_f64)
-  #   of kNil:              return "Nil"
-  #   of kBool:
-  #     if v == True.as_v:  return "True"
-  #     if v == False.as_v: return "False"
-  #     # TODO - type error
-  #   of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
-  #   of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
-  #   of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
-  #   of kSet:              return "S[" & $(v.as_set.payload.data) & "]" 
-  #   else:                 discard
-
-proc debug*(v: ImValue): string =
   let kind = get_type(v)
-  when cpu_32:
-    let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
-  else:
-    let shallow_str = "( " & to_hex(v.as_u64) & " )"
   case kind:
-    of kNumber:           return "Num" & shallow_str
-    of kNil:              return "Nil" & shallow_str
-    of kBool:
-      if v == True.as_v:  return "True" & shallow_str
-      if v == False.as_v: return "False" & shallow_str
-      # TODO - type error
-    of kString:           return "Str" & shallow_str
-    of kMap:              return "Map" & shallow_str
-    of kArray:            return "Arr" & shallow_str
-    of kSet:              return "Set" & shallow_str
+    of kNumber:           return $(v.as_f64.int)
+    of kNil:              return "Nil"
+    of kMap:              return $(v.as_map.payload.data)
+    of kArray:            return $(v.as_arr.payload.data)
     else:                 discard
-
-if false:
-  echo "MASK_SIG_NIL    ", MASK_SIG_NIL.to_bin_str
-  echo "MASK_SIG_BOOL   ", MASK_SIG_BOOL.to_bin_str
-  echo "MASK_SIG_STRING ", MASK_SIG_STRING.to_bin_str
-  echo "MASK_SIG_BIGNUM ", MASK_SIG_BIGNUM.to_bin_str
-  echo "MASK_SIG_ARRAY  ", MASK_SIG_ARRAY.to_bin_str
-  echo "MASK_SIG_SET    ", MASK_SIG_SET.to_bin_str
-  echo "MASK_SIG_MAP    ", MASK_SIG_MAP.to_bin_str
 
 # Hash Handling #
 # ---------------------------------------------------------------------
 
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
-when cpu_32:
-  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u32, i2.as_u32))
-else:
-  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u64, i2.as_u64))
+template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u32, i2.as_u32))
 
 func hash*(v: ImValue): ImHash =
   if is_heap(v):
     # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
-    let vh = cast[ImString](v)
+    let vh = cast[ImMap](v)
     result = cast[ImHash](vh.payload.hash)
   else:
-    when cpu_32:
-      # We fold it and hash it for 32-bit stack values because a lot of them
-      # don't have anything interesting happening in the top 32 bits.
-      result = cast[ImHash](calc_hash(v.head, v.tail))
-    else:
-      result = cast[ImHash](v.as_u64)
+    # We fold it and hash it for 32-bit stack values because a lot of them
+    # don't have anything interesting happening in the top 32 bits.
+    result = cast[ImHash](calc_hash(v.head, v.tail))
 
-when cpu_32:
-  echo "3.0:  ", 3.0.as_u32.to_bin_str
-  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u32.to_bin_str
-  echo "3.0:  ", (3.0 * 3173).as_u32.to_bin_str
-  echo "3.0:  ", 3.0.as_v.hash.to_bin_str
-  echo "3.1:  ", 3.1.as_v.hash.to_bin_str
-  echo "3.1:  ", 3.1.as_v.hash
-  echo "5.0:  ", 5.0.as_v.hash.to_bin_str
-  echo "30.0: ", 30.0.as_v.hash.to_bin_str
-else:
-  echo "3.0:  ", 3.0.as_u64.to_bin_str
-  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u64.to_bin_str
-  echo "3.0:  ", (3.0 * 3173).as_u64.to_bin_str
-  echo "3.0:  ", (3.0.as_u64 * 3173).as_u64.to_bin_str
-  echo "3.0:  ", (3.0.as_u64 * 3173.as_u64).as_u64.to_bin_str
-  echo "MAX:  ", 9007199254740991.0 + 1
-  echo "MAX:  ", 9007199254740991.0 + 2
-
-  
-when cpu_32:
-  # full_hash is 32 bits
-  # short_hash is something like 15 bits (top 17 are zeroed)
-  func update_head(previous_head: uint32, full_hash: uint32): uint32 =
-    let short_hash = bitand(full_hash.uint32, MASK_SHORT_HASH)
-    let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
-    return bitor(truncated_head, short_hash.uint32).uint32
-
-# ImNumber Impl #
-# ---------------------------------------------------------------------
-
-# TODO - eliminate this completely by just using floats?
-func init_number*(f: float64 = 0): ImNumber =
-  return (cast[ImNumber](f))
-
-# ImString Impl #
-# ---------------------------------------------------------------------
-
-template buildImString(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
-    let h = new_hash.uint32
-    var new_string = ImString(
-      head: update_head(MASK_SIG_STRING, h),
-      tail: ImStringPayloadRef(hash: h, data: new_data)
-    )
-  else:
-    var re = new ImStringPayload
-    GC_ref(re)
-    re.hash = new_hash
-    re.data = new_data
-    var new_string = ImString(p: bitor(MASK_SIG_STRING, re.as_p.as_u64).as_p)
-  
-func init_string_empty(): ImString =
-  let hash = 0
-  let data = ""
-  buildImString(hash, data)
-  return new_string
-
-let empty_string = init_string_empty()
-
-proc init_string*(s: string = ""): ImString =
-  if s.len == 0: return empty_string
-  let hash = hash(s)
-  buildImString(hash, s)
-  return new_string
-
-proc `[]`*(s: ImString, i: int): ImValue =
-  result = Nil.as_v
-  if i < s.payload.data.len:
-    if i >= 0:
-      result = (init_string($s.payload.data[i])).as_v
-
-proc concat*(s1, s2: ImString): ImString =
-  let new_s = s1.payload.data & s2.payload.data
-  return init_string(new_s)
-proc `&`*(s1, s2: ImString): ImString =
-  let new_s = s1.payload.data & s2.payload.data
-  return init_string(new_s)
-
-func size*(s: ImString): int =
-  return s.payload.data.len.int
+# full_hash is 32 bits
+# short_hash is something like 15 bits (top 17 are zeroed)
+func update_head(previous_head: uint32, full_hash: uint32): uint32 =
+  let short_hash = bitand(full_hash.uint32, MASK_SHORT_HASH)
+  let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
+  return bitor(truncated_head, short_hash.uint32).uint32
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
 
 template buildImMap(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
-    let h = new_hash.uint32
-    var new_map = ImMap(
-      head: update_head(MASK_SIG_MAP, h),
-      tail: ImMapPayloadRef(hash: h, data: new_data)
-    )
-  else:
-    var re = new ImMapPayload
-    GC_ref(re)
-    re.hash = new_hash
-    re.data = new_data
-    var new_map = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
+  let h = new_hash.uint32
+  var new_map = ImMap(
+    head: update_head(MASK_SIG_MAP, h),
+    tail: ImMapPayloadRef(hash: h, data: new_data)
+  )
 
 func init_map_empty(): ImMap =
   let hash = 0
@@ -794,269 +445,76 @@ proc set*(m: ImMap, k: float64, v: ImValue): ImMap = return m.set(k.as_v, v)
 func size*(m: ImMap): int =
   return m.payload.data.len.int
 
-## Asymmetric. Entries in m2 overwrite m1
-proc `&`*(m1, m2: ImMap): ImMap =
-  if m2.size == 0: return m1
-  if m1.size == 0: return m2
-  if m1.size > m2.size:
-    var new_data = m1.payload.data
-    var new_hash = m1.payload.hash
-    for k, v in m2.payload.data.pairs:
-      if k in new_data:
-        new_hash = calc_hash(calc_hash(new_hash, hash_entry(k, v)), hash_entry(k, new_data[k]))
-      else:
-        new_hash = calc_hash(new_hash, hash_entry(k, v))
-      new_data[k] = v
-    buildImMap(new_hash, new_data)
-    return new_map
-  else:
-    var new_data = m2.payload.data
-    var new_hash = m2.payload.hash
-    for k, v in m1.payload.data.pairs:
-      if k in new_data:
-        continue
-      new_hash = calc_hash(new_hash, hash_entry(k, v))
-      new_data[k] = v
-    buildImMap(new_hash, new_data)
-    return new_map
-
-# ImArray Impl #
-# ---------------------------------------------------------------------
-
-template buildImArray(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
-    let h = new_hash.uint32
-    var new_array = ImArray(
-      head: update_head(MASK_SIG_ARRAY, h),
-      tail: ImArrayPayloadRef(hash: h, data: new_data)
-    )
-  else:
-    var re = new ImArrayPayload
-    GC_ref(re)
-    re.hash = new_hash
-    re.data = new_data
-    var new_array = ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
-
-proc init_array_empty(): ImArray =
-  let new_hash = 0
-  let new_data: seq[ImValue] = @[]
-  buildImArray(new_hash, new_data)
-  return new_array
-
-let empty_array = init_array_empty()
-
-proc init_array*(): ImArray = return empty_array
-proc init_array*(init_data: openArray[ImValue]): ImArray =
-  if init_data.len == 0: return empty_array
-  var new_hash = cast[ImHash](0)
-  var new_data = newSeq[ImValue]()
-  for v in init_data:
-    new_hash = calc_hash(new_hash, v.hash)
-    new_data.add(v)
-  buildImArray(new_hash, new_data)
-  return new_array
-proc init_array*(new_data: seq[ImValue]): ImArray =
-  if new_data.len == 0: return empty_array
-  var new_hash = cast[ImHash](0)
-  for v in new_data:
-    new_hash = calc_hash(new_hash, v.hash)
-  buildImArray(new_hash, new_data)
-  return new_array
-
-## TODO
-## - ImValue indices
-## - Negative indices
-## - range indices
-template get_impl(a: ImArray, i: int) =
-  let data = a.payload.data
-  if i >= data.len:
-    return Nil.as_v
-  else:
-    return data[i]
-template get_impl(a: ImArray, i: ImValue) =
-  if i.is_float:
-    get_impl(a, i.as_f64.int)
-  else:
-    # TODO - raise exception
-    discard
-template get_impl(a: ImArray, i: float64) =
-  if i.is_float:
-    get_impl(a, i.as_f64.int)
-  else:
-    # TODO - raise exception
-    discard
-
-proc `[]`*(a: ImArray, i: int): ImValue = get_impl(a, i)
-proc `[]`*(a: ImArray, i: ImValue): ImValue = get_impl(a, i)
-proc `[]`*(a: ImArray, i: float64): ImValue = get_impl(a, i)
-proc get*(a: ImArray, i: int): ImValue  = get_impl(a, i)
-proc get*(a: ImArray, i: ImValue): ImValue  = get_impl(a, i)
-proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
-
-# proc `[]`*(m: ImArray, k: float64): ImValue = get_impl(m, k)
-# proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
-# proc get*(m: ImArray, k: float64): ImValue  = get_impl(m, k)
-
-template set_impl*(a: ImArray, i: int, v: ImValue) =
-  let derefed = a.payload
-  # hash the previous version's hash with the new value and the old value
-  let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
-  var new_data = derefed.data
-  new_data[i] = v
-  buildImArray(new_hash, new_data)
-  return new_array
-template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
-  if i.is_float: set_impl(a, i.as_f64.int, v)
-  else:
-    # TODO - raise exception
-    discard
-template set_impl*(a: ImArray, i: float64, v: ImValue) =
-  if i.is_float: set_impl(a, i.as_f64.int, v)
-  else:
-    # TODO - raise exception
-    discard
-
-## TODO
-## - ImValue indices
-## - Negative indices
-## - range indices???
-## - indices beyond the end of the sequence (fill the gap with Nil)
-proc set*(a: ImArray, i: int, v: ImValue): ImArray = set_impl(a, i, v)
-proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
-proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
-
-proc concat*(a1, a2: ImArray): ImArray =
-  let new_a = a1.payload.data & a2.payload.data
-  return init_array(new_a)
-proc `&`*(a1, a2: ImArray): ImArray =
-  let new_a = a1.payload.data & a2.payload.data
-  return init_array(new_a)
-
-proc size*(a: ImArray): int =
-  return a.payload.data.len.int
-
-# ImSet Impl #
-# ---------------------------------------------------------------------
-
-template buildImSet(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
-    let h = new_hash.uint32
-    var new_set = ImSet(
-      head: update_head(MASK_SIG_SET, h),
-      tail: ImSetPayloadRef(hash: h, data: new_data)
-    )
-  else:
-    var re = new ImSetPayload
-    GC_ref(re)
-    re.hash = new_hash
-    re.data = new_data
-    var new_set = ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
-
-proc init_set_empty(): ImSet =
-  let new_hash = 0
-  var new_data: HashSet[ImValue]
-  buildImSet(new_hash, new_data)
-  return new_set
-
-let empty_set = init_set_empty()
-
-proc init_set*(): ImSet = return empty_set
-proc init_set*(init_data: openArray[ImValue]): ImSet =
-  if init_data.len == 0: return empty_set
-  var new_hash = cast[ImHash](0)
-  var new_data = toHashSet(init_data)
-  for v in new_data:
-    new_hash = calc_hash(new_hash, v.hash)
-  buildImSet(new_hash, new_data)
-  return new_set
-
-proc contains*(s: ImSet, k: ImValue): bool = k.as_v in s.payload.data
-proc contains*(s: ImSet, k: float64): bool = k.as_v in s.payload.data
-
-template has_inner(s: ImSet, k: typed) =
-  let derefed = s.payload
-  if k.as_v in derefed.data: return True
-  return False
-proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
-proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
-
-proc get*(s: ImSet, k: ImValue): ImValue =
-  if k.v in s: return k.v else: return Nil.v
-proc get*(s: ImSet, k: float): ImValue =
-  if k.v in s: return k.v else: return Nil.v
-
-proc add*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.payload
-  if k.as_v in derefed.data: return s
-  let new_hash = calc_hash(derefed.hash, k.hash)
-  var new_data = derefed.data
-  new_data.incl(k.as_v)
-  buildImSet(new_hash, new_data)
-  return new_set
-
-proc del*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.payload
-  if not(k.as_v in derefed.data): return s
-  let new_hash = calc_hash(derefed.hash, k.hash)
-  var new_data = derefed.data
-  new_data.excl(k.as_v)
-  buildImSet(new_hash, new_data)
-  return new_set
-
-proc size*(s: ImSet): int =
-  return s.payload.data.len.int
-
 # ImValue Fns #
 # ---------------------------------------------------------------------
 
-proc get_in(it: ImValue, path: openArray[ImValue], i: int, default: ImValue): ImValue =
-  var new_it: ImValue
-  if it.is_map:     new_it = it.as_map.get(path[i].v)
-  elif it.is_array: new_it = it.as_arr.get(path[i].v)
-  elif it.is_set:   new_it = it.as_set.get(path[i].v)
-  elif it == Nil.v:
-    return default
-  else:
-    # TODO - error
-    discard
-  if i == path.high:
-    if new_it != Nil.v: return new_it
-    return default
-  else: return get_in(new_it, path, i + 1, default)
-proc get_in*(it: ImValue, path: openArray[ImValue], default: ImValue): ImValue =
-  return get_in(it, path, 0, default)
-proc get_in*(it: ImValue, path: openArray[ImValue]): ImValue =
-  return get_in(it, path, 0, Nil.v)
-
 ## If a key in the path does not exist, maps are created
-proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
-  var payload = v
+proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue {.ex.} =
+  var payload: ImValue = v
   var stack = newSeq[ImValue]()
   var k: ImValue
   var curr = it
   var max = 0
   for i in 0..path.high:
+    # echo ""
     k = path[i]
+    echo "i: ", i
+    # echo "k: ", k
     if curr.is_map:
       stack.add(curr)
       curr = curr.as_map.get(k)
-    elif curr.is_array:
-      stack.add(curr)
-      curr = curr.as_arr.get(k)
-    elif curr == Nil.v:
-      for j in countdown(path.high, i):
-        k = path[j]
-        payload = init_map([(k, payload)]).v
-      break
     else:
       echo "TODO - add exceptions"
     max = i
+  # echo "\nmax: ", max
+  # echo "====================================="
+  # echo "stack: ", stack
+  # echo "====================================="
+  # for i in countdown(path.high, 0):
   for i in countdown(max, 0):
+    # echo ""
+    var p = false
+    # echo "payload?: ", payload
+    # echo "get_type(payload): ", get_type(payload)
+    # if payload.is_map: p = true
+    # if p: echo "payload?: ", payload.as_map.payload.data
+    # if p: echo "payload?1: ", payload.as_map.payload.data
+    # echo "payload?1: ", payload
+    # if p: echo "payload?2: ", payload.as_map.payload.data
+    # if p: echo "payload?3: ", payload.as_map.payload.data
     k = path[i]
     curr = stack[i]
-    if curr.is_map:     payload = curr.as_map.set(k, payload).v
-    elif curr.is_array: payload = curr.as_arr.set(k, payload).v
+    # if p: echo "payload?4: ", payload.as_map.payload.data
+    # if p: echo "payload?5: ", payload.as_map.payload.data
+    # if p: echo "payload?6: ", payload.as_map.payload.data
+    # echo "k: ", k
+    # echo "payload?2: ", payload
+    # echo "i:       ", i
+    # echo "k:       ", k
+    # echo "curr:    ", curr
+    # if payload.is_array:
+    #   echo "payload.arr.len: ", payload.as_arr.payload.data.len
+    # elif payload.is_map:
+    #   echo "payload.map.len: ", payload.as_map.payload.data.len
+    # echo "payload: ", payload
+    # echo "payload: ", payload
+    # echo "payload: ", payload
+    # echo "payload: ", payload
+    # echo "payload: ", payload
+    # if p: echo "payload!: ", payload.as_map.payload.data
+    # echo "payload.tail: ", payload.v.tail.as_u32
+    # echo ""
+    if curr.is_map:
+      payload = curr.as_map.set(k, payload).v
     else:               echo "TODO - add exceptions2"
+    # echo "!!!!!!!!!==========================!!!!!!"
+    # echo "curr: ", curr
+  echo "pay.len: ", payload.as_map.payload.data.len
+  echo "pay: ", payload
+  echo "payload.tail: ", payload.v.tail.as_u32
+  echo "pay.len: ", payload.as_map.payload.data.len
+  echo "pay: ", payload
+  echo "payload.tail: ", payload.v.tail.as_u32
   return payload
 
 

@@ -38,7 +38,7 @@ echo "============================================="
   --cc:clang \
   --gc:arc \
   --noMain:on \
-  --stackTrace:off \
+  --stackTrace:on \
   --exceptions:goto \
   --opt:speed \
   --d:cpu32 \
@@ -72,6 +72,7 @@ done
   # Compile C to Wasm
   ${PATH_TO_EMSCRIPTEN} \
   ${OPTIMIZE} \
+  -g \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s IMPORTED_MEMORY=1 \
   -s STRICT=0 \
