@@ -179,8 +179,18 @@ type
     kMap
     kSet
 
-  ImValue* = distinct uint64
+when cpu_32:
+  type ImValue* = object
+    tail: uint32
+    head: uint32
 
+  proc `=destroy`(x: var ImValue)
+  proc `=copy`(x: var ImValue, y: ImValue)
+
+else:
+  type ImValue* = distinct uint64
+
+type
   ImStringPayload* = object
     hash: ImHash
     data: string
@@ -311,25 +321,12 @@ const MASK_SIG_ARRAY   = MASK_EXP_OR_Q or MASK_TYPE_ARRAY
 const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
-# GC #
-# ---------------------------------------------------------------------
-
-when not cpu_32:
-  template to_clean_ptr(v: typed): pointer =
-    cast[pointer](bitand((v).as_u64, MASK_POINTER))
-
-  proc `=destroy`[T](x: var MaskedRef[T]) =
-    GC_unref(cast[ref T](to_clean_ptr(x.p)))
-  proc `=copy`[T](x: var MaskedRef[T], y: MaskedRef[T]) =
-    GC_ref(cast[ref T](to_clean_ptr(y.p)))
-    x.p = y.p
-
 # Get Payload #
 # ---------------------------------------------------------------------
 
 when cpu_32:
-  template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
-  template tail(v: typed): uint32 = v.as_u32
+  # template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
+  # template tail(v: typed): uint32 = v.as_u32
 
   template payload(v: ImString): ref ImStringPayload = v.tail
   template payload(v: ImMap): ref ImMapPayload       = v.tail
@@ -346,7 +343,7 @@ else:
 
 when cpu_32:
   template type_bits(v: typed): uint32 =
-    v.head
+    v.as_v.head
 else:
   template type_bits(v: typed): uint64 =
     v.as_u64
@@ -374,7 +371,6 @@ template is_heap(v: typed): bool =
 
 proc get_type*(v: ImValue): ImValueKind =
   let type_carrier = v.type_bits
-  # echo toHex(type_carrier), " ", toHex(MASK_EXPONENT)
   if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
   let signature = bitand(type_carrier, MASK_SIGNATURE)
   case signature:
@@ -386,8 +382,44 @@ proc get_type*(v: ImValue): ImValueKind =
     of MASK_SIG_ARRAY:  return kArray
     of MASK_SIG_SET:    return kSet
     of MASK_SIG_MAP:    return kMap
-    else:
-      echo "Unknown Type!"
+    else:               echo "Unknown Type!"
+
+# GC Hooks #
+# ---------------------------------------------------------------------
+
+when cpu_32:
+  proc `=destroy`(x: var ImValue) =
+    if x.is_map:
+      GC_unref(cast[ImMapPayloadRef](x.tail))
+    elif x.is_array:
+      GC_unref(cast[ImArrayPayloadRef](x.tail))
+    elif x.is_set:
+      GC_unref(cast[ImSetPayloadRef](x.tail))
+    elif x.is_string:
+      GC_unref(cast[ImStringPayloadRef](x.tail))
+  proc `=copy`(x: var ImValue, y: ImValue) =
+    if x.as_u64 == y.as_u64: return
+    if y.is_map:
+      GC_ref(cast[ImMapPayloadRef](y.tail))
+    elif y.is_array:
+      GC_ref(cast[ImArrayPayloadRef](y.tail))
+    elif y.is_set:
+      GC_ref(cast[ImSetPayloadRef](y.tail))
+    elif y.is_string:
+      GC_ref(cast[ImStringPayloadRef](y.tail))
+    `=destroy`(x)
+    x.head = y.head
+    x.tail = y.tail
+
+when not cpu_32:
+  template to_clean_ptr(v: typed): pointer =
+    cast[pointer](bitand((v).as_u64, MASK_POINTER))
+
+  proc `=destroy`[T](x: var MaskedRef[T]) =
+    GC_unref(cast[ref T](to_clean_ptr(x.p)))
+  proc `=copy`[T](x: var MaskedRef[T], y: MaskedRef[T]) =
+    GC_ref(cast[ref T](to_clean_ptr(y.p)))
+    x.p = y.p
 
 # Globals #
 # ---------------------------------------------------------------------
@@ -599,15 +631,6 @@ proc debug*(v: ImValue): string =
     of kSet:              return "Set" & shallow_str
     else:                 discard
 
-if false:
-  echo "MASK_SIG_NIL    ", MASK_SIG_NIL.to_bin_str
-  echo "MASK_SIG_BOOL   ", MASK_SIG_BOOL.to_bin_str
-  echo "MASK_SIG_STRING ", MASK_SIG_STRING.to_bin_str
-  echo "MASK_SIG_BIGNUM ", MASK_SIG_BIGNUM.to_bin_str
-  echo "MASK_SIG_ARRAY  ", MASK_SIG_ARRAY.to_bin_str
-  echo "MASK_SIG_SET    ", MASK_SIG_SET.to_bin_str
-  echo "MASK_SIG_MAP    ", MASK_SIG_MAP.to_bin_str
-
 # Hash Handling #
 # ---------------------------------------------------------------------
 
@@ -631,25 +654,6 @@ func hash*(v: ImValue): ImHash =
     else:
       result = cast[ImHash](v.as_u64)
 
-when cpu_32:
-  echo "3.0:  ", 3.0.as_u32.to_bin_str
-  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u32.to_bin_str
-  echo "3.0:  ", (3.0 * 3173).as_u32.to_bin_str
-  echo "3.0:  ", 3.0.as_v.hash.to_bin_str
-  echo "3.1:  ", 3.1.as_v.hash.to_bin_str
-  echo "3.1:  ", 3.1.as_v.hash
-  echo "5.0:  ", 5.0.as_v.hash.to_bin_str
-  echo "30.0: ", 30.0.as_v.hash.to_bin_str
-else:
-  echo "3.0:  ", 3.0.as_u64.to_bin_str
-  echo "Hash: ", calc_hash(0.as_u64, 3.0.as_u64).as_u64.to_bin_str
-  echo "3.0:  ", (3.0 * 3173).as_u64.to_bin_str
-  echo "3.0:  ", (3.0.as_u64 * 3173).as_u64.to_bin_str
-  echo "3.0:  ", (3.0.as_u64 * 3173.as_u64).as_u64.to_bin_str
-  echo "MAX:  ", 9007199254740991.0 + 1
-  echo "MAX:  ", 9007199254740991.0 + 2
-
-  
 when cpu_32:
   # full_hash is 32 bits
   # short_hash is something like 15 bits (top 17 are zeroed)
