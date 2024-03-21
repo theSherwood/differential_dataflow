@@ -28,6 +28,8 @@ echo "============================================="
   # Clean previous compilation results
   rm -Rf ${PATH_TO_C_ASSETS}
 
+  # --expandArc:init_map \
+
   # Compile Nim to C
   ${PATH_TO_NIM} \
   -c \
@@ -52,6 +54,8 @@ echo "============================================="
   # Link nimbase.h
   ln -sfw ${PATH_TO_NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
 )
+
+# exit
 
 echo "============================================="
 echo "Compiling wasm with Emscripten"

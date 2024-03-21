@@ -34,6 +34,19 @@ type
     tail*: ImMapPayloadRef
     head*: uint32
 
+proc `=destroy`(x: var ImMapPayload) {.nodestroy.} =
+  echo "start destroy ImMapPayload ", x.data
+  `=destroy`(x.data)
+  writeStackTrace()
+  echo "end destroy ImMapPayload"
+proc `=copy`(x: var ImMapPayload, y: ImMapPayload) {.nodestroy.} =
+  echo "start copy ImMapPayload ", x.data
+  `=destroy`(x)
+  `=copy`(x.data, y.data)
+  writeStackTrace()
+  echo "end copy ImMapPayload"
+
+
 # Masks #
 # ---------------------------------------------------------------------
 
@@ -79,22 +92,6 @@ proc get_type*(v: ImValue): ImValueKind =
     else:
       echo "Unknown Type!"
 
-# GC Hooks #
-# ---------------------------------------------------------------------
-
-proc `=destroy`(x: var ImValue) =
-  if x.is_map:
-    GC_unref(cast[ImMapPayloadRef](x.tail))
-proc `=copy`(x: var ImValue, y: ImValue) =
-  if x.tail.as_u32 == y.tail.as_u32: return
-  if y.is_map:
-    GC_ref(cast[ImMapPayloadRef](y.tail))
-    `=destroy`(x)
-    x.head = y.head
-    x.tail = y.tail
-  else:
-    `=destroy`(x)
-
 # Globals #
 # ---------------------------------------------------------------------
 
@@ -123,6 +120,24 @@ proc `$`*(v: ImValue): string =
     of kNil:              return "Nil"
     of kMap:              return $(v.as_map.payload.data)
     else:                 discard
+
+# GC Hooks #
+# ---------------------------------------------------------------------
+
+proc `=destroy`(x: var ImValue) =
+  echo "=destroy: ", x
+  if x.is_map:
+    GC_unref(cast[ImMapPayloadRef](x.tail))
+proc `=copy`(x: var ImValue, y: ImValue) =
+  echo "=copy: ", x, " ", y
+  if x.tail.as_u32 == y.tail.as_u32: return
+  if y.is_map:
+    GC_ref(cast[ImMapPayloadRef](y.tail))
+    `=destroy`(x)
+    x.head = y.head
+    x.tail = y.tail
+  else:
+    `=destroy`(x)
 
 # Hash Handling #
 # ---------------------------------------------------------------------
@@ -164,6 +179,8 @@ proc init_map*(): ImMap = return empty_map
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   var new_data = toTable(init_data)
+  echo "init_data: ", init_data
+  echo "new_data: ", new_data
   var new_hash = cast[ImHash](0)
   for (k, v) in new_data.pairs:
     new_hash = calc_hash(new_hash, hash_entry(k, v))
