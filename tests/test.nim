@@ -3,8 +3,7 @@ import values
 
 proc main =
   var
-    m1 = init_map([(1.0.v, 2.0.v)])
-    m2 = init_map([(m1.v, m1.v)])
+    m2 = init_map([])
     m3 = m2.v.set_in([1.0.v], 4.0.v)
     m4 = m2.set(1.0.v, 4.0.v)
   echo "m3.size ", m3.as_map.size
