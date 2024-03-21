@@ -18,6 +18,10 @@ type
     tail*: pointer
     head*: uint32
 
+proc `=destroy`(x: var ImValue)
+proc `=copy`(x: var ImValue, y: ImValue)
+
+type
   ImMapPayload* = object
     hash: ImHash
     data*: Table[ImValue, ImValue]
@@ -83,9 +87,11 @@ proc `=destroy`(x: var ImValue) =
     GC_unref(cast[ImMapPayloadRef](x.tail))
 proc `=copy`(x: var ImValue, y: ImValue) =
   if x.tail.as_u32 == y.tail.as_u32: return
-  if x.is_map and y.is_map:
+  if y.is_map:
     GC_ref(cast[ImMapPayloadRef](y.tail))
-    `=destroy`(x.as_map)
+    `=destroy`(x)
+    x.head = y.head
+    x.tail = y.tail
   else:
     `=destroy`(x)
 
