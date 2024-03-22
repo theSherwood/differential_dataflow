@@ -10,6 +10,7 @@ on:
     branches:
       - '*'
 
+jobs:
   changes:
     # Disable the filter on scheduled runs because we don't want to skip those
     if: github.event_name != 'schedule'
