@@ -1,6 +1,7 @@
 # refer to https://github.com/disruptek/balls/blob/main/.github/workflows/ci.yml
 
 name: CI
+
 on:
   push:
     branches:
@@ -104,27 +105,29 @@ jobs:
           nimble --accept install
         env:
           NIM: ${{ matrix.compiler.name }}
-      
-      # - name: Find Nimbase
-        
 
+      # TODO - move tests into another job
       - name: Tests (native)
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
+          find $${{ steps.nimskull.outputs.path }} -name nimbase.h
+          find $ -name nimbase.h
           cd project
-          echo "$(find $${{ steps.nimskull.outputs.path }} -name nimbase.h)"
           ./run.sh -t
         env:
           NIM: nim
           CC: gcc
 
-      - name: Tests (wasi32)
-        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
-        shell: bash
-        run: |
-          cd project
-          ./run.sh -tw
-        env:
-          NIM: nim
-          CC: gcc
+      # TODO - setup tests
+      # - name: Tests (wasi32)
+      #   if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+      #   shell: bash
+      #   run: |
+      #     cd project
+      #     ./run.sh -tw
+      #     # TODO : find nimbase.h
+      #     echo "$(find $${{ steps.nimskull.outputs.path }} -name nimbase.h)"
+      #   env:
+      #     NIM: nim
+      #     CC: gcc

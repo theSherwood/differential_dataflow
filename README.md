@@ -2,32 +2,38 @@
 
 ## Compile
 
+### Build Wasm
+
 ```sh
-scripts/build_wasm.sh
+./run.sh -wu
 ```
 
 OR
 
 ```sh
-wach -o "src/**" "scripts/build_wasm.sh"
+wach -o "src/**" "./run.sh -wu"
 ```
 
 ## Test
 
+### Test Native
+
 ```sh
-scripts/test.sh
+./run.sh -tu
 ```
 
 OR
 
 ```sh
-wach scripts/test_native.sh
+wach ./run.sh -tu
 ```
 
 OR (to compile the test in wasm)
 
+### Test Wasm
+
 ```sh
-wach -o "src/**" scripts/test_wasm.sh
+wach -o "src/**" "./run.sh -utw"
 ```
 
 ## Start the server
