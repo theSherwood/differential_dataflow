@@ -111,7 +111,6 @@ jobs:
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
-          find $${{ steps.nimskull.outputs.path }} -name nimbase.h
           find $ -name nimbase.h
           cd project
           ./run.sh -t
