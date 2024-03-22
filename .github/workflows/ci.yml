@@ -113,5 +113,5 @@ jobs:
           cd project
           ./run.sh -t
         env:
-          NIM: ${{ steps.nimskull.outputs.bin-path }}
+          NIM: nim
           CC: gcc
