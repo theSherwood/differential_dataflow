@@ -106,11 +106,13 @@ jobs:
           NIM: ${{ matrix.compiler.name }}
 
       - name: Tests (native)
+        if: matrix.compiler.name == 'nimskull'
         if: matrix.target.name == 'native'
         shell: bash
         run: |
+          which nim
           cd project
-          ./scripts/test_native.sh
+          ./run.sh -t
         env:
-          NIM: ${{ matrix.compiler.name }}
+          NIM: ${{ steps.nimskull.outputs.bin-path }}
           CC: gcc
