@@ -109,9 +109,19 @@ jobs:
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
-          which nim
           cd project
+          echo $${{ steps.nimskull.outputs }}
           ./run.sh -t
+        env:
+          NIM: nim
+          CC: gcc
+
+      - name: Tests (wasi32)
+        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+        shell: bash
+        run: |
+          cd project
+          ./run.sh -tw
         env:
           NIM: nim
           CC: gcc
