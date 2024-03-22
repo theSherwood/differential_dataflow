@@ -145,4 +145,5 @@ jobs:
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
+          cd project
           node --experimental-default-type=module src/run_wasm.js
