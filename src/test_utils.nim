@@ -177,6 +177,7 @@ var
                                     ## Deprecated: can also override depending on whether
                                     ## `NIMTEST_ABORT_ON_ERROR` environment variable is set.
 
+  failures* {.threadvar.}: int
   checkpoints {.threadvar.}: seq[string]
   formatters {.threadvar.}: seq[OutputFormatter]
   testsFilters {.threadvar.}: HashSet[string]
@@ -525,7 +526,7 @@ when not declared(setProgramResult):
   {.warning: "setProgramResult not available on platform, unittest will not" &
     " give failing exit code on test failure".}
   template setProgramResult(a: int) =
-    discard
+    failures += 1
 
 template test*(name, body) {.dirty.} =
   ## Define a single test case identified by `name`.
@@ -574,6 +575,7 @@ template test*(name, body) {.dirty.} =
     finally:
       if testStatusIMPL == TestStatus.FAILED:
         setProgramResult 1
+        failures += 1
       let testResult = TestResult(
         suiteName: when declared(testSuiteName): testSuiteName else: "",
         testName: name,
@@ -613,8 +615,10 @@ template fail* =
   bind ensureInitialized, setProgramResult
   when declared(testStatusIMPL):
     testStatusIMPL = TestStatus.FAILED
+    failures += 1
   else:
     setProgramResult 1
+    failures += 1
 
   ensureInitialized()
 

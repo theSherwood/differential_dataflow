@@ -261,3 +261,6 @@ proc main =
       check a8.get_in([2.0.v, m2.v, 1.0.v]).as_map.size == 0
 
 main()
+
+when defined(wasm):
+  if failures > 0: raise newException(AssertionDefect, "Something failed.")
