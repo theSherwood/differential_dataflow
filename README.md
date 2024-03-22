@@ -28,19 +28,29 @@ OR
 wach ./run.sh -tu
 ```
 
-OR (to compile the test in wasm)
+### Test Wasm in Node
 
-### Test Wasm
+Compile wasm:
+
+```sh
+wach -o "src/**" "./run.sh -utw && node --experimental-default-type=module src/run_wasm.js"
+```
+
+### Test Wasm in Browser
+
+Compile wasm:
 
 ```sh
 wach -o "src/**" "./run.sh -utw"
 ```
 
-## Start the server
+Start the server:
 
 ```sh
 dev start
 ```
+
+Go to http://localhost:3000/
 
 ## Run the code natively
 
