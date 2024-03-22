@@ -121,13 +121,12 @@ jobs:
       - name: Emscripten
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         uses: mymindstorm/setup-emsdk@v14
-        run: |
-          emcc -v
 
       - name: Tests (wasi32)
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
+          emcc -v
           cd project
           # find nimbase
           export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
