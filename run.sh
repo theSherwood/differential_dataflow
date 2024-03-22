@@ -68,5 +68,7 @@ fi
 
 echo "Running scripts/${ACTION}_${TARGET}.sh"
 
+chmod 755 "./scripts/${ACTION}_${TARGET}.sh"
+
 # Run the target script
-source "scripts/${ACTION}_${TARGET}.sh"
+./scripts/${ACTION}_${TARGET}.sh
