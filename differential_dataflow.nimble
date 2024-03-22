@@ -1,5 +1,6 @@
 version     = "0.0.0"
-author      = "Your name"
+author      = "theSherwood"
 description = "Description of your library"
+license     = "none"
 
 srcDir = "src"
