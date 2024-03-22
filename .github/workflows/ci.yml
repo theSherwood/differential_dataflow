@@ -118,6 +118,12 @@ jobs:
           NIM: nim
           CC: gcc
 
+      - name: Emscripten
+        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+        uses: mymindstorm/setup-emsdk@v14
+        run: |
+          emcc -v
+
       - name: Tests (wasi32)
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         shell: bash
@@ -128,5 +134,6 @@ jobs:
           echo "$NIMBASE"
           ./run.sh -tw
         env:
+          EMSCRIPTEN: emcc
           NIM: nim
           CC: gcc
