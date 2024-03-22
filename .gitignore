@@ -12,6 +12,5 @@ htmldocs/
 nimcache
 *.pdb
 *.ilk
-.*
 tmp
 node_modules
