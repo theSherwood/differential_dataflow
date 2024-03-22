@@ -104,13 +104,16 @@ jobs:
           nimble --accept install
         env:
           NIM: ${{ matrix.compiler.name }}
+      
+      # - name: Find Nimbase
+        
 
       - name: Tests (native)
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
           cd project
-          echo $${{ steps.nimskull.outputs }}
+          echo "$(find $${{ steps.nimskull.outputs.path }} -name nimbase.h)"
           ./run.sh -t
         env:
           NIM: nim
