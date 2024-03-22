@@ -106,8 +106,7 @@ jobs:
           NIM: ${{ matrix.compiler.name }}
 
       - name: Tests (native)
-        if: matrix.compiler.name == 'nimskull'
-        if: matrix.target.name == 'native'
+        if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
           which nim
