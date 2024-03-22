@@ -146,4 +146,5 @@ jobs:
         shell: bash
         run: |
           cd project
+          npm install
           node --experimental-default-type=module src/run_wasm.js
