@@ -37,6 +37,7 @@ jobs:
               - '**.nimble'
               - '**.js'
               - '**.ts'
+              - '**.sh'
               - 'tests/**'
               - '.github/workflows/ci.yml'
 
