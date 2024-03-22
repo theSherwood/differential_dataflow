@@ -52,6 +52,8 @@ jobs:
     # what Github docs said, see: https://github.com/actions/runner/issues/491
     if: always() && !cancelled() && needs.changes.outputs.src != 'false'
 
+    timeout-minutes: 10
+
     strategy:
       fail-fast: false
       matrix:
@@ -107,7 +109,6 @@ jobs:
         env:
           NIM: ${{ matrix.compiler.name }}
 
-      # TODO - move tests into another job
       - name: Tests (native)
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
