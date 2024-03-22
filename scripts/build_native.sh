@@ -2,14 +2,12 @@
 
 set -e
 
-# The user settings exports some variables with paths to be configured per user.
+# The following variables are needed:
 #
-# - PATH_TO_EMSCRIPTEN
-# - PATH_TO_NIMBASE
-# - PATH_TO_NIM
+# - NIMBASE
+# - NIM
+# - CC
 #
-# At some point, move to a dockerized or otherwise reproducible build system.
-source "scripts/build_user_settings.sh"
 
 export PATH_TO_C_ASSETS="./nimcache/dist_native"
 export C_ENTRY_FILE="${PATH_TO_C_ASSETS}/@mdida.nim.c"
@@ -28,13 +26,13 @@ echo "============================================="
   rm -Rf ${PATH_TO_C_ASSETS}
 
   # Compile Nim to C
-  ${PATH_TO_NIM} \
+  ${NIM} \
   -c \
   --os:any \
   --cpu:wasm32 \
   --threads:off \
   --app:lib \
-  --cc:clang \
+  --cc:${CC} \
   --gc:arc \
   --noMain:on \
   --stackTrace:off \
@@ -48,7 +46,7 @@ echo "============================================="
   c src/dida.nim
 
   # Link nimbase.h
-  ln -sfw ${PATH_TO_NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
+  ln -sfw ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
 )
 
 echo "============================================="

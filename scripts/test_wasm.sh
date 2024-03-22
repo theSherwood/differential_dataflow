@@ -2,14 +2,12 @@
 
 set -e
 
-# The user settings exports some variables with paths to be configured per user.
+# The following variables are needed:
 #
-# - PATH_TO_EMSCRIPTEN
-# - PATH_TO_NIMBASE
-# - PATH_TO_NIM
+# - EMSCRIPTEN
+# - NIMBASE
+# - NIM
 #
-# At some point, move to a dockerized or otherwise reproducible build system.
-source "scripts/build_user_settings.sh"
 
 export PATH_TO_C_ASSETS="./nimcache/tests_wasm"
 export C_ENTRY_FILE="@mtest.nim.c"
@@ -29,13 +27,13 @@ echo "============================================="
   rm -Rf ${PATH_TO_C_ASSETS}
 
   # Compile Nim to C
-  ${PATH_TO_NIM} \
+  ${NIM} \
   -c \
   --os:linux \
   --cpu:wasm32 \
   --threads:off \
   --app:lib \
-  --cc:clang \
+  --cc:${CC} \
   --gc:arc \
   --noMain:on \
   --stackTrace:off \
@@ -50,7 +48,7 @@ echo "============================================="
   c tests/test.nim
 
   # Link nimbase.h
-  ln -sfw ${PATH_TO_NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
+  ln -sfw ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
 )
 
 echo "============================================="
@@ -70,7 +68,7 @@ done
   # -g \
 
   # Compile C to Wasm
-  ${PATH_TO_EMSCRIPTEN} \
+  ${EMSCRIPTEN} \
   ${OPTIMIZE} \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s IMPORTED_MEMORY=1 \
