@@ -118,11 +118,15 @@ jobs:
           NIM: nim
           CC: gcc
 
-      - name: Emscripten
+      - name: Setup Emscripten
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         uses: mymindstorm/setup-emsdk@v14
 
-      - name: Tests (wasi32)
+      - name: Setup Node
+        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+        uses: actions/setup-node@v4
+
+      - name: Compile to WASI32
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
@@ -136,3 +140,9 @@ jobs:
           EMSCRIPTEN: emcc
           NIM: nim
           CC: gcc
+
+      - name: Tests (wasi32)
+        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+        shell: bash
+        run: |
+          node --experimental-default-type=module src/run_wasm.js
