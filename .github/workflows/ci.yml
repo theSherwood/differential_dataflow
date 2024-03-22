@@ -111,22 +111,21 @@ jobs:
         if: matrix.target.name == 'native' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
-          find /opt/hostedtoolcache/nimskull -name nimbase.h
           cd project
           ./run.sh -t
         env:
           NIM: nim
           CC: gcc
 
-      # TODO - setup tests
-      # - name: Tests (wasi32)
-      #   if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
-      #   shell: bash
-      #   run: |
-      #     cd project
-      #     ./run.sh -tw
-      #     # TODO : find nimbase.h
-      #     echo "$(find $${{ steps.nimskull.outputs.path }} -name nimbase.h)"
-      #   env:
-      #     NIM: nim
-      #     CC: gcc
+      - name: Tests (wasi32)
+        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
+        shell: bash
+        run: |
+          cd project
+          # find nimbase
+          export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
+          echo "$NIMBASE"
+          ./run.sh -tw
+        env:
+          NIM: nim
+          CC: gcc
