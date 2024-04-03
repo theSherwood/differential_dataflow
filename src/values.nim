@@ -348,7 +348,7 @@ else:
   template type_bits(v: typed): uint64 =
     v.as_u64
 
-template is_float(v: typed): bool =
+template is_num(v: typed): bool =
   bitand(bitnot(v.type_bits), MASK_EXPONENT) != 0
 template is_nil(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_NIL
@@ -597,20 +597,24 @@ proc `$`*(k: ImValueKind): string =
     else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
-  return pprint(v)
-  # let kind = get_type(v)
-  # case kind:
-  #   of kNumber:           return $(v.as_f64)
-  #   of kNil:              return "Nil"
-  #   of kBool:
-  #     if v == True.as_v:  return "True"
-  #     if v == False.as_v: return "False"
-  #     # TODO - type error
-  #   of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
-  #   of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
-  #   of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
-  #   of kSet:              return "S[" & $(v.as_set.payload.data) & "]" 
-  #   else:                 discard
+  # return pprint(v)
+  let kind = get_type(v)
+  case kind:
+    of kNumber:           return $(v.as_f64)
+    of kNil:              return "Nil"
+    of kBool:
+      if v == True.as_v:  return "True"
+      if v == False.as_v: return "False"
+      # TODO - type error
+    of kString:           return $(v.as_str.payload.data)
+    of kMap:              return $(v.as_map.payload.data)
+    of kArray:            return $(v.as_arr.payload.data)
+    of kSet:              return $(v.as_set.payload.data) 
+    # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
+    # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
+    # of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
+    # of kSet:              return "S[" & $(v.as_set.payload.data) & "]" 
+    else:                 discard
 
 proc debug*(v: ImValue): string =
   let kind = get_type(v)
@@ -878,13 +882,13 @@ template get_impl(a: ImArray, i: int) =
   else:
     return data[i]
 template get_impl(a: ImArray, i: ImValue) =
-  if i.is_float:
+  if i.is_num:
     get_impl(a, i.as_f64.int)
   else:
     # TODO - raise exception
     discard
 template get_impl(a: ImArray, i: float64) =
-  if i.is_float:
+  if i.is_num:
     get_impl(a, i.as_f64.int)
   else:
     # TODO - raise exception
@@ -910,12 +914,12 @@ template set_impl*(a: ImArray, i: int, v: ImValue) =
   buildImArray(new_hash, new_data)
   return new_array
 template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
-  if i.is_float: set_impl(a, i.as_f64.int, v)
+  if i.is_num: set_impl(a, i.as_f64.int, v)
   else:
     # TODO - raise exception
     discard
 template set_impl*(a: ImArray, i: float64, v: ImValue) =
-  if i.is_float: set_impl(a, i.as_f64.int, v)
+  if i.is_num: set_impl(a, i.as_f64.int, v)
   else:
     # TODO - raise exception
     discard
@@ -1063,4 +1067,45 @@ proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
     else:               echo "TODO - add exceptions2"
   return payload
 
+##
+## nil < boolean < number < string < set < array < map
+## 
+## What about bignum and the rest of the gang?
+proc compare*(a: ImValue, b: ImValue): int =
+  let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
+  let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
 
+  # Nil
+  block:
+    if a_sig == MASK_SIG_NIL:
+      if b_sig == MASK_SIG_NIL: return 0
+      return -1
+    if b_sig == MASK_SIG_NIL: return 1
+  
+  # Bool
+  block:
+    if a_sig == MASK_SIG_BOOL:
+      if b_sig != MASK_SIG_BOOL: return -1
+      if a == False.v:
+        if b == False.v: return 0
+        return -1
+      if b == False.v: return 1
+      if b == True.v: return 0
+      return -1
+    if b_sig == MASK_SIG_BOOL: return 1
+  
+  # Number
+  block:
+    if a.is_num:
+      if b.is_num:
+        if a.as_f64 < b.as_f64: return -1
+        if a.as_f64 > b.as_f64: return 1
+        return 0
+      return -1
+    if b.is_num: return 1
+
+  # String
+  block:
+    if a_sig == MASK_SIG_STRING:
+      if b_sig == MASK_SIG_STRING:
+        if a.as_str.payload.data < b.as_str.payload.data: return -1
