@@ -1,5 +1,6 @@
-import std/[tables, sets, bitops, strutils]
+import std/[tables, sets, bitops, strutils, sequtils, sugar]
 import hashes
+import values
 
 when defined(isNimSkull):
   {.pragma: ex, exportc, dynlib.}
@@ -26,133 +27,68 @@ else:
   # {.pragma: ex, exportc, dynlib.}
 
 type
-  Value* = float64
+  Key* = ImValue
+  Value* = ImValue
+  Entry* = (Key, Value)
 
-  Row* = object
-    values*: seq[Value]
+  Row* = (Entry, int)
   
-  Bag* = object
-    rows*: Table[Row, int]
+  Collection* = object
+    rows*: seq[Row]
 
-  Timestamp* = object
-    coords*: seq[int]
-  
-  Frontier* = object
-    timestamps*: HashSet[Timestamp]
-  
-  SupportedFrontier* = object
-    support*: Table[Timestamp, int]
-    frontier*: Frontier
+  MapFn* = proc (e: Entry): Entry {.closure.}
+  FilterFn* = proc (e: Entry): bool {.closure.}
 
-  FrontierChange* = object
-    timestamp*: Timestamp
-    diff*: int
-  
-  Change* = object
-    row*: Row
-    timestamp*: Timestamp
-    diff*: int
+proc size*(c: Collection): int = return c.rows.len
 
-  ChangeBatch* = object
-    lower_bound*: Frontier
-    changes*: seq[Change]
+template entry*(r: Row): Entry = r[0]
+template key*(r: Row): Key = r[0][0]
+template value*(r: Row): Value = r[0][1]
+template multiplicity*(r: Row): int = r[1]
 
-  ChangeBatchBuilder* = object
-    changes*: seq[Change]
+template `[]`*(c: Collection, i: int): untyped = c.rows[i]
+template `[]=`*(c: Collection, i: int, r: Row) = c.rows[i] = r
+template add*(c: Collection, r: Row) = c.rows.add(r)
 
-  Index* = object
-    change_batches*: seq[ChangeBatch]
+iterator items*(c: Collection): Row =
+  for r in c.rows:
+    yield r
 
-  Mapper* = object
-    map_fn*: "TODO"
-  Reducer* = object
-    reducer_fn*: "TODO"
+proc map*(c: Collection, f: MapFn): Collection =
+  result.rows.setLen(c.size)
+  for i in 0..<c.size:
+    result[i] = (f(c[i].entry), c[i].multiplicity)
 
-  Node* = object
-    id*: Natural
-  NodeInput* = object
-    node*: Node
-    input_ix*: Natural
-  NodeSpecTag* = enum
-    tInput
-    tMap
-    tIndex
-    tJoin
-    tOutput
-    tTimestampPush
-    tTimestampIncrement
-    tTimestampPop
-    tUnion
-    tDistinct
-    tReduce
-  NodeSpec* = object
-    case tag*: NodeSpecTag:
-      of tMap:
-        input*: Node
-        mapper*: Mapper
-      of tJoin:
-        inputs*: (Node, Node)
-        key_columns*: Natural
-      of tUnion:
-        inputs*: (Node, Node)
-      of tReduce:
-        input*: Node
-        key_columns*: Natural
-        init_value*: Value
-        reducer*: Reducer
-      of tIndex, tOutput, tTimestampPush, tTimestampIncrement, tTimestampPop, tDistinct:
-        input*: Node
-      else:
-        discard
-  NodeState* = object
-    case tag*: NodeSpecTag:
-      of tInput:
-        frontier*: Frontier
-        unflushed_changes*: ChangeBatchBuilder
-      of tIndex:
-        index*: Index
-        pending_changes*: seq[Change]
-      of tJoin:
-        index_input_frontiers*: (Frontier, Frontier)
-      of tOutput:
-        unpopped_change_batches*: seq[ChangeBatch]
-      of tDistinct, tReduce:
-        index*: Index
-        pending_corrections*: Table[Row, HashSet[Timestamp]]
-      else:
-        discard
-      
-  Subgraph* = object
-    id*: Natural
+proc filter*(c: Collection, f: FilterFn): Collection =
+  for r in c:
+    if f(r.entry): result.add(r)
 
-  Graph* = object
-    node_specs*: seq[NodeSpec]
-    node_subgraphs*: seq[seq[Subgraph]]
-    subgraph_parents*: seq[Subgraph]
-    downstream_node_inputs*: seq[NodeInput]
+proc negate*(c: Collection): Collection =
+  result.rows.setLen(c.size)
+  for i in 0..<c.size:
+    result[i] = (c[i].entry, 0 - c[i].multiplicity)
 
-  GraphBuilder* = object
-    node_specs*: seq[NodeSpec]
-    node_subgraphs*: seq[Subgraph]
-    subgraph_parents*: seq[Subgraph]
-  
-  ChangeBatchAtNodeInput* = object
-    change_batch*: ChangeBatch
-    input_frontier*: Frontier
-    node_input*: NodeInput
+proc concat*(c1, c2: Collection): Collection =
+  for r in c1: result.add(r)
+  for r in c2: result.add(r)
 
-  Pointstamp* = object
-    node_input*: NodeInput
-    subgraphs*: seq[Subgraph]
-    timestamp*: Timestamp
+proc consolidate*(c: Collection): Collection =
+  var t = initTable[Entry, int]()
+  for (e, m) in c:
+    t[e] = m + t.getOrDefault(e, m)
+  for e, m in t.pairs:
+    if m != 0: result.add((e, m))
 
-  Shard* = object
-    graph*: Graph
-    node_states*: seq[NodeState]
-    node_frontiers*: seq[SupportedFrontier]
-    unprocessed_change_batches*: seq[ChangeBatchAtNodeInput]
-    unprocessed_frontier_updates*: Table[Pointstamp, int]
+proc join*(c1, c2: Collection): Collection =
+  let empty_seq = newSeq[Row]()
+  var t = initTable[Key, seq[Row]]()
+  for r in c1:
+    if t.hasKey(r.key):
+      t[r.key].add(r)
+    else:
+      t[r.key] = @[r]
+  for r in c2:
+    for r2 in t.getOrDefault(r.key, empty_seq):
+      result.add(((r.key, init_array([r.value, r2.value]).v), r.multiplicity * r2.multiplicity))
 
 
-
-    

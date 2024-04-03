@@ -157,13 +157,6 @@ const c32 = defined(cpu32)
 # Types #
 # ---------------------------------------------------------------------
 
-when c32:
-  type
-    ImHash = uint32
-else:
-  type
-    ImHash = Hash
-
 type
   ImValueKind* = enum
     # Immediate Kinds
@@ -192,16 +185,16 @@ else:
 
 type
   ImStringPayload* = object
-    hash: ImHash
+    hash: Hash
     data: string
   ImArrayPayload* = object
-    hash: ImHash
+    hash: Hash
     data: seq[ImValue]
   ImMapPayload* = object
-    hash: ImHash
+    hash: Hash
     data: Table[ImValue, ImValue]
   ImSetPayload* = object
-    hash: ImHash
+    hash: Hash
     data: HashSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
@@ -252,6 +245,7 @@ template as_u64*(v: typed): uint64 = cast[uint64](v)
 template as_i64*(v: typed): int64 = cast[int64](v)
 template as_u32*(v: typed): uint32 = cast[uint32](v)
 template as_i32*(v: typed): int32 = cast[int32](v)
+template as_hash*(v: typed): Hash = cast[Hash](v)
 template as_p*(v: typed): pointer = cast[pointer](v)
 template as_byte_array_8*(v: typed): array[8, byte] = cast[array[8, byte]](v)
 template as_v*(v: typed): ImValue = cast[ImValue](cast[uint64](v))
@@ -641,22 +635,22 @@ proc debug*(v: ImValue): string =
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
 when c32:
-  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u32, i2.as_u32))
+  template calc_hash(i1, i2: typed): Hash = bitxor(i1.as_u32, i2.as_u32).as_hash
 else:
-  template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u64, i2.as_u64))
+  template calc_hash(i1, i2: typed): Hash = bitxor(i1.as_u64, i2.as_u64).as_hash
 
-func hash*(v: ImValue): ImHash =
+func hash*(v: ImValue): Hash =
   if is_heap(v):
     # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
     let vh = cast[ImString](v)
-    result = cast[ImHash](vh.payload.hash)
+    result = vh.payload.hash.as_hash
   else:
     when c32:
       # We fold it and hash it for 32-bit stack values because a lot of them
       # don't have anything interesting happening in the top 32 bits.
-      result = cast[ImHash](calc_hash(v.head, v.tail))
+      result = calc_hash(v.head, v.tail).as_hash
     else:
-      result = cast[ImHash](v.as_u64)
+      result = v.as_u64.as_hash
 
 when c32:
   # full_hash is 32 bits
@@ -664,7 +658,7 @@ when c32:
   func update_head(previous_head: uint32, full_hash: uint32): uint32 =
     let short_hash = bitand(full_hash.uint32, MASK_SHORT_HASH)
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
-    return bitor(truncated_head, short_hash.uint32).uint32
+    return bitor(truncated_head, short_hash.uint32).as_u32
 
 # ImNumber Impl #
 # ---------------------------------------------------------------------
@@ -678,9 +672,9 @@ func init_number*(f: float64 = 0): ImNumber =
 
 template buildImString(new_hash, new_data: typed) {.dirty.} =
   when c32:
-    let h = new_hash.uint32
+    let h = new_hash
     var new_string = ImString(
-      head: update_head(MASK_SIG_STRING, h),
+      head: update_head(MASK_SIG_STRING, h.as_u32).as_u32,
       tail: ImStringPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -725,9 +719,9 @@ func size*(s: ImString): int =
 
 template buildImMap(new_hash, new_data: typed) {.dirty.} =
   when c32:
-    let h = new_hash.uint32
+    let h = new_hash
     var new_map = ImMap(
-      head: update_head(MASK_SIG_MAP, h),
+      head: update_head(MASK_SIG_MAP, h.as_u32),
       tail: ImMapPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -745,13 +739,13 @@ func init_map_empty(): ImMap =
   
 let empty_map = init_map_empty()
 
-template hash_entry(k, v: typed): ImHash = cast[ImHash](hash(k).as_u64 + hash(v).as_u64)
+template hash_entry(k, v: typed): Hash = (hash(k).as_u64 + hash(v).as_u64).as_hash
 
 proc init_map*(): ImMap = return empty_map
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   var new_data = toTable(init_data)
-  var new_hash = cast[ImHash](0)
+  var new_hash = 0.as_hash
   var deletions = newSeq[ImValue]()
   for (k, v) in new_data.pairs:
     if v.v == Nil.v: deletions.add(k.v)
@@ -833,9 +827,9 @@ proc `&`*(m1, m2: ImMap): ImMap =
 
 template buildImArray(new_hash, new_data: typed) {.dirty.} =
   when c32:
-    let h = new_hash.uint32
+    let h = new_hash
     var new_array = ImArray(
-      head: update_head(MASK_SIG_ARRAY, h),
+      head: update_head(MASK_SIG_ARRAY, h.as_u32),
       tail: ImArrayPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -856,7 +850,7 @@ let empty_array = init_array_empty()
 proc init_array*(): ImArray = return empty_array
 proc init_array*(init_data: openArray[ImValue]): ImArray =
   if init_data.len == 0: return empty_array
-  var new_hash = cast[ImHash](0)
+  var new_hash = 0.as_hash
   var new_data = newSeq[ImValue]()
   for v in init_data:
     new_hash = calc_hash(new_hash, v.hash)
@@ -865,7 +859,7 @@ proc init_array*(init_data: openArray[ImValue]): ImArray =
   return new_array
 proc init_array*(new_data: seq[ImValue]): ImArray =
   if new_data.len == 0: return empty_array
-  var new_hash = cast[ImHash](0)
+  var new_hash = 0.as_hash
   for v in new_data:
     new_hash = calc_hash(new_hash, v.hash)
   buildImArray(new_hash, new_data)
@@ -948,9 +942,9 @@ proc size*(a: ImArray): int =
 
 template buildImSet(new_hash, new_data: typed) {.dirty.} =
   when c32:
-    let h = new_hash.uint32
+    let h = new_hash
     var new_set = ImSet(
-      head: update_head(MASK_SIG_SET, h),
+      head: update_head(MASK_SIG_SET, h.as_u32),
       tail: ImSetPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -971,7 +965,7 @@ let empty_set = init_set_empty()
 proc init_set*(): ImSet = return empty_set
 proc init_set*(init_data: openArray[ImValue]): ImSet =
   if init_data.len == 0: return empty_set
-  var new_hash = cast[ImHash](0)
+  var new_hash = 0.as_hash
   var new_data = toHashSet(init_data)
   for v in new_data:
     new_hash = calc_hash(new_hash, v.hash)
