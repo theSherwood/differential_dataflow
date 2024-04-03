@@ -201,7 +201,6 @@ type
   ImMapPayloadRef*    = ref ImMapPayload
   ImSetPayloadRef*    = ref ImSetPayload
 
-  ImNumber* = distinct float64
   ImNaN*    = distinct uint64
   ImNil*    = distinct uint64
   ImBool*   = distinct uint64
@@ -233,7 +232,7 @@ else:
     ImSet*    = MaskedRef[ImSetPayload]
 
 type
-  ImSV* = ImNumber or ImNaN or ImNil or ImBool or ImAtom
+  ImSV* = ImNaN or ImNil or ImBool or ImAtom
   ImHV* = ImString or ImArray or ImMap or ImSet
   ImV* = ImSV or ImHV
 
@@ -315,13 +314,13 @@ const MASK_SIG_ARRAY   = MASK_EXP_OR_Q or MASK_TYPE_ARRAY
 const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
+const MASK_SIG_NEG_INF = 0b11111111111100000000000000000000'u64 shl 32
+const MASK_SIG_POS_INF = 0b01111111111100000000000000000000'u64 shl 32
+
 # Get Payload #
 # ---------------------------------------------------------------------
 
 when c32:
-  # template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
-  # template tail(v: typed): uint32 = v.as_u32
-
   template payload(v: ImString): ref ImStringPayload = v.tail
   template payload(v: ImMap): ref ImMapPayload       = v.tail
   template payload(v: ImArray): ref ImArrayPayload   = v.tail
@@ -365,7 +364,7 @@ template is_heap(v: typed): bool =
 
 proc get_type*(v: ImValue): ImValueKind =
   let type_carrier = v.type_bits
-  if bitand(bitnot(type_carrier), MASK_EXPONENT) != 0: return kNumber
+  if v.is_num: return kNumber
   let signature = bitand(type_carrier, MASK_SIGNATURE)
   case signature:
     of MASK_SIG_NIL:    return kNil
@@ -421,13 +420,17 @@ when not c32:
 when c32:
   proc u64_from_mask(mask: uint32): uint64 =
     return (mask.as_u64 shl 32).as_u64
-  let Nil* = cast[ImNil](u64_from_mask(MASK_SIG_NIL))
-  let True* = cast[ImBool](u64_from_mask(MASK_SIG_TRUE))
+  let Nil*   = cast[ImNil](u64_from_mask(MASK_SIG_NIL))
+  let True*  = cast[ImBool](u64_from_mask(MASK_SIG_TRUE))
   let False* = cast[ImBool](u64_from_mask(MASK_SIG_FALSE))
 else:
-  let Nil* = cast[ImNil]((MASK_SIG_NIL))
-  let True* = cast[ImBool]((MASK_SIG_TRUE))
+  let Nil*   = cast[ImNil]((MASK_SIG_NIL))
+  let True*  = cast[ImBool]((MASK_SIG_TRUE))
   let False* = cast[ImBool]((MASK_SIG_FALSE))
+
+let Infinity*    = MASK_SIG_POS_INF.as_f64
+let PosInfinity* = Infinity
+let NegInfinity* = MASK_SIG_NEG_INF.as_f64
 
 # Equality Testing #
 # ---------------------------------------------------------------------
@@ -483,8 +486,13 @@ func `==`*(v1, v2: ImV): bool =
 func `==`*(v: ImV, f: float64): bool = return v == f.as_v
 func `==`*(f: float64, v: ImV): bool = return v == f.as_v
 
-func `==`*(n1: ImNumber, n2: float64): bool = return n1.as_f64 == n2
-func `==`*(n1: float64, n2: ImNumber): bool = return n1 == n2.as_f64
+proc `<`*(a, b: ImValue): bool
+proc `<=`*(a, b: ImValue): bool
+
+template `<`*(a: float64, b: ImValue): bool = return a.v < b.v
+template `<`*(a: ImValue, b: float64): bool = return a.v < b.v
+template `<=`*(a: float64, b: ImValue): bool = return a.v <= b.v
+template `<=`*(a: ImValue, b: float64): bool = return a.v <= b.v
 
 # Debug String Conversion #
 # ---------------------------------------------------------------------
@@ -660,13 +668,6 @@ when c32:
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
     return bitor(truncated_head, short_hash.uint32).as_u32
 
-# ImNumber Impl #
-# ---------------------------------------------------------------------
-
-# TODO - eliminate this completely by just using floats?
-func init_number*(f: float64 = 0): ImNumber =
-  return (cast[ImNumber](f))
-
 # ImString Impl #
 # ---------------------------------------------------------------------
 
@@ -713,6 +714,9 @@ proc `&`*(s1, s2: ImString): ImString =
 
 func size*(s: ImString): int =
   return s.payload.data.len.int
+
+func `<`*(v1, v2: ImString): bool = return v1.payload.data < v2.payload.data
+func `<=`*(v1, v2: ImString): bool = return v1.payload.data < v2.payload.data or v1 == v2
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
@@ -937,6 +941,22 @@ proc `&`*(a1, a2: ImArray): ImArray =
 proc size*(a: ImArray): int =
   return a.payload.data.len.int
 
+proc `<`*(v1, v2: ImArray): bool =
+  let l = min(v1.size, v2.size)
+  for i in 0..<l:
+    if v1[i] < v2[i]: return true
+    if v1[i] > v2[i]: return false
+  if v1.size < v2.size: return true
+  return false
+proc `<=`*(v1, v2: ImArray): bool =
+  let l = min(v1.size, v2.size)
+  for i in 0..<l:
+    if v1[i] < v2[i]: return true
+    if v1[i] > v2[i]: return false
+  if v1.size < v2.size: return true
+  if v1.size > v2.size: return false
+  return true
+
 # ImSet Impl #
 # ---------------------------------------------------------------------
 
@@ -1061,11 +1081,34 @@ proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
     else:               echo "TODO - add exceptions2"
   return payload
 
+proc `<`*(a, b: ImValue): bool =
+  if a.is_num:
+    if b.is_num: return a.as_f64 < b.as_f64
+  let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
+  let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
+  case a_sig:
+    of MASK_SIG_STRING:
+      if b_sig == MASK_SIG_STRING: return a.as_str < b.as_str
+    of MASK_SIG_ARRAY:
+      if b_sig == MASK_SIG_ARRAY: return a.as_arr < b.as_arr
+    else: echo "EXCEPTION in comparison: ", a, b
+proc `<=`*(a, b: ImValue): bool =
+  if a.is_num:
+    if b.is_num: return a.as_f64 <= b.as_f64
+  let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
+  let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
+  case a_sig:
+    of MASK_SIG_STRING:
+      if b_sig == MASK_SIG_STRING: return a.as_str <= b.as_str
+    of MASK_SIG_ARRAY:
+      if b_sig == MASK_SIG_ARRAY: return a.as_arr <= b.as_arr
+    else: echo "EXCEPTION in comparison: ", a, b
+
 ##
 ## nil < boolean < number < string < set < array < map
 ## 
 ## What about bignum and the rest of the gang?
-proc compare*(a: ImValue, b: ImValue): int =
+proc compare*(a, b: ImValue): int =
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
 
@@ -1103,3 +1146,9 @@ proc compare*(a: ImValue, b: ImValue): int =
     if a_sig == MASK_SIG_STRING:
       if b_sig == MASK_SIG_STRING:
         if a.as_str.payload.data < b.as_str.payload.data: return -1
+        if a.as_str.payload.data > b.as_str.payload.data: return 1
+        return 0
+      return -1
+    if b_sig == MASK_SIG_STRING: return 1
+    
+        

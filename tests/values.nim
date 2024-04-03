@@ -4,17 +4,19 @@ proc main* =
   suite "number":
     test "simple":
       var
-        n1 = init_number()
-        n2 = init_number()
+        n1 = 0.0
+        n2 = 0.0
       check n1 == n2
-      check n1 == 0.float64
-      check 0.float64 == n2
+      check n1.v == n2.v
+      check n1 == 0.0
+      check 0.0 == n2
       var
-        n3 = init_number(3.45)
-        n4 = init_number(-99.156)
+        n3 = 3.45
+        n4 = -99.156
       check n3 != n4
-      check n3 == 3.45
-      check -99.156 == n4
+      check n3.v != n4.v
+      check n3.v == 3.45
+      check -99.156 == n4.v
 
   suite "string":
     test "simple":

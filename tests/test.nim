@@ -3,7 +3,7 @@ from values import nil
 from dida_from_python import nil
 
 # Run tests
-# values.main()
+values.main()
 dida_from_python.main()
 
 when defined(wasm):
