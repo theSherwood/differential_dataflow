@@ -152,12 +152,12 @@ import hashes
 ## 1111111111111101XXXXXXXXXXXXXXXX | XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  map
 ##
 
-const cpu_32 = defined(cpu32)
+const c32 = defined(cpu32)
 
 # Types #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   type
     ImHash = uint32
 else:
@@ -179,7 +179,7 @@ type
     kMap
     kSet
 
-when cpu_32:
+when c32:
   type ImValue* = object
     tail: uint32
     head: uint32
@@ -214,7 +214,7 @@ type
   ImBool*   = distinct uint64
   ImAtom*   = distinct uint64
 
-when cpu_32:
+when c32:
   type
     ImString* = object
       tail*: ImStringPayloadRef
@@ -264,7 +264,7 @@ template as_set*(v: typed): ImSet = cast[ImSet](cast[uint64](v))
 # Masks #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   const MASK_SIGN        = 0b10000000000000000000000000000000'u32
   const MASK_EXPONENT    = 0b01111111111100000000000000000000'u32
   const MASK_QUIET       = 0b00000000000010000000000000000000'u32
@@ -324,7 +324,7 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 # Get Payload #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   # template head(v: typed): uint32 = (v.as_u64 shr 32).as_u32
   # template tail(v: typed): uint32 = v.as_u32
 
@@ -341,7 +341,7 @@ else:
 # Type Detection #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   template type_bits(v: typed): uint32 =
     v.as_v.head
 else:
@@ -387,7 +387,7 @@ proc get_type*(v: ImValue): ImValueKind =
 # GC Hooks #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   proc `=destroy`(x: var ImValue) =
     if x.is_map:
       GC_unref(cast[ImMapPayloadRef](x.tail))
@@ -411,7 +411,7 @@ when cpu_32:
     x.head = y.head
     x.tail = y.tail
 
-when not cpu_32:
+when not c32:
   template to_clean_ptr(v: typed): pointer =
     cast[pointer](bitand((v).as_u64, MASK_POINTER))
 
@@ -424,7 +424,7 @@ when not cpu_32:
 # Globals #
 # ---------------------------------------------------------------------
 
-when cpu_32:
+when c32:
   proc u64_from_mask(mask: uint32): uint64 =
     return (mask.as_u64 shl 32).as_u64
   let Nil* = cast[ImNil](u64_from_mask(MASK_SIG_NIL))
@@ -439,7 +439,7 @@ else:
 # ---------------------------------------------------------------------
 
 template initial_eq_heap_value(v1, v2: typed): bool =
-  when cpu_32:
+  when c32:
     v1.head == v2.head
   else:
     bitand(v1.as_u64, MASK_SIGNATURE) == bitand(v2.as_u64, MASK_SIGNATURE)
@@ -453,7 +453,7 @@ template eq_heap_value_specific(v1, v2: typed) =
     eq_heap_payload(v1.payload, v2.payload)
 template eq_heap_value_generic*(v1, v2: typed) =
   if initial_eq_heap_value(v1, v2):
-    when cpu_32:
+    when c32:
       let signature = bitand(v1.head, MASK_SIGNATURE)
     else:
       let signature = bitand(v1.as_u64, MASK_SIGNATURE)
@@ -618,7 +618,7 @@ proc `$`*(v: ImValue): string =
 
 proc debug*(v: ImValue): string =
   let kind = get_type(v)
-  when cpu_32:
+  when c32:
     let shallow_str = "( head: " & to_hex(v.head) & ", tail: " & to_hex(v.tail) & " )"
   else:
     let shallow_str = "( " & to_hex(v.as_u64) & " )"
@@ -640,7 +640,7 @@ proc debug*(v: ImValue): string =
 
 # XOR is commutative, associative, and is its own inverse.
 # So we can use this same function to unhash as well.
-when cpu_32:
+when c32:
   template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u32, i2.as_u32))
 else:
   template calc_hash(i1, i2: typed): ImHash = cast[ImHash](bitxor(i1.as_u64, i2.as_u64))
@@ -651,14 +651,14 @@ func hash*(v: ImValue): ImHash =
     let vh = cast[ImString](v)
     result = cast[ImHash](vh.payload.hash)
   else:
-    when cpu_32:
+    when c32:
       # We fold it and hash it for 32-bit stack values because a lot of them
       # don't have anything interesting happening in the top 32 bits.
       result = cast[ImHash](calc_hash(v.head, v.tail))
     else:
       result = cast[ImHash](v.as_u64)
 
-when cpu_32:
+when c32:
   # full_hash is 32 bits
   # short_hash is something like 15 bits (top 17 are zeroed)
   func update_head(previous_head: uint32, full_hash: uint32): uint32 =
@@ -677,7 +677,7 @@ func init_number*(f: float64 = 0): ImNumber =
 # ---------------------------------------------------------------------
 
 template buildImString(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
+  when c32:
     let h = new_hash.uint32
     var new_string = ImString(
       head: update_head(MASK_SIG_STRING, h),
@@ -724,7 +724,7 @@ func size*(s: ImString): int =
 # ---------------------------------------------------------------------
 
 template buildImMap(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
+  when c32:
     let h = new_hash.uint32
     var new_map = ImMap(
       head: update_head(MASK_SIG_MAP, h),
@@ -832,7 +832,7 @@ proc `&`*(m1, m2: ImMap): ImMap =
 # ---------------------------------------------------------------------
 
 template buildImArray(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
+  when c32:
     let h = new_hash.uint32
     var new_array = ImArray(
       head: update_head(MASK_SIG_ARRAY, h),
@@ -947,7 +947,7 @@ proc size*(a: ImArray): int =
 # ---------------------------------------------------------------------
 
 template buildImSet(new_hash, new_data: typed) {.dirty.} =
-  when cpu_32:
+  when c32:
     let h = new_hash.uint32
     var new_set = ImSet(
       head: update_head(MASK_SIG_SET, h),
