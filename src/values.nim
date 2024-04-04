@@ -4,7 +4,7 @@
 ## -[ ] add a converter from int to ImValue
 ## -[ ] add an ability to push onto the end of an array
 
-import std/[tables, sets, bitops, strutils, strbasics]
+import std/[tables, sets, bitops, strutils, strbasics, strformat]
 import hashes
 
 ## # Immutable Value Types
@@ -158,6 +158,8 @@ const c32 = defined(cpu32)
 # ---------------------------------------------------------------------
 
 type
+  TypeException* = object of CatchableError
+
   ImValueKind* = enum
     # Immediate Kinds
     kNaN
@@ -314,9 +316,6 @@ const MASK_SIG_ARRAY   = MASK_EXP_OR_Q or MASK_TYPE_ARRAY
 const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
-const MASK_SIG_NEG_INF = 0b11111111111100000000000000000000'u64 shl 32
-const MASK_SIG_POS_INF = 0b01111111111100000000000000000000'u64 shl 32
-
 # Get Payload #
 # ---------------------------------------------------------------------
 
@@ -335,31 +334,31 @@ else:
 # ---------------------------------------------------------------------
 
 when c32:
-  template type_bits(v: typed): uint32 =
+  template type_bits*(v: typed): uint32 =
     v.as_v.head
 else:
-  template type_bits(v: typed): uint64 =
+  template type_bits*(v: typed): uint64 =
     v.as_u64
 
-template is_num(v: typed): bool =
+template is_num*(v: typed): bool =
   bitand(bitnot(v.type_bits), MASK_EXPONENT) != 0
-template is_nil(v: typed): bool =
+template is_nil*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_NIL
-template is_bool(v: typed): bool =
+template is_bool*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_BOOL
-template is_atom(v: typed): bool =
+template is_atom*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_ATOM
-template is_string(v: typed): bool =
+template is_string*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_STRING
-template is_bignum(v: typed): bool =
+template is_bignum*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_BIGNUM
-template is_array(v: typed): bool =
+template is_array*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_ARRAY
-template is_set(v: typed): bool =
+template is_set*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_SET
-template is_map(v: typed): bool =
+template is_map*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_MAP
-template is_heap(v: typed): bool =
+template is_heap*(v: typed): bool =
   bitand(bitor(v.type_bits, MASK_EXP_OR_Q), MASK_HEAP) == MASK_HEAP
 
 proc get_type*(v: ImValue): ImValueKind =
@@ -428,9 +427,13 @@ else:
   let True*  = cast[ImBool]((MASK_SIG_TRUE))
   let False* = cast[ImBool]((MASK_SIG_FALSE))
 
-let Infinity*    = MASK_SIG_POS_INF.as_f64
-let PosInfinity* = Infinity
-let NegInfinity* = MASK_SIG_NEG_INF.as_f64
+let Infinity*       = Inf
+let PosInfinity*    = Inf
+let NegInfinity*    = NegInf
+let MaxNumber*      = (0x7fefffffffffffff'u64).as_f64
+let MinNumber*      = (0xffefffffffffffff'u64).as_f64
+let MinSafeInteger* = -9007199254740991.0'f64
+let MaxSafeInteger* = 9007199254740991.0'f64
 
 # Equality Testing #
 # ---------------------------------------------------------------------
@@ -637,6 +640,8 @@ proc debug*(v: ImValue): string =
     of kSet:              return "Set" & shallow_str
     else:                 discard
 
+template type_label*(v: ImValue): string = $(v.get_type)
+
 # Hash Handling #
 # ---------------------------------------------------------------------
 
@@ -716,7 +721,7 @@ func size*(s: ImString): int =
   return s.payload.data.len.int
 
 func `<`*(v1, v2: ImString): bool = return v1.payload.data < v2.payload.data
-func `<=`*(v1, v2: ImString): bool = return v1.payload.data < v2.payload.data or v1 == v2
+func `<=`*(v1, v2: ImString): bool = return v1.payload.data <= v2.payload.data
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
@@ -1082,8 +1087,7 @@ proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
   return payload
 
 proc `<`*(a, b: ImValue): bool =
-  if a.is_num:
-    if b.is_num: return a.as_f64 < b.as_f64
+  if a.is_num and b.is_num: return a.as_f64 < b.as_f64
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
   case a_sig:
@@ -1091,10 +1095,11 @@ proc `<`*(a, b: ImValue): bool =
       if b_sig == MASK_SIG_STRING: return a.as_str < b.as_str
     of MASK_SIG_ARRAY:
       if b_sig == MASK_SIG_ARRAY: return a.as_arr < b.as_arr
-    else: echo "EXCEPTION in comparison: ", a, b
+    else: discard
+  raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
+  
 proc `<=`*(a, b: ImValue): bool =
-  if a.is_num:
-    if b.is_num: return a.as_f64 <= b.as_f64
+  if a.is_num and b.is_num: return a.as_f64 < b.as_f64
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
   case a_sig:
@@ -1102,7 +1107,8 @@ proc `<=`*(a, b: ImValue): bool =
       if b_sig == MASK_SIG_STRING: return a.as_str <= b.as_str
     of MASK_SIG_ARRAY:
       if b_sig == MASK_SIG_ARRAY: return a.as_arr <= b.as_arr
-    else: echo "EXCEPTION in comparison: ", a, b
+    else: discard
+  raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
 
 ##
 ## nil < boolean < number < string < set < array < map
