@@ -105,6 +105,18 @@ proc main* =
         ((STR"apple", STR"$5"), 1),
         ((STR"banana", STR"$2"), 1),
       ])
+    
+    test "negate":
+      var a = MSET([
+        ((STR"foo", Nil.v), 3),
+        ((STR"foo", Nil.v), 1),
+        ((STR"bar", Nil.v), 2),
+      ])
+      check a.negate == MSET([
+        ((STR"foo", Nil.v), -3),
+        ((STR"foo", Nil.v), -1),
+        ((STR"bar", Nil.v), -2),
+      ])
 
     test "consolidate":
       var a = MSET([
@@ -122,6 +134,7 @@ proc main* =
         ((STR"foo", Nil.v), 14),
         ((STR"bar", Nil.v), -41),
       ])
+      check a.concat(a.negate).consolidate == MSET([])
 
     test "iterate":
       var a = MSET([((1.0.v, Nil.v), 1)])
