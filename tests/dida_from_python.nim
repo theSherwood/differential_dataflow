@@ -20,6 +20,7 @@ proc main* =
         c = MSET([((0.0.v, 1.0.v), 1)])
       check a == b
       check a != c
+
     test "various":
       var
         a = MSET([
@@ -42,7 +43,6 @@ proc main* =
           ((STR"banana", 2.0.v), 3),
           ((STR"coconut", 3.0.v), 1),
         ])
-        e = MSET([((1.0.v, Nil.v), 1)])
         # some results
         a_concat_b_result = MSET([
           ((STR"apple", STR"$5"), 2),
@@ -105,3 +105,36 @@ proc main* =
         ((STR"apple", STR"$5"), 1),
         ((STR"banana", STR"$2"), 1),
       ])
+
+    test "consolidate":
+      var a = MSET([
+        ((STR"foo", Nil.v), 1),
+        ((STR"foo", Nil.v), 3),
+        ((STR"bar", Nil.v), 3),
+        ((STR"foo", Nil.v), 9),
+        ((STR"bar", Nil.v), 3),
+        ((STR"was", Nil.v), 3),
+        ((STR"foo", Nil.v), 1),
+        ((STR"bar", Nil.v), -47),
+        ((STR"was", Nil.v), -3),
+      ])
+      check a.consolidate == MSET([
+        ((STR"foo", Nil.v), 14),
+        ((STR"bar", Nil.v), -41),
+      ])
+
+    test "iterate":
+      var a = MSET([((1.0.v, Nil.v), 1)])
+      proc add_one(c: Multiset): Multiset =
+        return c.map(proc (e: Entry): Entry = ((e.key.as_f64 + 1.0).v, e.value))
+          .concat(c)
+          .filter(proc (e: Entry): bool = e.key < 5.0.v)
+          .distinct
+          .consolidate
+      check a.iterate(add_one) == MSET([
+        ((1.0.v, Nil.v), 1),
+        ((2.0.v, Nil.v), 1),
+        ((3.0.v, Nil.v), 1),
+        ((4.0.v, Nil.v), 1),
+      ])
+      

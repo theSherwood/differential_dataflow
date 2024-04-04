@@ -34,6 +34,19 @@ iterator items*(c: Multiset): Row =
   for r in c.rows:
     yield r
 
+## This is quite an expensive operation. It would be good to find a faster way
+## to compute this.
+## Using an xor-based hash for entries could help a lot.
+proc `==`*(c1, c2: Multiset): bool =
+  var
+    t1 = initTable[Entry, int]()
+    t2 = initTable[Entry, int]()
+  for (e, m) in c1:
+    t1[e] = m + t1.getOrDefault(e, 0)
+  for (e, m) in c2:
+    t2[e] = m + t2.getOrDefault(e, 0)
+  return t1 == t2
+
 proc map*(c: Multiset, f: MapFn): Multiset =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
@@ -55,9 +68,13 @@ proc concat*(c1, c2: Multiset): Multiset =
 proc consolidate*(c: Multiset): Multiset =
   var t = initTable[Entry, int]()
   for (e, m) in c:
-    t[e] = m + t.getOrDefault(e, m)
+    t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
+
+proc print*(c: Multiset, label: string): Multiset =
+  echo label, ": ", c
+  return c
 
 proc to_row_table_by_key(t: var Table[Key, seq[Row]], c: Multiset) =
   for r in c:
@@ -174,19 +191,6 @@ proc iterate*(c: Multiset, f: IterateFn): Multiset =
     result = f(curr)
     if curr == result: break
     curr = result
-
-## This is quite an expensive operation. It would be good to find a faster way
-## to compute this.
-## Using an xor-based hash for entries could help a lot.
-proc `==`*(c1, c2: Multiset): bool =
-  var
-    t1 = initTable[Entry, int]()
-    t2 = initTable[Entry, int]()
-  for (e, m) in c1:
-    t1[e] = m + t1.getOrDefault(e, m)
-  for (e, m) in c2:
-    t2[e] = m + t2.getOrDefault(e, m)
-  return t1 == t2
 
 proc init_multiset*(rows: openArray[Row]): Multiset =
   for r in rows:
