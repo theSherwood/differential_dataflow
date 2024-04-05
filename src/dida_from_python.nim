@@ -2,7 +2,7 @@ import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm]
 import hashes
 import values
 
-# Collection #
+# Collections #
 # ---------------------------------------------------------------------
 
 type
@@ -199,7 +199,7 @@ proc init_collection*(rows: openArray[Row]): Collection =
   for r in rows:
     result.add(r)
 
-# Version and Frontier #
+# Versions and Frontiers #
 # ---------------------------------------------------------------------
 
 type
@@ -215,8 +215,8 @@ proc to_version(timestamps: seq[int]): Version =
   result.timestamps = timestamps
   result.hash = hash(timestamps)
 
-template init_version*(timestamps: openArray[int]): Version =
-  to_version(toSeq[timestamps])
+template init_version*(): Version = to_version(@[0])
+template init_version*(timestamps: openArray[int]): Version = to_version(toSeq[timestamps])
 
 template `==`*(v1, v2: Version): bool = v1.hash == v2.hash and v1.timestamps == v2.timestamps
 template size*(v: Version): int = v.timestamps.len
@@ -355,9 +355,187 @@ proc step*(f: Frontier, delta: int): Frontier =
   new_f.update_hash
   return new_f
 
+# Nodes #
+# ---------------------------------------------------------------------
 
+type
+  Mapper* = object
+    map_fn*: proc (): void
+  Filterer* = object
+    filter_fn*: proc (): void
+  Reducer* = object
+    reducer_fn*: proc (): void
 
+  MessageTag* = enum
+    tData
+    tFrontier
+  
+  Message* = object
+    case tag*: MessageTag:
+      of tData:
+        version*: Version
+        collection*: Collection
+      of tFrontier:
+        frontier*: Frontier
 
+  Edge* = ref object
+    id*: Hash
+    input*: Node
+    output*: Node
+    queue*: seq[int]
+  
+  NodeTag* = enum
+    tPassThrough
+    tIterate
+    tInput
+    tOutput
+    tIndex
+    tJoin
+    tConcat
+    tMap
+    tFilter
+    tReduce
+    tDistinct
+    tCount
+    tMin
+    tMax
+    tSum
+    tPrint
+    tNegate
+    tConsolidate
+    tVersionPush
+    tVersionIncrement
+    tVersionPop
 
+  Node* = ref object
+    id*: int
+    inputs*: seq[Edge]
+    outputs*: seq[Edge]
+    frontier*: Frontier
+    case tag*: NodeTag:
+      of tPrint:
+        label*: string
+      of tMap:
+        mapper*: Mapper
+      of tFilter:
+        filterer*: Filterer
+      of tReduce:
+        init_value*: Value
+        reducer*: Reducer
+      else:
+        discard
+  
+  Graph* = ref object
+    top_node*: Node
+    nodes*: HashSet[Node]
+    edges*: HashSet[Edge]
+  
+  Builder* = object
+    frontier*: Frontier
+    graph*: Graph
+    node*: Node
+
+template hash(e: Edge): Hash = e.id
+template hash(n: Node): Hash = n.id
+
+var edge_id: int = 0
+var node_id: int = 0
+
+proc connect*(g: Graph, n1, n2: Node) =
+  var n = n1
+  if n == nil:
+    n = g.top_node
+  else:
+    doAssert n in g.nodes
+  var e = Edge()
+  e.id = edge_id
+  edge_id += 1
+  e.input = n
+  e.output = n2
+  e.queue = @[]
+  n.outputs.add(e)
+  n2.inputs.add(e)
+  g.edges.incl(e)
+  g.nodes.incl(n2)
+
+proc disconnect*(g: Graph, n: Node) =
+  var i: int
+  for e in n.inputs:
+    i = e.input.outputs.find(e)
+    e.input.outputs.del(i)
+    g.edges.excl(e)
+  for e in n.outputs:
+    disconnect(g, e.output)
+  g.nodes.excl(n)
+
+proc init_node(t: NodeTag, f: Frontier): Node =
+  var n = Node(
+    tag: t,
+    id: node_id,
+    frontier: f,
+    inputs: @[],
+    outputs: @[],
+  )
+  node_id += 1
+  return n
+
+proc init_graph*(n: Node): Graph =
+  return Graph(
+    top_node: n,
+    nodes: initHashSet[Node](),
+    edges: initHashSet[Edge](),
+  )
+
+proc init_builder*(g: Graph, f: Frontier): Builder =
+  var b = Builder()
+  b.graph = g
+  b.frontier = f
+  b.node = nil
+  return b
+template init_builder*(f: Frontier): Builder =
+  init_builder(init_graph(init_node(tPassThrough, f)), f)
+template init_builder*(g: Graph): Builder =
+  init_builder(g, init_frontier([init_version()]))
+template init_builder*(): Builder =
+  let f = init_frontier([init_version()])
+  init_builder(init_graph(init_node(tPassThrough, f)), f)
+
+template build_unary(b: Builder, t: NodeTag) {.dirty.} =
+  var n = init_node(t, b.frontier)
+  connect(b.graph, b.node, n)
+  result.graph = b.graph
+  result.node = n
+
+template build_binary(b: Builder, t: NodeTag, other: Node) {.dirty.} =
+  var n = init_node(t, b.frontier)
+  doAssert b.node != nil
+  connect(b.graph, b.node, n)
+  connect(b.graph, other, n)
+  result.graph = b.graph
+  result.node = n
+
+proc print*(b: Builder, label: string): Builder =
+  build_unary(b, tPrint)
+  n.label = label
+
+proc negate*(b: Builder): Builder =
+  build_unary(b, tNegate)
+  result.node = n
+
+proc concat*(b: Builder, other: Node): Builder =
+  build_binary(b, tConcat, other)
+template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
+
+# proc send_data*(e: Edge, v: Version, c: Collection) =
+#   discard
+
+proc step*(n: Node) =
+  case n.tag:
+    of tPassThrough:
+      discard
+    of tPrint:
+      discard
+    else:
+      discard
 
 

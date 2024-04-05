@@ -193,5 +193,18 @@ proc main* =
       check FTR([v0_0]) != (FTR([v1_0]))
       check FTR([v2_0, v1_1]) == (FTR([v1_1, v2_0]))
 
+  suite "dida":
+    test "simple":
+      check 1 == 1
+      var
+        b = init_builder()
+          .print("initial")
+          .negate()
+          .print("post negate")
+        n = b.node
+        g = b.graph
+      
+        
+
   
 
