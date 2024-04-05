@@ -1,7 +1,5 @@
 import ../src/[test_utils, dida_from_python, values]
 
-template COL*(rows: openArray[Row]): Collection = init_collection(rows)
-
 template STR*(): ImValue = init_string().v
 template STR*(s: string): ImValue = init_string(s).v
 template ARR*(): ImValue = init_array().v
@@ -10,6 +8,9 @@ template SET*(): ImValue = init_set().v
 template SET*(vs: openArray[ImValue]): ImValue = init_set(vs).v
 template MAP*(): ImValue = init_map().v
 template MAP*(vs: openArray[(ImValue, ImValue)]): ImValue = init_map(vs).v
+
+template COL*(rows: openArray[Row]): Collection = init_collection(rows)
+template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
 
 proc main* =
   suite "collection":
@@ -150,4 +151,29 @@ proc main* =
         ((3.0.v, Nil.v), 1),
         ((4.0.v, Nil.v), 1),
       ])
-      
+
+  suite "versions":
+    test "simple":
+      var
+        v0_0 = [0, 0].VER
+        v1_0 = [1, 0].VER
+        v0_1 = [0, 1].VER
+        v1_1 = [1, 1].VER
+        v2_0 = [2, 0].VER
+
+      check v0_0 < v1_0
+      check v0_0 < v0_1
+      check v0_0 < v1_1
+      check v0_0 <= v1_0
+      check v0_0 <= v0_1
+      check v0_0 <= v1_1
+
+      check not(v1_0 < v1_0)
+      check v1_0 <= v1_0
+      check not(v1_0 <= v0_1)
+      check not(v0_1 <= v1_0)
+      check v0_1 <= v1_1
+      check v1_0 <= v1_1
+      check v0_0 <= v1_1
+  
+

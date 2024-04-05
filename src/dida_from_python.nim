@@ -199,6 +199,62 @@ proc init_collection*(rows: openArray[Row]): Collection =
   for r in rows:
     result.add(r)
 
-# Difference Collection #
+# Version #
 # ---------------------------------------------------------------------
 
+type
+  Version* = object
+    timestamps*: seq[int]
+
+  Frontier* = object
+    versions*: seq[Version]
+
+proc init_version*(timestamps: openArray[int]): Version =
+  result.timestamps = toSeq(timestamps)
+
+proc init_frontier*(versions: openArray[Version]): Frontier =
+  result.versions = toSeq(versions)
+
+template `==`*(v1, v2: Version): bool = v1.timestamps == v2.timestamps
+template size*(v: Version): int = v.timestamps.len
+template `[]`*(v: Version, i: int): int = v.timestamps[i]
+template add(v: Version, i: int) =
+  v.timestamps.add(i)
+
+proc validate(v: Version) =
+  doAssert v.size > 0
+proc validate(v1, v2: Version) =
+  doAssert v1.size > 0
+  doAssert v1.size == v2.size
+
+proc `<=`*(v1, v2: Version): bool =
+  validate(v1, v2)
+  for i in 0..<v1.size:
+    if v1[i] > v2[i]: return false
+  return true
+proc `<`*(v1, v2: Version): bool =
+  return v1 <= v2 and v1 != v2
+
+proc join*(v1, v2: Version): Version =
+  validate(v1, v2)
+  for i in 0..<v1.size:
+    result.add(max(v1[i], v2[i]))
+
+proc meet*(v1, v2: Version): Version =
+  validate(v1, v2)
+  for i in 0..<v1.size:
+    result.add(min(v1[i], v2[i]))
+
+proc extend*(v: Version): Version =
+  result.timestamps = toSeq(v.timestamps)
+  result.add(0)
+
+proc truncate*(v: Version): Version =
+  result.timestamps = toSeq(v.timestamps[0..^1])
+
+proc step*(v: Version, i: int): Version =
+  doAssert i > 0
+  result.timestamps = toSeq(v.timestamps)
+  result.timestamps[^1] += 1
+
+    
