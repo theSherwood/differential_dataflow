@@ -1,4 +1,4 @@
-import std/[tables, sets, bitops, strutils, sequtils, sugar]
+import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm]
 import hashes
 import values
 
@@ -199,27 +199,28 @@ proc init_collection*(rows: openArray[Row]): Collection =
   for r in rows:
     result.add(r)
 
-# Version #
+# Version and Frontier #
 # ---------------------------------------------------------------------
 
 type
   Version* = object
+    hash*: Hash
     timestamps*: seq[int]
 
-  Frontier* = object
+  Frontier* = ref object
+    hash*: Hash
     versions*: seq[Version]
 
-proc init_version*(timestamps: openArray[int]): Version =
-  result.timestamps = toSeq(timestamps)
+proc to_version(timestamps: seq[int]): Version =
+  result.timestamps = timestamps
+  result.hash = hash(timestamps)
 
-proc init_frontier*(versions: openArray[Version]): Frontier =
-  result.versions = toSeq(versions)
+template init_version*(timestamps: openArray[int]): Version =
+  to_version(toSeq[timestamps])
 
-template `==`*(v1, v2: Version): bool = v1.timestamps == v2.timestamps
+template `==`*(v1, v2: Version): bool = v1.hash == v2.hash and v1.timestamps == v2.timestamps
 template size*(v: Version): int = v.timestamps.len
 template `[]`*(v: Version, i: int): int = v.timestamps[i]
-template add(v: Version, i: int) =
-  v.timestamps.add(i)
 
 proc validate(v: Version) =
   doAssert v.size > 0
@@ -227,34 +228,136 @@ proc validate(v1, v2: Version) =
   doAssert v1.size > 0
   doAssert v1.size == v2.size
 
-proc `<=`*(v1, v2: Version): bool =
+proc le*(v1, v2: Version): bool =
   validate(v1, v2)
   for i in 0..<v1.size:
     if v1[i] > v2[i]: return false
   return true
-proc `<`*(v1, v2: Version): bool =
-  return v1 <= v2 and v1 != v2
+template lt*(v1, v2: Version): bool = v1.le(v2) and v1 != v2
 
 proc join*(v1, v2: Version): Version =
   validate(v1, v2)
+  var timestamps: seq[int] = @[]
   for i in 0..<v1.size:
-    result.add(max(v1[i], v2[i]))
+    timestamps.add(max(v1[i], v2[i]))
+  return to_version(timestamps)
 
 proc meet*(v1, v2: Version): Version =
   validate(v1, v2)
+  var timestamps: seq[int] = @[]
   for i in 0..<v1.size:
-    result.add(min(v1[i], v2[i]))
+    timestamps.add(min(v1[i], v2[i]))
+  return to_version(timestamps)
 
 proc extend*(v: Version): Version =
-  result.timestamps = toSeq(v.timestamps)
-  result.add(0)
+  var timestamps = toSeq(v.timestamps)
+  timestamps.add(0)
+  return to_version(timestamps)
 
 proc truncate*(v: Version): Version =
-  result.timestamps = toSeq(v.timestamps[0..^1])
+  var timestamps = toSeq(v.timestamps[0..^1])
+  return to_version(timestamps)
 
-proc step*(v: Version, i: int): Version =
-  doAssert i > 0
-  result.timestamps = toSeq(v.timestamps)
-  result.timestamps[^1] += 1
+proc step*(v: Version, delta: int): Version =
+  doAssert delta > 0
+  var timestamps = toSeq(v.timestamps)
+  timestamps[^1] += 1
+  return to_version(timestamps)
 
-    
+iterator items*(f: Frontier): Version =
+  for v in f.versions:
+    yield v
+
+proc add(f: Frontier, v: Version) =
+  var new_versions: seq[Version] = @[]
+  for v2 in f:
+    if v.le(v2): return
+    if not(v2.le(v)):
+      new_versions.add(v2)
+  new_versions.add(v)
+  f.versions = new_versions
+
+## Must call after `add` or any other mutation is called
+proc update_hash(f: Frontier) =
+  var new_hash: Hash = 0
+  for v in f:
+    new_hash = new_hash xor v.hash
+  f.hash = new_hash
+
+proc init_frontier*(versions: openArray[Version]): Frontier =
+  var new_f = Frontier()
+  for v in versions:
+    new_f.add(v)
+  new_f.update_hash
+  return new_f
+
+proc meet*(f1, f2: Frontier): Frontier =
+  var new_f = Frontier()
+  for v in f1: new_f.add(v)
+  for v in f2: new_f.add(v)
+  new_f.update_hash
+  return new_f
+
+proc sort(f: Frontier) =
+  f.versions.sort(
+    proc (a, b: Version): int =
+      let
+        aa = a.timestamps
+        bb = b.timestamps
+        l = min(aa.len, bb.len)
+      for i in 0..<l:
+        if aa[i] < bb[i]: return -1
+        if aa[i] > bb[i]: return 1
+      return aa.len - bb.len
+  )
+
+proc `==`*(f1, f2: Frontier): bool =
+  result = false
+  if f1.hash == f2.hash:
+    f1.sort
+    f2.sort
+    result = f1.versions == f2.versions
+
+proc le*(f: Frontier, v: Version): bool =
+  for v2 in f:
+    if v2.le(v): return true
+  return false
+
+proc le*(f1, f2: Frontier): bool =
+  var less_equal = false
+  for v2 in f2:
+    less_equal = false
+    for v1 in f1:
+      if v1.le(v2):
+        less_equal = true
+    if not(less_equal): return false
+  return true
+template lt*(f1, f2: Frontier): bool = f1.le(f2) and f1 != f2
+
+proc extend*(f: Frontier): Frontier =
+  var new_f = Frontier()
+  for v in f:
+    new_f.add(v.extend)
+  new_f.update_hash
+  return new_f
+
+proc truncate*(f: Frontier): Frontier =
+  var new_f = Frontier()
+  for v in f:
+    new_f.add(v.truncate)
+  new_f.update_hash
+  return new_f
+
+proc step*(f: Frontier, delta: int): Frontier = 
+  var new_f = Frontier()
+  for v in f:
+    new_f.add(v.step(delta))
+  new_f.update_hash
+  return new_f
+
+
+
+
+
+
+

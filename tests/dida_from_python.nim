@@ -11,6 +11,7 @@ template MAP*(vs: openArray[(ImValue, ImValue)]): ImValue = init_map(vs).v
 
 template COL*(rows: openArray[Row]): Collection = init_collection(rows)
 template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
+template FTR*(versions: openArray[Version]): Frontier = init_frontier(versions)
 
 proc main* =
   suite "collection":
@@ -152,7 +153,7 @@ proc main* =
         ((4.0.v, Nil.v), 1),
       ])
 
-  suite "versions":
+  suite "version":
     test "simple":
       var
         v0_0 = [0, 0].VER
@@ -161,19 +162,36 @@ proc main* =
         v1_1 = [1, 1].VER
         v2_0 = [2, 0].VER
 
-      check v0_0 < v1_0
-      check v0_0 < v0_1
-      check v0_0 < v1_1
-      check v0_0 <= v1_0
-      check v0_0 <= v0_1
-      check v0_0 <= v1_1
+      check v0_0.lt(v1_0)
+      check v0_0.lt(v0_1)
+      check v0_0.lt(v1_1)
+      check v0_0.le(v1_0)
+      check v0_0.le(v0_1)
+      check v0_0.le(v1_1)
 
-      check not(v1_0 < v1_0)
-      check v1_0 <= v1_0
-      check not(v1_0 <= v0_1)
-      check not(v0_1 <= v1_0)
-      check v0_1 <= v1_1
-      check v1_0 <= v1_1
-      check v0_0 <= v1_1
+      check not(v1_0.lt(v1_0))
+      check v1_0.le(v1_0)
+      check not(v1_0.le(v0_1))
+      check not(v0_1.le(v1_0))
+      check v0_1.le(v1_1)
+      check v1_0.le(v1_1)
+      check v0_0.le(v1_1)
+  
+  suite "frontier":
+    test "simple":
+      var
+        v0_0 = [0, 0].VER
+        v1_0 = [1, 0].VER
+        v0_1 = [0, 1].VER
+        v1_1 = [1, 1].VER
+        v2_0 = [2, 0].VER
+      
+      check FTR([v0_0]).le(FTR([v0_0]))
+      check FTR([v0_0]).le(FTR([v1_0]))
+      check FTR([v0_0]).lt(FTR([v1_0]))
+      check FTR([v2_0, v1_1]).lt(FTR([v2_0]))
+      check FTR([v0_0]) != (FTR([v1_0]))
+      check FTR([v2_0, v1_1]) == (FTR([v1_1, v2_0]))
+
   
 
