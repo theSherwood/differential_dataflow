@@ -1,9 +1,12 @@
+import std/[sugar, sequtils]
 import ../src/[test_utils, dida_from_python, values]
 
 template STR*(): ImValue = init_string().v
 template STR*(s: string): ImValue = init_string(s).v
 template ARR*(): ImValue = init_array().v
 template ARR*(vs: openArray[ImValue]): ImValue = init_array(vs).v
+template ARR*(vs: openArray[float64]): ImValue = init_array(toSeq(vs).map(f => f.v)).v
+template ARR*(vs: openArray[int]): ImValue = init_array(toSeq(vs).map(i => i.float64.v)).v
 template SET*(): ImValue = init_set().v
 template SET*(vs: openArray[ImValue]): ImValue = init_set(vs).v
 template MAP*(): ImValue = init_map().v
@@ -19,7 +22,7 @@ proc main* =
       var
         a = COL([])
         b = COL([])
-        c = COL([([0.0.v, 1.0.v].ARR, 1)])
+        c = COL([([0, 1].ARR, 1)])
       check a == b
       check a != c
 
@@ -68,7 +71,7 @@ proc main* =
       check a.filter(proc (e: Entry): bool = e.key == STR"apple") == COL([
         ([STR"apple", STR"$5"].ARR, 2)
       ])
-      check a.map(proc (e: Entry): Entry = [e.value, e.key].ARR) == COL([
+      check a.map((e) => [e.value, e.key].ARR) == COL([
         ([STR"$5", STR"apple"].ARR, 2),
         ([STR"$2", STR"banana"].ARR, 1)
       ])
@@ -141,7 +144,7 @@ proc main* =
     test "iterate":
       var a = COL([([1.0.v, Nil.v].ARR, 1)])
       proc add_one(c: Collection): Collection =
-        return c.map(proc (e: Entry): Entry = [(e.key.as_f64 + 1.0).v, e.value].ARR)
+        return c.map((e) => [(e.key.as_f64 + 1.0).v, e.value].ARR)
           .concat(c)
           .filter(proc (e: Entry): bool = e.key < 5.0.v)
           .distinct
@@ -197,15 +200,15 @@ proc main* =
     test "simple on_row and on_collection":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0.0.v, 1.0.v].ARR, 1)].COL),
-          ([0].VER, [([2.0.v, 3.0.v].ARR, 1)].COL),
+          ([0].VER, [([0, 1].ARR, 1)].COL),
+          ([0].VER, [([2, 3].ARR, 1)].COL),
         ]
         result_rows: seq[Row] = @[]
         result_data: seq[(Version, Collection)] = @[]
-        correct_rows: seq[Row] = @[([0.0.v, 1.0.v].ARR, -1), ([2.0.v, 3.0.v].ARR, -1)]
+        correct_rows: seq[Row] = @[([0, 1].ARR, -1), ([2, 3].ARR, -1)]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0.0.v, 1.0.v].ARR, -1)].COL),
-          ([0].VER, [([2.0.v, 3.0.v].ARR, -1)].COL),
+          ([0].VER, [([0, 1].ARR, -1)].COL),
+          ([0].VER, [([2, 3].ARR, -1)].COL),
         ]
         b = init_builder()
           .negate()
@@ -221,12 +224,12 @@ proc main* =
     test "simple accumulate_results":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0.0.v, 1.0.v].ARR, 1)].COL),
-          ([0].VER, [([2.0.v, 3.0.v].ARR, 1)].COL),
+          ([0].VER, [([0, 1].ARR, 1)].COL),
+          ([0].VER, [([2, 3].ARR, 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0.0.v, 1.0.v].ARR, -1)].COL),
-          ([0].VER, [([2.0.v, 3.0.v].ARR, -1)].COL),
+          ([0].VER, [([0, 1].ARR, -1)].COL),
+          ([0].VER, [([2, 3].ARR, -1)].COL),
         ]
         b = init_builder()
           .negate
@@ -236,3 +239,42 @@ proc main* =
       g.send([[1].VER].FTR)
       g.step
       check b.node.results == correct_data
+
+    test "simple map":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
+          ([0].VER, [([2, 3].ARR, 1)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [([1, 0].ARR, 1), ([9, 8].ARR, 5)].COL),
+          ([0].VER, [([3, 2].ARR, 1)].COL),
+        ]
+        b = init_builder()
+          .map((e) => [e[1], e[0]].ARR)
+          .accumulate_results
+        g = b.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check b.node.results == correct_data
+
+    test "simple filter":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [([0, 1].ARR, 1)].COL),
+          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
+          ([0].VER, [([2, 3].ARR, 1)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [([8, 9].ARR, 5)].COL),
+        ]
+        b = init_builder()
+          .filter((e) => e[0] > 5.0.v)
+          .accumulate_results
+        g = b.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check b.node.results == correct_data
+

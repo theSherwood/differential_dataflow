@@ -256,6 +256,11 @@ template as_arr*(v: typed): ImArray = cast[ImArray](cast[uint64](v))
 template as_map*(v: typed): ImMap = cast[ImMap](cast[uint64](v))
 template as_set*(v: typed): ImSet = cast[ImSet](cast[uint64](v))
 
+# Conversions #
+# ---------------------------------------------------------------------
+
+template to_v*(i: int): ImValue = i.float64.v
+
 # Masks #
 # ---------------------------------------------------------------------
 
@@ -275,9 +280,9 @@ when c32:
   const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u32
   const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u32
 
-  const MASK_TYPE_STRING = 0b10000000000000010000000000000000'u32
+  const MASK_TYPE_STR    = 0b10000000000000010000000000000000'u32
   const MASK_TYPE_BIGNUM = 0b10000000000000100000000000000000'u32
-  const MASK_TYPE_ARRAY  = 0b10000000000000110000000000000000'u32
+  const MASK_TYPE_ARR    = 0b10000000000000110000000000000000'u32
   const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u32
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
 
@@ -296,9 +301,9 @@ else:
   const MASK_TYPE_BOOL   = 0b00000000000000011000000000000000'u64 shl 32
   const MASK_TYPE_ATOM   = 0b00000000000000100000000000000000'u64 shl 32
 
-  const MASK_TYPE_STRING = 0b10000000000000010000000000000000'u64 shl 32
+  const MASK_TYPE_STR    = 0b10000000000000010000000000000000'u64 shl 32
   const MASK_TYPE_BIGNUM = 0b10000000000000100000000000000000'u64 shl 32
-  const MASK_TYPE_ARRAY  = 0b10000000000000110000000000000000'u64 shl 32
+  const MASK_TYPE_ARR    = 0b10000000000000110000000000000000'u64 shl 32
   const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u64 shl 32
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u64 shl 32
 
@@ -310,9 +315,9 @@ const MASK_SIG_FALSE   = MASK_EXP_OR_Q or MASK_TYPE_FALSE
 const MASK_SIG_TRUE    = MASK_EXP_OR_Q or MASK_TYPE_TRUE
 const MASK_SIG_BOOL    = MASK_EXP_OR_Q or MASK_TYPE_BOOL
 const MASK_SIG_ATOM    = MASK_EXP_OR_Q or MASK_TYPE_ATOM
-const MASK_SIG_STRING  = MASK_EXP_OR_Q or MASK_TYPE_STRING
+const MASK_SIG_STR     = MASK_EXP_OR_Q or MASK_TYPE_STR
 const MASK_SIG_BIGNUM  = MASK_EXP_OR_Q or MASK_TYPE_BIGNUM
-const MASK_SIG_ARRAY   = MASK_EXP_OR_Q or MASK_TYPE_ARRAY
+const MASK_SIG_ARR     = MASK_EXP_OR_Q or MASK_TYPE_ARR
 const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
@@ -349,11 +354,11 @@ template is_bool*(v: typed): bool =
 template is_atom*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_ATOM
 template is_string*(v: typed): bool =
-  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_STRING
+  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_STR
 template is_bignum*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_BIGNUM
 template is_array*(v: typed): bool =
-  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_ARRAY
+  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_ARR
 template is_set*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_SET
 template is_map*(v: typed): bool =
@@ -369,9 +374,9 @@ proc get_type*(v: ImValue): ImValueKind =
     of MASK_SIG_NIL:    return kNil
     of MASK_SIG_BOOL:   return kBool
     of MASK_SIG_ATOM:   return kAtom
-    of MASK_SIG_STRING: return kString
+    of MASK_SIG_STR:    return kString
     of MASK_SIG_BIGNUM: return kBigNum
-    of MASK_SIG_ARRAY:  return kArray
+    of MASK_SIG_ARR:    return kArray
     of MASK_SIG_SET:    return kSet
     of MASK_SIG_MAP:    return kMap
     else:               echo "Unknown Type!"
@@ -458,8 +463,8 @@ template eq_heap_value_generic*(v1, v2: typed) =
     else:
       let signature = bitand(v1.as_u64, MASK_SIGNATURE)
     case signature:
-      of MASK_SIG_STRING: eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
-      of MASK_SIG_ARRAY:  eq_heap_payload(v1.as_arr.payload, v2.as_arr.payload)
+      of MASK_SIG_STR:    eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
+      of MASK_SIG_ARR:    eq_heap_payload(v1.as_arr.payload, v2.as_arr.payload)
       of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.payload, v2.as_map.payload)
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
@@ -680,7 +685,7 @@ template buildImString(new_hash, new_data: typed) {.dirty.} =
   when c32:
     let h = new_hash
     var new_string = ImString(
-      head: update_head(MASK_SIG_STRING, h.as_u32).as_u32,
+      head: update_head(MASK_SIG_STR, h.as_u32).as_u32,
       tail: ImStringPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -688,7 +693,7 @@ template buildImString(new_hash, new_data: typed) {.dirty.} =
     GC_ref(re)
     re.hash = new_hash
     re.data = new_data
-    var new_string = ImString(p: bitor(MASK_SIG_STRING, re.as_p.as_u64).as_p)
+    var new_string = ImString(p: bitor(MASK_SIG_STR, re.as_p.as_u64).as_p)
   
 func init_string_empty(): ImString =
   let hash = 0
@@ -838,7 +843,7 @@ template buildImArray(new_hash, new_data: typed) {.dirty.} =
   when c32:
     let h = new_hash
     var new_array = ImArray(
-      head: update_head(MASK_SIG_ARRAY, h.as_u32),
+      head: update_head(MASK_SIG_ARR, h.as_u32),
       tail: ImArrayPayloadRef(hash: h, data: new_data)
     )
   else:
@@ -846,7 +851,7 @@ template buildImArray(new_hash, new_data: typed) {.dirty.} =
     GC_ref(re)
     re.hash = new_hash
     re.data = new_data
-    var new_array = ImArray(p: bitor(MASK_SIG_ARRAY, re.as_p.as_u64).as_p)
+    var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
 
 proc init_array_empty(): ImArray =
   let new_hash = 0
@@ -1091,10 +1096,10 @@ proc `<`*(a, b: ImValue): bool =
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
   case a_sig:
-    of MASK_SIG_STRING:
-      if b_sig == MASK_SIG_STRING: return a.as_str < b.as_str
-    of MASK_SIG_ARRAY:
-      if b_sig == MASK_SIG_ARRAY: return a.as_arr < b.as_arr
+    of MASK_SIG_STR:
+      if b_sig == MASK_SIG_STR: return a.as_str < b.as_str
+    of MASK_SIG_ARR:
+      if b_sig == MASK_SIG_ARR: return a.as_arr < b.as_arr
     else: discard
   raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
   
@@ -1103,12 +1108,24 @@ proc `<=`*(a, b: ImValue): bool =
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
   case a_sig:
-    of MASK_SIG_STRING:
-      if b_sig == MASK_SIG_STRING: return a.as_str <= b.as_str
-    of MASK_SIG_ARRAY:
-      if b_sig == MASK_SIG_ARRAY: return a.as_arr <= b.as_arr
+    of MASK_SIG_STR:
+      if b_sig == MASK_SIG_STR: return a.as_str <= b.as_str
+    of MASK_SIG_ARR:
+      if b_sig == MASK_SIG_ARR: return a.as_arr <= b.as_arr
     else: discard
   raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
+
+proc `[]`*(a, b: ImValue): ImValue =
+  let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
+  case a_sig:
+    of MASK_SIG_ARR: return a.as_arr[b]
+    of MASK_SIG_MAP: return a.as_map[b]
+    of MASK_SIG_SET: return a.as_map[b]
+    # of MASK_SIG_STR: return a.as_map[b]
+    else: discard
+  raise newException(TypeException, &"Cannot index into {$a} of type {a.type_label} with {$b} of type {b.type_label}")
+template `[]`*(a: ImValue, b: float64): ImValue = a[b.v]
+template `[]`*(a: ImValue, b: int): ImValue = a[b.float64.v]
 
 ##
 ## nil < boolean < number < string < set < array < map
@@ -1149,12 +1166,12 @@ proc compare*(a, b: ImValue): int =
 
   # String
   block:
-    if a_sig == MASK_SIG_STRING:
-      if b_sig == MASK_SIG_STRING:
+    if a_sig == MASK_SIG_STR:
+      if b_sig == MASK_SIG_STR:
         if a.as_str.payload.data < b.as_str.payload.data: return -1
         if a.as_str.payload.data > b.as_str.payload.data: return 1
         return 0
       return -1
-    if b_sig == MASK_SIG_STRING: return 1
+    if b_sig == MASK_SIG_STR: return 1
     
         

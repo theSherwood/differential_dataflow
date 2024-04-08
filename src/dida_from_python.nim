@@ -19,7 +19,7 @@ type
   MapFn* = proc (e: Entry): Entry {.closure.}
   FilterFn* = proc (e: Entry): bool {.closure.}
   ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
-  IterateFn* = proc (c: Collection): Collection {.closure.}
+  CollIterateFn* = proc (c: Collection): Collection {.closure.}
 
 proc size*(c: Collection): int = return c.rows.len
 
@@ -193,7 +193,7 @@ proc max*(c: Collection): Collection =
   except TypeException as e:
     raise newException(TypeException, "Incomparable types")
 
-proc iterate*(c: Collection, f: IterateFn): Collection =
+proc iterate*(c: Collection, f: CollIterateFn): Collection =
   var curr = c
   while true:
     result = f(curr)
@@ -364,15 +364,8 @@ proc step*(f: Frontier, delta: int): Frontier =
 # ---------------------------------------------------------------------
 
 type
-  Mapper* = object
-    map_fn*: proc (): void
-  Filterer* = object
-    filter_fn*: proc (): void
-  Reducer* = object
-    reducer_fn*: proc (): void
-
-  OnRowFn* = proc (r: Row): void
-  OnCollectionFn* = proc (v: Version, c: Collection): void
+  NodeOnRowFn* = proc (r: Row): void
+  NodeOnCollectionFn* = proc (v: Version, c: Collection): void
 
   MessageTag* = enum
     tData
@@ -431,16 +424,16 @@ type
       of tPrint:
         label*: string
       of tMap:
-        mapper*: Mapper
+        map_fn*: MapFn
       of tFilter:
-        filterer*: Filterer
+        filter_fn*: FilterFn
       of tReduce:
         init_value*: Value
-        reducer*: Reducer
+        reduce_fn*: ReduceFn
       of tOnRow:
-        on_row*: OnRowFn
+        on_row*: NodeOnRowFn
       of tOnCollection:
-        on_collection*: OnCollectionFn
+        on_collection*: NodeOnCollectionFn
       of tAccumulateResults:
         results*: seq[(Version, Collection)]
       else:
@@ -586,17 +579,25 @@ proc print*(b: Builder, label: string): Builder =
 proc negate*(b: Builder): Builder =
   build_unary(b, tNegate)
 
-proc on_row*(b: Builder, fn: OnRowFn): Builder =
-  build_unary(b, tOnRow)
-  n.on_row = fn
-
-proc on_collection*(b: Builder, fn: OnCollectionFn): Builder =
-  build_unary(b, tOnCollection)
-  n.on_collection = fn
-
 proc concat*(b: Builder, other: Node): Builder =
   build_binary(b, tConcat, other)
 template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
+
+proc map*(b: Builder, fn: MapFn): Builder =
+  build_unary(b, tMap)
+  n.map_fn = fn
+
+proc filter*(b: Builder, fn: FilterFn): Builder =
+  build_unary(b, tFilter)
+  n.filter_fn = fn
+
+proc on_row*(b: Builder, fn: NodeOnRowFn): Builder =
+  build_unary(b, tOnRow)
+  n.on_row = fn
+
+proc on_collection*(b: Builder, fn: NodeOnCollectionFn): Builder =
+  build_unary(b, tOnCollection)
+  n.on_collection = fn
 
 proc accumulate_results*(b: Builder): Builder =
   build_unary(b, tAccumulateResults)
@@ -687,6 +688,21 @@ proc step(n: Node) =
       for m in n.inputs[0].queue:
         case m.tag:
           of tData:     n.send(m.version, m.collection.negate)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tMap:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:     n.send(m.version, m.collection.map(n.map_fn))
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tFilter:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_coll = m.collection.filter(n.filter_fn)
+            if new_coll.size > 0:
+              n.send(m.version, new_coll)
           of tFrontier: n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tOnRow:
