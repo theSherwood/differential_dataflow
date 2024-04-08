@@ -197,17 +197,24 @@ proc main* =
     test "simple":
       check 1 == 1
       var
-        b = init_builder()
-          .print("initial")
+        result_rows: seq[Row] = @[]
+        result_collections: seq[(Version, Collection)] = @[]
+        correct_rows: seq[Row] = @[((0.0.v, 1.0.v), -1), ((2.0.v, 3.0.v), -1)]
+        correct_collections: seq[(Version, Collection)] = @[
+          ([0].VER, [((0.0.v, 1.0.v), -1)].COL),
+          ([0].VER, [((2.0.v, 3.0.v), -1)].COL),
+        ]
+        g = init_builder()
           .negate()
-          .print("post negate")
-        g = b.graph
+          .on_row(proc (r: Row) = result_rows.add(r))
+          .on_collection(proc (v: Version, c: Collection) = result_collections.add((v, c)))
+          .graph
       g.send([0].VER, [((0.0.v, 1.0.v), 1)].COL)
-      g.send([0].VER, [((0.0.v, 1.0.v), 1)].COL)
+      g.send([0].VER, [((2.0.v, 3.0.v), 1)].COL)
       g.send([[1].VER].FTR)
-      echo g.pprint
       g.step
-      echo g.pprint
+      check result_rows == correct_rows
+      check result_collections == correct_collections
 
   
 

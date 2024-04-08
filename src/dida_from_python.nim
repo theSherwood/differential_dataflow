@@ -366,6 +366,9 @@ type
   Reducer* = object
     reducer_fn*: proc (): void
 
+  OnRowFn* = proc (r: Row): void
+  OnCollectionFn* = proc (v: Version, c: Collection): void
+
   MessageTag* = enum
     tData
     tFrontier
@@ -390,7 +393,6 @@ type
     tInput
     tOutput
     tIndex
-    tJoin
     tConcat
     tMap
     tFilter
@@ -403,6 +405,12 @@ type
     tPrint
     tNegate
     tConsolidate
+    # binary
+    tJoin
+    # freeform - useful for debugging and tests
+    tOnRow
+    tOnCollection
+    # version manipulation - used in iteration
     tVersionPush
     tVersionIncrement
     tVersionPop
@@ -423,6 +431,10 @@ type
       of tReduce:
         init_value*: Value
         reducer*: Reducer
+      of tOnRow:
+        on_row*: OnRowFn
+      of tOnCollection:
+        on_collection*: OnCollectionFn
       else:
         discard
   
@@ -490,47 +502,6 @@ proc init_graph*(n: Node): Graph =
     nodes: initHashSet[Node](),
     edges: initHashSet[Edge](),
   )
-
-proc init_builder*(g: Graph, f: Frontier): Builder =
-  var b = Builder()
-  b.graph = g
-  b.frontier = f
-  b.node = nil
-  return b
-template init_builder*(f: Frontier): Builder =
-  init_builder(init_graph(init_node(tPassThrough, f)), f)
-template init_builder*(g: Graph): Builder =
-  init_builder(g, init_frontier([init_version()]))
-template init_builder*(): Builder =
-  let f = init_frontier([init_version()])
-  init_builder(init_graph(init_node(tPassThrough, f)), f)
-
-template build_unary(b: Builder, t: NodeTag) {.dirty.} =
-  var n = init_node(t, b.frontier)
-  connect(b.graph, b.node, n)
-  result.graph = b.graph
-  result.node = n
-
-template build_binary(b: Builder, t: NodeTag, other: Node) {.dirty.} =
-  var n = init_node(t, b.frontier)
-  doAssert b.node != nil
-  connect(b.graph, b.node, n)
-  connect(b.graph, other, n)
-  result.graph = b.graph
-  result.node = n
-
-proc print*(b: Builder, label: string): Builder =
-  build_unary(b, tPrint)
-  n.label = label
-
-proc negate*(b: Builder): Builder =
-  build_unary(b, tNegate)
-  result.node = n
-
-proc concat*(b: Builder, other: Node): Builder =
-  build_binary(b, tConcat, other)
-template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
-
 template is_empty*(e: Edge): bool = (e.queue.len == 0)
 
 template clear(e: Edge) = e.queue.setLen(0)
@@ -569,20 +540,72 @@ template handle_frontier_message_unary(n: Node, m: Message) {.dirty.} =
     n.output_frontier = m.frontier
     n.send(m)
 
+# Builder #
+# ---------------------------------------------------------------------
+
+proc init_builder*(g: Graph, f: Frontier): Builder =
+  var b = Builder()
+  b.graph = g
+  b.frontier = f
+  b.node = nil
+  return b
+template init_builder*(f: Frontier): Builder =
+  init_builder(init_graph(init_node(tPassThrough, f)), f)
+template init_builder*(g: Graph): Builder =
+  init_builder(g, init_frontier([init_version()]))
+template init_builder*(): Builder =
+  let f = init_frontier([init_version()])
+  init_builder(init_graph(init_node(tPassThrough, f)), f)
+
+template build_unary(b: Builder, t: NodeTag) {.dirty.} =
+  var n = init_node(t, b.frontier)
+  connect(b.graph, b.node, n)
+  result.graph = b.graph
+  result.node = n
+
+template build_binary(b: Builder, t: NodeTag, other: Node) {.dirty.} =
+  var n = init_node(t, b.frontier)
+  doAssert b.node != nil
+  connect(b.graph, b.node, n)
+  connect(b.graph, other, n)
+  result.graph = b.graph
+  result.node = n
+
+proc print*(b: Builder, label: string): Builder =
+  build_unary(b, tPrint)
+  n.label = label
+
+proc negate*(b: Builder): Builder =
+  build_unary(b, tNegate)
+
+proc on_row*(b: Builder, fn: OnRowFn): Builder =
+  build_unary(b, tOnRow)
+  n.on_row = fn
+
+proc on_collection*(b: Builder, fn: OnCollectionFn): Builder =
+  build_unary(b, tOnCollection)
+  n.on_collection = fn
+
+proc concat*(b: Builder, other: Node): Builder =
+  build_binary(b, tConcat, other)
+template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
+
 # Pretty Print #
 # ---------------------------------------------------------------------
 
 proc `$`*(t: NodeTag): string =
   result = case t:
-    of tInput:       "Input"
-    of tPassThrough: "PassThrough"
-    of tPrint:       "Print"
-    of tNegate:      "Negate"
-    of tConcat:      "Concat"
-    of tJoin:        "Join"
-    of tMap:         "Map"
-    of tFilter:      "Filter"
-    else:            "TODO"
+    of tInput:        "Input"
+    of tPassThrough:  "PassThrough"
+    of tPrint:        "Print"
+    of tNegate:       "Negate"
+    of tConcat:       "Concat"
+    of tJoin:         "Join"
+    of tMap:          "Map"
+    of tFilter:       "Filter"
+    of tOnRow:        "OnRow"
+    of tOnCollection: "OnCollection"
+    else:             "TODO"
 
 proc string_from_pprint_seq(s: seq[(int, string)]): string =
   for (count, str) in s:
@@ -636,7 +659,7 @@ proc pprint*(g: Graph): string =
 proc step(n: Node) =
   case n.tag:
     of tInput:
-      discard
+      discard "TODO"
     of tPassThrough:
       for m in n.inputs[0].queue:
         n.send(m)
@@ -652,6 +675,23 @@ proc step(n: Node) =
       for m in n.inputs[0].queue:
         case m.tag:
           of tData:     n.send(m.version, m.collection.negate)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tOnRow:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            for r in m.collection:
+              n.on_row(r)
+            n.send(m)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tOnCollection:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            n.on_collection(m.version, m.collection)
+            n.send(m)
           of tFrontier: n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     else:
