@@ -19,138 +19,138 @@ proc main* =
       var
         a = COL([])
         b = COL([])
-        c = COL([((0.0.v, 1.0.v), 1)])
+        c = COL([([0.0.v, 1.0.v].ARR, 1)])
       check a == b
       check a != c
 
     test "various":
       var
         a = COL([
-          ((STR"apple", STR"$5"), 2),
-          ((STR"banana", STR"$2"), 1)
+          ([STR"apple", STR"$5"].ARR, 2),
+          ([STR"banana", STR"$2"].ARR, 1)
         ])
         b = COL([
-          ((STR"apple", STR"$3"), 1),
-          ((STR"apple", ARR([STR"granny smith", STR"$2"])), 1),
-          ((STR"kiwi", STR"$2"), 1)
+          ([STR"apple", STR"$3"].ARR, 1),
+          ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
+          ([STR"kiwi", STR"$2"].ARR, 1)
         ])
         c = COL([
-          ((STR"apple", STR"$5"), 2),
-          ((STR"banana", STR"$2"), 1),
-          ((STR"apple", STR"$2"), 20),
+          ([STR"apple", STR"$5"].ARR, 2),
+          ([STR"banana", STR"$2"].ARR, 1),
+          ([STR"apple", STR"$2"].ARR, 20),
         ])
         d = COL([
-          ((STR"apple", 11.0.v), 1),
-          ((STR"apple", 3.0.v), 2),
-          ((STR"banana", 2.0.v), 3),
-          ((STR"coconut", 3.0.v), 1),
+          ([STR"apple", 11.0.v].ARR, 1),
+          ([STR"apple", 3.0.v].ARR, 2),
+          ([STR"banana", 2.0.v].ARR, 3),
+          ([STR"coconut", 3.0.v].ARR, 1),
         ])
         # some results
         a_concat_b_result = COL([
-          ((STR"apple", STR"$5"), 2),
-          ((STR"banana", STR"$2"), 1),
-          ((STR"apple", STR"$3"), 1),
-          ((STR"apple", ARR([STR"granny smith", STR"$2"])), 1),
-          ((STR"kiwi", STR"$2"), 1)
+          ([STR"apple", STR"$5"].ARR, 2),
+          ([STR"banana", STR"$2"].ARR, 1),
+          ([STR"apple", STR"$3"].ARR, 1),
+          ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
+          ([STR"kiwi", STR"$2"].ARR, 1)
         ])
         a_join_b_result = COL([
-          ((STR"apple", ARR([STR"$5", STR"$3"])), 2),
-          ((STR"apple", ARR([STR"$5", ARR([STR"granny smith", STR"$2"])])), 2),
+          ([STR"apple", ARR([STR"$5", STR"$3"])].ARR, 2),
+          ([STR"apple", ARR([STR"$5", ARR([STR"granny smith", STR"$2"])])].ARR, 2),
         ])
         b_join_a_result = COL([
-          ((STR"apple", ARR([STR"$3", STR"$5"])), 2),
-          ((STR"apple", ARR([ARR([STR"granny smith", STR"$2"]), STR"$5"])), 2),
+          ([STR"apple", ARR([STR"$3", STR"$5"])].ARR, 2),
+          ([STR"apple", ARR([ARR([STR"granny smith", STR"$2"]), STR"$5"])].ARR, 2),
         ])
       check a.concat(b) == a_concat_b_result
       check b.concat(a) == a_concat_b_result
       check a.join(b) == a_join_b_result
       check b.join(a) == b_join_a_result
       check a.filter(proc (e: Entry): bool = e.key == STR"apple") == COL([
-        ((STR"apple", STR"$5"), 2)
+        ([STR"apple", STR"$5"].ARR, 2)
       ])
-      check a.map(proc (e: Entry): Entry = (e.value, e.key)) == COL([
-        ((STR"$5", STR"apple"), 2),
-        ((STR"$2", STR"banana"), 1)
+      check a.map(proc (e: Entry): Entry = [e.value, e.key].ARR) == COL([
+        ([STR"$5", STR"apple"].ARR, 2),
+        ([STR"$2", STR"banana"].ARR, 1)
       ])
       check a.concat(b).count() == COL([
-        ((STR"apple", 4.0.v), 1),
-        ((STR"banana", 1.0.v), 1),
-        ((STR"kiwi", 1.0.v), 1)
+        ([STR"apple", 4.0.v].ARR, 1),
+        ([STR"banana", 1.0.v].ARR, 1),
+        ([STR"kiwi", 1.0.v].ARR, 1)
       ])
       check a.concat(b).distinct() == COL([
-        ((STR"apple", STR"$5"), 1),
-        ((STR"banana", STR"$2"), 1),
-        ((STR"apple", STR"$3"), 1),
-        ((STR"apple", ARR([STR"granny smith", STR"$2"])), 1),
-        ((STR"kiwi", STR"$2"), 1)
+        ([STR"apple", STR"$5"].ARR, 1),
+        ([STR"banana", STR"$2"].ARR, 1),
+        ([STR"apple", STR"$3"].ARR, 1),
+        ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
+        ([STR"kiwi", STR"$2"].ARR, 1)
       ])
       check d.min() == COL([
-        ((STR"apple", 3.0.v), 1),
-        ((STR"banana", 2.0.v), 1),
-        ((STR"coconut", 3.0.v), 1),
+        ([STR"apple", 3.0.v].ARR, 1),
+        ([STR"banana", 2.0.v].ARR, 1),
+        ([STR"coconut", 3.0.v].ARR, 1),
       ])
       check d.max() == COL([
-        ((STR"apple", 11.0.v), 1),
-        ((STR"banana", 2.0.v), 1),
-        ((STR"coconut", 3.0.v), 1),
+        ([STR"apple", 11.0.v].ARR, 1),
+        ([STR"banana", 2.0.v].ARR, 1),
+        ([STR"coconut", 3.0.v].ARR, 1),
       ])
       check d.sum() == COL([
-        ((STR"apple", 17.0.v), 1),
-        ((STR"banana", 6.0.v), 1),
-        ((STR"coconut", 3.0.v), 1),
+        ([STR"apple", 17.0.v].ARR, 1),
+        ([STR"banana", 6.0.v].ARR, 1),
+        ([STR"coconut", 3.0.v].ARR, 1),
       ])
       check c.min() == COL([
-        ((STR"apple", STR"$2"), 1),
-        ((STR"banana", STR"$2"), 1),
+        ([STR"apple", STR"$2"].ARR, 1),
+        ([STR"banana", STR"$2"].ARR, 1),
       ])
       check c.max() == COL([
-        ((STR"apple", STR"$5"), 1),
-        ((STR"banana", STR"$2"), 1),
+        ([STR"apple", STR"$5"].ARR, 1),
+        ([STR"banana", STR"$2"].ARR, 1),
       ])
     
     test "negate":
       var a = COL([
-        ((STR"foo", Nil.v), 3),
-        ((STR"foo", Nil.v), 1),
-        ((STR"bar", Nil.v), 2),
+        ([STR"foo", Nil.v].ARR, 3),
+        ([STR"foo", Nil.v].ARR, 1),
+        ([STR"bar", Nil.v].ARR, 2),
       ])
       check a.negate == COL([
-        ((STR"foo", Nil.v), -3),
-        ((STR"foo", Nil.v), -1),
-        ((STR"bar", Nil.v), -2),
+        ([STR"foo", Nil.v].ARR, -3),
+        ([STR"foo", Nil.v].ARR, -1),
+        ([STR"bar", Nil.v].ARR, -2),
       ])
 
     test "consolidate":
       var a = COL([
-        ((STR"foo", Nil.v), 1),
-        ((STR"foo", Nil.v), 3),
-        ((STR"bar", Nil.v), 3),
-        ((STR"foo", Nil.v), 9),
-        ((STR"bar", Nil.v), 3),
-        ((STR"was", Nil.v), 3),
-        ((STR"foo", Nil.v), 1),
-        ((STR"bar", Nil.v), -47),
-        ((STR"was", Nil.v), -3),
+        ([STR"foo", Nil.v].ARR, 1),
+        ([STR"foo", Nil.v].ARR, 3),
+        ([STR"bar", Nil.v].ARR, 3),
+        ([STR"foo", Nil.v].ARR, 9),
+        ([STR"bar", Nil.v].ARR, 3),
+        ([STR"was", Nil.v].ARR, 3),
+        ([STR"foo", Nil.v].ARR, 1),
+        ([STR"bar", Nil.v].ARR, -47),
+        ([STR"was", Nil.v].ARR, -3),
       ])
       check a.consolidate == COL([
-        ((STR"foo", Nil.v), 14),
-        ((STR"bar", Nil.v), -41),
+        ([STR"foo", Nil.v].ARR, 14),
+        ([STR"bar", Nil.v].ARR, -41),
       ])
       check a.concat(a.negate).consolidate == COL([])
 
     test "iterate":
-      var a = COL([((1.0.v, Nil.v), 1)])
+      var a = COL([([1.0.v, Nil.v].ARR, 1)])
       proc add_one(c: Collection): Collection =
-        return c.map(proc (e: Entry): Entry = ((e.key.as_f64 + 1.0).v, e.value))
+        return c.map(proc (e: Entry): Entry = [(e.key.as_f64 + 1.0).v, e.value].ARR)
           .concat(c)
           .filter(proc (e: Entry): bool = e.key < 5.0.v)
           .distinct
           .consolidate
       check a.iterate(add_one) == COL([
-        ((1.0.v, Nil.v), 1),
-        ((2.0.v, Nil.v), 1),
-        ((3.0.v, Nil.v), 1),
-        ((4.0.v, Nil.v), 1),
+        ([1.0.v, Nil.v].ARR, 1),
+        ([2.0.v, Nil.v].ARR, 1),
+        ([3.0.v, Nil.v].ARR, 1),
+        ([4.0.v, Nil.v].ARR, 1),
       ])
 
   suite "version":
@@ -197,15 +197,15 @@ proc main* =
     test "simple on_row and on_collection":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [((0.0.v, 1.0.v), 1)].COL),
-          ([0].VER, [((2.0.v, 3.0.v), 1)].COL),
+          ([0].VER, [([0.0.v, 1.0.v].ARR, 1)].COL),
+          ([0].VER, [([2.0.v, 3.0.v].ARR, 1)].COL),
         ]
         result_rows: seq[Row] = @[]
         result_data: seq[(Version, Collection)] = @[]
-        correct_rows: seq[Row] = @[((0.0.v, 1.0.v), -1), ((2.0.v, 3.0.v), -1)]
+        correct_rows: seq[Row] = @[([0.0.v, 1.0.v].ARR, -1), ([2.0.v, 3.0.v].ARR, -1)]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [((0.0.v, 1.0.v), -1)].COL),
-          ([0].VER, [((2.0.v, 3.0.v), -1)].COL),
+          ([0].VER, [([0.0.v, 1.0.v].ARR, -1)].COL),
+          ([0].VER, [([2.0.v, 3.0.v].ARR, -1)].COL),
         ]
         b = init_builder()
           .negate()
@@ -221,12 +221,12 @@ proc main* =
     test "simple accumulate_results":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [((0.0.v, 1.0.v), 1)].COL),
-          ([0].VER, [((2.0.v, 3.0.v), 1)].COL),
+          ([0].VER, [([0.0.v, 1.0.v].ARR, 1)].COL),
+          ([0].VER, [([2.0.v, 3.0.v].ARR, 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [((0.0.v, 1.0.v), -1)].COL),
-          ([0].VER, [((2.0.v, 3.0.v), -1)].COL),
+          ([0].VER, [([0.0.v, 1.0.v].ARR, -1)].COL),
+          ([0].VER, [([2.0.v, 3.0.v].ARR, -1)].COL),
         ]
         b = init_builder()
           .negate

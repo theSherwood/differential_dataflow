@@ -2,13 +2,14 @@ import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strforma
 import hashes
 import values
 
+template ARR(vs: openArray[ImValue]): ImValue = init_array(vs).v
+
 # Collections #
 # ---------------------------------------------------------------------
 
 type
-  Key* = ImValue
   Value* = ImValue
-  Entry* = (Key, Value)
+  Entry* = Value
 
   Row* = (Entry, int)
   
@@ -22,11 +23,15 @@ type
 
 proc size*(c: Collection): int = return c.rows.len
 
-template key*(e: Entry): Key = e[0]
-template value*(e: Entry): Value = e[1]
+proc key*(e: Entry): Value =
+  doAssert e.is_array
+  return e.as_arr[0]
+proc value*(e: Entry): Value =
+  doAssert e.is_array
+  return e.as_arr[1]
 template entry*(r: Row): Entry = r[0]
-template key*(r: Row): Key = r[0][0]
-template value*(r: Row): Value = r[0][1]
+template key*(r: Row): Value = r.entry.key
+template value*(r: Row): Value = r.entry.value
 template multiplicity*(r: Row): int = r[1]
 
 template `[]`*(c: Collection, i: int): untyped = c.rows[i]
@@ -79,7 +84,7 @@ proc print*(c: Collection, label: string): Collection =
   echo label, ": ", c
   return c
 
-proc to_row_table_by_key(t: var Table[Key, seq[Row]], c: Collection) =
+proc to_row_table_by_key(t: var Table[Value, seq[Row]], c: Collection) =
   for r in c:
     if t.hasKey(r.key):
       t[r.key].add(r)
@@ -88,15 +93,15 @@ proc to_row_table_by_key(t: var Table[Key, seq[Row]], c: Collection) =
 
 proc join*(c1, c2: Collection): Collection =
   let empty_seq = newSeq[Row]()
-  var t = initTable[Key, seq[Row]]()
+  var t = initTable[Value, seq[Row]]()
   t.to_row_table_by_key(c1)
   for r in c2:
     for r2 in t.getOrDefault(r.key, empty_seq):
-      result.add(((r.key, init_array([r2.value, r.value]).v), r.multiplicity * r2.multiplicity))
+      result.add(([r.key, [r2.value, r.value].ARR].ARR, r.multiplicity * r2.multiplicity))
 
 ## Keys must not be changed by the reduce fn
 proc reduce*(c: Collection, f: ReduceFn): Collection =
-  var t = initTable[Key, seq[Row]]()
+  var t = initTable[Value, seq[Row]]()
   t.to_row_table_by_key(c)
   for r in t.values:
     for r2 in f(r):
@@ -106,7 +111,7 @@ proc count_inner(rows: seq[Row]): seq[Row] =
   let k = rows[0].key
   var cnt = 0
   for r in rows: cnt += r.multiplicity
-  return @[((k, cnt.float64.v), 1)]
+  return @[([k, cnt.float64.v].ARR, 1)]
 
 proc count*(c: Collection): Collection =
   return c.reduce(count_inner)
@@ -115,7 +120,7 @@ proc sum_inner(rows: seq[Row]): seq[Row] =
   let k = rows[0].key
   var cnt = 0.float64
   for r in rows: cnt += r.value.as_f64 * r.multiplicity.float64
-  return @[((k, cnt.v), 1)]
+  return @[([k, cnt.v].ARR, 1)]
 
 proc sum*(c: Collection): Collection =
   return c.reduce(sum_inner)
@@ -151,7 +156,7 @@ proc min_inner(rows: seq[Row]): seq[Row] =
       elif e.value < min_val:
         min_val = e.value
   if value_seen:
-    return @[((k, min_val), 1)]
+    return @[([k, min_val].ARR, 1)]
   else:
     return @[]
 
@@ -178,7 +183,7 @@ proc max_inner(rows: seq[Row]): seq[Row] =
       elif e.value > max_val:
         max_val = e.value
   if value_seen:
-    return @[((k, max_val), 1)]
+    return @[([k, max_val].ARR, 1)]
   else:
     return @[]
 
