@@ -1,4 +1,4 @@
-import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm]
+import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
 import hashes
 import values
 
@@ -382,7 +382,7 @@ type
     id*: Hash
     input*: Node
     output*: Node
-    queue*: seq[int]
+    queue*: seq[Message]
   
   NodeTag* = enum
     tPassThrough
@@ -411,7 +411,8 @@ type
     id*: int
     inputs*: seq[Edge]
     outputs*: seq[Edge]
-    frontier*: Frontier
+    input_frontiers*: seq[Frontier]
+    output_frontier*: Frontier
     case tag*: NodeTag:
       of tPrint:
         label*: string
@@ -455,6 +456,9 @@ proc connect*(g: Graph, n1, n2: Node) =
   e.queue = @[]
   n.outputs.add(e)
   n2.inputs.add(e)
+  n2.input_frontiers.add(n.output_frontier)
+  if n2.output_frontier.isNil:
+    n2.output_frontier = n.output_frontier
   g.edges.incl(e)
   g.nodes.incl(n2)
 
@@ -472,7 +476,8 @@ proc init_node(t: NodeTag, f: Frontier): Node =
   var n = Node(
     tag: t,
     id: node_id,
-    frontier: f,
+    input_frontiers: @[],
+    output_frontier: f,
     inputs: @[],
     outputs: @[],
   )
@@ -526,16 +531,132 @@ proc concat*(b: Builder, other: Node): Builder =
   build_binary(b, tConcat, other)
 template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
 
-# proc send_data*(e: Edge, v: Version, c: Collection) =
-#   discard
+template is_empty*(e: Edge): bool = (e.queue.len == 0)
 
-proc step*(n: Node) =
+template clear(e: Edge) = e.queue.setLen(0)
+
+proc pending_data*(n: Node): bool =
+  for e in n.inputs:
+    if not(e.is_empty): return true
+  return false
+
+template send*(e: Edge, v: Version, c: Collection) =
+  e.queue.add(Message(tag: tData, version: v, collection: c))
+template send*(e: Edge, f: Frontier) =
+  e.queue.add(Message(tag: tFrontier, frontier: f))
+template send*(e: Edge, m: Message) =
+  e.queue.add(m)
+
+template send(n: Node, v: Version, c: Collection) {.dirty.} =
+  for e in n.outputs:
+    e.send(v, c)
+template send(n: Node, f: Frontier) {.dirty.} =
+  for e in n.outputs:
+    e.send(f)
+template send(n: Node, m: Message) {.dirty.} =
+  for e in n.outputs:
+    e.send(m)
+
+proc send*(g: Graph, v: Version, c: Collection) = g.top_node.send(v, c)
+proc send*(g: Graph, f: Frontier) = g.top_node.send(f)
+proc send*(g: Graph, m: Message) = g.top_node.send(m)
+
+template handle_frontier_message_unary(n: Node, m: Message) {.dirty.} =
+  doAssert n.input_frontiers[0].le(m.frontier)
+  n.input_frontiers[0] = m.frontier
+  doAssert n.output_frontier.le(m.frontier)
+  if n.output_frontier.lt(m.frontier):
+    n.output_frontier = m.frontier
+    n.send(m)
+
+# Pretty Print #
+# ---------------------------------------------------------------------
+
+proc `$`*(t: NodeTag): string =
+  result = case t:
+    of tInput:       "Input"
+    of tPassThrough: "PassThrough"
+    of tPrint:       "Print"
+    of tNegate:      "Negate"
+    of tConcat:      "Concat"
+    of tJoin:        "Join"
+    of tMap:         "Map"
+    of tFilter:      "Filter"
+    else:            "TODO"
+
+proc string_from_pprint_seq(s: seq[(int, string)]): string =
+  for (count, str) in s:
+    result.add(str.indent(count))
+    result.add('\n')
+
+template pprint*(v: Version): string = "(" & v.timestamps.join(" ") & ")"
+template pprint*(f: Frontier): string = "[" & f.versions.map(proc (v: Version): string = v.pprint).join(" ") & "]"
+
+proc pprint_inner(m: Message, indent = 0): seq[(int, string)] =
+  case m.tag:
+    of tData:
+      var s = &"DATA:     {m.version.pprint} {$m.collection.rows}"
+      result.add((indent, s))
+    of tFrontier:
+      var s = &"FRONTIER: {m.frontier.pprint}"
+      result.add((indent, s))
+
+proc pprint_inner(e: Edge, indent = 0): seq[(int, string)] =
+  var s = &"q:@{e.id} {e.queue.len}"
+  result.add((indent, s))
+  for m in e.queue:
+    result.add(m.pprint_inner(indent + 2))
+
+proc pprint_inner(n: Node, indent = 0): seq[(int, string)] =
+  var s = &"[{$(n.tag)}] @{n.id} F:{n.output_frontier.pprint}"
+  result.add((indent, s))
+  for e in n.outputs:
+    result.add(pprint_inner(e, indent + 1))
+    discard
+
+proc pprint_recursive_inner*(n: Node, indent = 0): seq[(int, string)] =
+  result = n.pprint_inner(indent)
+  if n.outputs.len > 0:
+    result.add((indent + 1, &"children: {n.outputs.len}"))
+    for e in n.outputs:
+      result.add(pprint_recursive_inner(e.output, indent + 3))
+
+template pprint*(n: Node, indent = 0): string =
+  n.pprint_inner(indent).string_from_pprint_seq
+
+template pprint_recursive*(n: Node, indent = 0): string =
+  n.pprint_recursive_inner(indent).string_from_pprint_seq
+
+proc pprint*(g: Graph): string =
+  return g.top_node.pprint_recursive(0)
+
+# Step #
+# ---------------------------------------------------------------------
+
+proc step(n: Node) =
   case n.tag:
+    of tInput:
+      discard
     of tPassThrough:
-      discard
+      for m in n.inputs[0].queue:
+        n.send(m)
+      n.inputs[0].clear
     of tPrint:
-      discard
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:     echo &"{n.label}: D {m.version.pprint} {m.collection.rows}"
+          of tFrontier: echo &"{n.label}: F {m.frontier.pprint}"
+        n.send(m)
+      n.inputs[0].clear
+    of tNegate:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:     n.send(m.version, m.collection.negate)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
     else:
       discard
+proc step*(g: Graph) =
+  for n in g.nodes: n.step
 
 

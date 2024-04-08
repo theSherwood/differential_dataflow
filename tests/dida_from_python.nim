@@ -201,10 +201,13 @@ proc main* =
           .print("initial")
           .negate()
           .print("post negate")
-        n = b.node
         g = b.graph
-      
-        
+      g.send([0].VER, [((0.0.v, 1.0.v), 1)].COL)
+      g.send([0].VER, [((0.0.v, 1.0.v), 1)].COL)
+      g.send([[1].VER].FTR)
+      echo g.pprint
+      g.step
+      echo g.pprint
 
   
 
