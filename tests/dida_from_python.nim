@@ -194,27 +194,45 @@ proc main* =
       check FTR([v2_0, v1_1]) == (FTR([v1_1, v2_0]))
 
   suite "dida":
-    test "simple":
-      check 1 == 1
+    test "simple on_row and on_collection":
       var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [((0.0.v, 1.0.v), 1)].COL),
+          ([0].VER, [((2.0.v, 3.0.v), 1)].COL),
+        ]
         result_rows: seq[Row] = @[]
-        result_collections: seq[(Version, Collection)] = @[]
+        result_data: seq[(Version, Collection)] = @[]
         correct_rows: seq[Row] = @[((0.0.v, 1.0.v), -1), ((2.0.v, 3.0.v), -1)]
-        correct_collections: seq[(Version, Collection)] = @[
+        correct_data: seq[(Version, Collection)] = @[
           ([0].VER, [((0.0.v, 1.0.v), -1)].COL),
           ([0].VER, [((2.0.v, 3.0.v), -1)].COL),
         ]
-        g = init_builder()
+        b = init_builder()
           .negate()
           .on_row(proc (r: Row) = result_rows.add(r))
-          .on_collection(proc (v: Version, c: Collection) = result_collections.add((v, c)))
-          .graph
-      g.send([0].VER, [((0.0.v, 1.0.v), 1)].COL)
-      g.send([0].VER, [((2.0.v, 3.0.v), 1)].COL)
+          .on_collection(proc (v: Version, c: Collection) = result_data.add((v, c)))
+        g = b.graph
+      for (v, c) in initial_data: g.send(v, c)
       g.send([[1].VER].FTR)
       g.step
       check result_rows == correct_rows
-      check result_collections == correct_collections
-
-  
-
+      check result_data == correct_data
+    
+    test "simple accumulate_results":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [((0.0.v, 1.0.v), 1)].COL),
+          ([0].VER, [((2.0.v, 3.0.v), 1)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [((0.0.v, 1.0.v), -1)].COL),
+          ([0].VER, [((2.0.v, 3.0.v), -1)].COL),
+        ]
+        b = init_builder()
+          .negate
+          .accumulate_results
+        g = b.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check b.node.results == correct_data

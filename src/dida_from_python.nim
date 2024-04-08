@@ -410,6 +410,7 @@ type
     # freeform - useful for debugging and tests
     tOnRow
     tOnCollection
+    tAccumulateResults
     # version manipulation - used in iteration
     tVersionPush
     tVersionIncrement
@@ -435,6 +436,8 @@ type
         on_row*: OnRowFn
       of tOnCollection:
         on_collection*: OnCollectionFn
+      of tAccumulateResults:
+        results*: seq[(Version, Collection)]
       else:
         discard
   
@@ -590,6 +593,10 @@ proc concat*(b: Builder, other: Node): Builder =
   build_binary(b, tConcat, other)
 template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
 
+proc accumulate_results*(b: Builder): Builder =
+  build_unary(b, tAccumulateResults)
+  n.results = @[]
+
 # Pretty Print #
 # ---------------------------------------------------------------------
 
@@ -691,6 +698,14 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             n.on_collection(m.version, m.collection)
+            n.send(m)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tAccumulateResults:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            n.results.add((m.version, m.collection))
             n.send(m)
           of tFrontier: n.handle_frontier_message_unary(m)
       n.inputs[0].clear
