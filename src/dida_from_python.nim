@@ -18,6 +18,7 @@ type
 
   MapFn* = proc (e: Entry): Entry {.closure.}
   FilterFn* = proc (e: Entry): bool {.closure.}
+  FlatMapFn* = proc (e: Entry): ImArray {.closure.}
   ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
   CollIterateFn* = proc (c: Collection): Collection {.closure.}
 
@@ -63,6 +64,11 @@ proc map*(c: Collection, f: MapFn): Collection =
 proc filter*(c: Collection, f: FilterFn): Collection =
   for r in c:
     if f(r.entry): result.add(r)
+
+proc flat_map*(c: Collection, f: FlatMapFn): Collection =
+  for r in c:
+    for e in f(r.entry):
+      result.add((e, r.multiplicity))
 
 proc negate*(c: Collection): Collection =
   result.rows.setLen(c.size)
@@ -364,8 +370,8 @@ proc step*(f: Frontier, delta: int): Frontier =
 # ---------------------------------------------------------------------
 
 type
-  NodeOnRowFn* = proc (r: Row): void
-  NodeOnCollectionFn* = proc (v: Version, c: Collection): void
+  OnRowFn* = proc (r: Row): void
+  OnCollectionFn* = proc (v: Version, c: Collection): void
 
   MessageTag* = enum
     tData
@@ -394,6 +400,7 @@ type
     tConcat
     tMap
     tFilter
+    tFlatMap
     tReduce
     tDistinct
     tCount
@@ -427,13 +434,15 @@ type
         map_fn*: MapFn
       of tFilter:
         filter_fn*: FilterFn
+      of tFlatMap:
+        flat_map_fn*: FlatMapFn
       of tReduce:
         init_value*: Value
         reduce_fn*: ReduceFn
       of tOnRow:
-        on_row*: NodeOnRowFn
+        on_row*: OnRowFn
       of tOnCollection:
-        on_collection*: NodeOnCollectionFn
+        on_collection*: OnCollectionFn
       of tAccumulateResults:
         results*: seq[(Version, Collection)]
       else:
@@ -591,11 +600,15 @@ proc filter*(b: Builder, fn: FilterFn): Builder =
   build_unary(b, tFilter)
   n.filter_fn = fn
 
-proc on_row*(b: Builder, fn: NodeOnRowFn): Builder =
+proc flat_map*(b: Builder, fn: FlatMapFn): Builder =
+  build_unary(b, tFlatMap)
+  n.flat_map_fn = fn
+
+proc on_row*(b: Builder, fn: OnRowFn): Builder =
   build_unary(b, tOnRow)
   n.on_row = fn
 
-proc on_collection*(b: Builder, fn: NodeOnCollectionFn): Builder =
+proc on_collection*(b: Builder, fn: OnCollectionFn): Builder =
   build_unary(b, tOnCollection)
   n.on_collection = fn
 
@@ -701,8 +714,15 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             let new_coll = m.collection.filter(n.filter_fn)
-            if new_coll.size > 0:
-              n.send(m.version, new_coll)
+            if new_coll.size > 0: n.send(m.version, new_coll)
+          of tFrontier: n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tFlatMap:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_coll = m.collection.flat_map(n.flat_map_fn)
+            if new_coll.size > 0: n.send(m.version, new_coll)
           of tFrontier: n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tOnRow:

@@ -909,9 +909,9 @@ proc get*(a: ImArray, i: int): ImValue  = get_impl(a, i)
 proc get*(a: ImArray, i: ImValue): ImValue  = get_impl(a, i)
 proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
 
-# proc `[]`*(m: ImArray, k: float64): ImValue = get_impl(m, k)
-# proc get*(m: ImArray, k: ImValue): ImValue  = get_impl(m, k)
-# proc get*(m: ImArray, k: float64): ImValue  = get_impl(m, k)
+iterator items*(a: ImArray): ImValue =
+  for v in a.payload.data:
+    yield v
 
 template set_impl*(a: ImArray, i: int, v: ImValue) =
   let derefed = a.payload

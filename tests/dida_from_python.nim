@@ -278,3 +278,24 @@ proc main* =
       g.step
       check b.node.results == correct_data
 
+    test "simple flat_map":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [([0, 1].ARR, 1)].COL),
+          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
+          ([0].VER, [([2, 3].ARR, 1)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(0.0.v, 1), (1.0.v, 1)].COL),
+          ([0].VER, [(0.0.v, 1), (1.0.v, 1), (8.0.v, 5), (9.0.v, 5)].COL),
+          ([0].VER, [(2.0.v, 1), (3.0.v, 1)].COL),
+        ]
+        b = init_builder()
+          .flat_map((e) => [e[0], e[1]].ARR.as_arr)
+          .accumulate_results
+        g = b.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check b.node.results == correct_data
+
