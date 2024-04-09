@@ -1,3 +1,4 @@
+import std/[tables]
 import ../src/[test_utils, values]
 
 proc main* =
@@ -41,7 +42,7 @@ proc main* =
       check s3 != s2
       check s3 == s1
       check s4 == s3
-
+ 
   suite "map":
     test "immutable updates":
       var
@@ -88,12 +89,12 @@ proc main* =
       check m1 == m2
     test "init with Nil values":
       var
-        m1 = init_map([(1.0.v, Nil.v), (4.5.v, 13.5.v), (4.5.v, Nil.v)])
+        m1 = Map([(1, Nil), (4.5, 13.5), (4.5, Nil)])
         m2 = init_map()
       check m1 == m2
     test "merge":
       var
-        m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
+        m1 = Map([(1, 3), (4.5, 13.5)])
         m2 = init_map([(1.0.v, 5.0.v), (5.5.v, 13.5.v)])
         m3 = m1 & m2
         m4 = m2 & m1

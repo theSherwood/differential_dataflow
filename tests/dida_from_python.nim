@@ -22,138 +22,138 @@ proc main* =
       var
         a = COL([])
         b = COL([])
-        c = COL([([0, 1].ARR, 1)])
+        c = COL([(V [0, 1], 1)])
       check a == b
       check a != c
 
     test "various":
       var
         a = COL([
-          ([STR"apple", STR"$5"].ARR, 2),
-          ([STR"banana", STR"$2"].ARR, 1)
+          (V ["apple", "$5"], 2),
+          (V ["banana", "$2"], 1),
         ])
         b = COL([
-          ([STR"apple", STR"$3"].ARR, 1),
-          ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
-          ([STR"kiwi", STR"$2"].ARR, 1)
+          (V ["apple", "$3"], 1),
+          (V ["apple", ["granny smith", "$2"]], 1),
+          (V ["kiwi", "$2"], 1),
         ])
         c = COL([
-          ([STR"apple", STR"$5"].ARR, 2),
-          ([STR"banana", STR"$2"].ARR, 1),
-          ([STR"apple", STR"$2"].ARR, 20),
+          (V ["apple", "$5"], 2),
+          (V ["banana", "$2"], 1),
+          (V ["apple", "$2"], 20),
         ])
         d = COL([
-          ([STR"apple", 11.0.v].ARR, 1),
-          ([STR"apple", 3.0.v].ARR, 2),
-          ([STR"banana", 2.0.v].ARR, 3),
-          ([STR"coconut", 3.0.v].ARR, 1),
+          (V ["apple", 11], 1),
+          (V ["apple", 3], 2),
+          (V ["banana", 2], 3),
+          (V ["coconut", 3], 1),
         ])
         # some results
         a_concat_b_result = COL([
-          ([STR"apple", STR"$5"].ARR, 2),
-          ([STR"banana", STR"$2"].ARR, 1),
-          ([STR"apple", STR"$3"].ARR, 1),
-          ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
-          ([STR"kiwi", STR"$2"].ARR, 1)
+          (V ["apple", "$5"], 2),
+          (V ["banana", "$2"], 1),
+          (V ["apple", "$3"], 1),
+          (V ["apple", ["granny smith", "$2"]], 1),
+          (V ["kiwi", "$2"], 1),
         ])
         a_join_b_result = COL([
-          ([STR"apple", ARR([STR"$5", STR"$3"])].ARR, 2),
-          ([STR"apple", ARR([STR"$5", ARR([STR"granny smith", STR"$2"])])].ARR, 2),
+          (V ["apple", ["$5", "$3"]], 2),
+          (V ["apple", ["$5", ["granny smith", "$2"]]], 2),
         ])
         b_join_a_result = COL([
-          ([STR"apple", ARR([STR"$3", STR"$5"])].ARR, 2),
-          ([STR"apple", ARR([ARR([STR"granny smith", STR"$2"]), STR"$5"])].ARR, 2),
+          (V ["apple", ["$3", "$5"]], 2),
+          (V ["apple", [["granny smith", "$2"], "$5"]], 2),
         ])
       check a.concat(b) == a_concat_b_result
       check b.concat(a) == a_concat_b_result
       check a.join(b) == a_join_b_result
       check b.join(a) == b_join_a_result
-      check a.filter(proc (e: Entry): bool = e.key == STR"apple") == COL([
-        ([STR"apple", STR"$5"].ARR, 2)
+      check a.filter(proc (e: Entry): bool = e.key == V "apple") == COL([
+        (V ["apple", "$5"], 2),
       ])
       check a.map((e) => [e.value, e.key].ARR) == COL([
-        ([STR"$5", STR"apple"].ARR, 2),
-        ([STR"$2", STR"banana"].ARR, 1)
+        (V ["$5", "apple"], 2),
+        (V ["$2", "banana"], 1),
       ])
       check a.concat(b).count() == COL([
-        ([STR"apple", 4.0.v].ARR, 1),
-        ([STR"banana", 1.0.v].ARR, 1),
-        ([STR"kiwi", 1.0.v].ARR, 1)
+        (V ["apple", 4], 1),
+        (V ["banana", 1], 1),
+        (V ["kiwi", 1], 1),
       ])
       check a.concat(b).distinct() == COL([
-        ([STR"apple", STR"$5"].ARR, 1),
-        ([STR"banana", STR"$2"].ARR, 1),
-        ([STR"apple", STR"$3"].ARR, 1),
-        ([STR"apple", ARR([STR"granny smith", STR"$2"])].ARR, 1),
-        ([STR"kiwi", STR"$2"].ARR, 1)
+        (V ["apple", "$5"], 1),
+        (V ["banana", "$2"], 1),
+        (V ["apple", "$3"], 1),
+        (V ["apple", ["granny smith", "$2"]], 1),
+        (V ["kiwi", "$2"], 1),
       ])
       check d.min() == COL([
-        ([STR"apple", 3.0.v].ARR, 1),
-        ([STR"banana", 2.0.v].ARR, 1),
-        ([STR"coconut", 3.0.v].ARR, 1),
+        (V ["apple", 3], 1),
+        (V ["banana", 2], 1),
+        (V ["coconut", 3], 1),
       ])
       check d.max() == COL([
-        ([STR"apple", 11.0.v].ARR, 1),
-        ([STR"banana", 2.0.v].ARR, 1),
-        ([STR"coconut", 3.0.v].ARR, 1),
+        (V ["apple", 11], 1),
+        (V ["banana", 2], 1),
+        (V ["coconut", 3], 1),
       ])
       check d.sum() == COL([
-        ([STR"apple", 17.0.v].ARR, 1),
-        ([STR"banana", 6.0.v].ARR, 1),
-        ([STR"coconut", 3.0.v].ARR, 1),
+        (V ["apple", 17], 1),
+        (V ["banana", 6], 1),
+        (V ["coconut", 3], 1),
       ])
       check c.min() == COL([
-        ([STR"apple", STR"$2"].ARR, 1),
-        ([STR"banana", STR"$2"].ARR, 1),
+        (V ["apple", "$2"], 1),
+        (V ["banana", "$2"], 1),
       ])
       check c.max() == COL([
-        ([STR"apple", STR"$5"].ARR, 1),
-        ([STR"banana", STR"$2"].ARR, 1),
+        (V ["apple", "$5"], 1),
+        (V ["banana", "$2"], 1),
       ])
     
     test "negate":
       var a = COL([
-        ([STR"foo", Nil.v].ARR, 3),
-        ([STR"foo", Nil.v].ARR, 1),
-        ([STR"bar", Nil.v].ARR, 2),
+        (V ["foo", Nil], 3),
+        (V ["foo", Nil], 1),
+        (V ["bar", Nil], 2),
       ])
       check a.negate == COL([
-        ([STR"foo", Nil.v].ARR, -3),
-        ([STR"foo", Nil.v].ARR, -1),
-        ([STR"bar", Nil.v].ARR, -2),
+        (V ["foo", Nil], -3),
+        (V ["foo", Nil], -1),
+        (V ["bar", Nil], -2),
       ])
 
     test "consolidate":
       var a = COL([
-        ([STR"foo", Nil.v].ARR, 1),
-        ([STR"foo", Nil.v].ARR, 3),
-        ([STR"bar", Nil.v].ARR, 3),
-        ([STR"foo", Nil.v].ARR, 9),
-        ([STR"bar", Nil.v].ARR, 3),
-        ([STR"was", Nil.v].ARR, 3),
-        ([STR"foo", Nil.v].ARR, 1),
-        ([STR"bar", Nil.v].ARR, -47),
-        ([STR"was", Nil.v].ARR, -3),
+        (V ["foo", Nil], 1),
+        (V ["foo", Nil], 3),
+        (V ["bar", Nil], 3),
+        (V ["foo", Nil], 9),
+        (V ["bar", Nil], 3),
+        (V ["was", Nil], 3),
+        (V ["foo", Nil], 1),
+        (V ["bar", Nil], -47),
+        (V ["was", Nil], -3),
       ])
       check a.consolidate == COL([
-        ([STR"foo", Nil.v].ARR, 14),
-        ([STR"bar", Nil.v].ARR, -41),
+        (V ["foo", Nil], 14),
+        (V ["bar", Nil], -41),
       ])
       check a.concat(a.negate).consolidate == COL([])
 
     test "iterate":
-      var a = COL([([1.0.v, Nil.v].ARR, 1)])
+      var a = COL([(V [1, Nil], 1)])
       proc add_one(c: Collection): Collection =
         return c.map((e) => [(e.key.as_f64 + 1.0).v, e.value].ARR)
           .concat(c)
-          .filter(proc (e: Entry): bool = e.key < 5.0.v)
+          .filter(proc (e: Entry): bool = e.key < V 5.0)
           .distinct
           .consolidate
       check a.iterate(add_one) == COL([
-        ([1.0.v, Nil.v].ARR, 1),
-        ([2.0.v, Nil.v].ARR, 1),
-        ([3.0.v, Nil.v].ARR, 1),
-        ([4.0.v, Nil.v].ARR, 1),
+        (V [1, Nil], 1),
+        (V [2, Nil], 1),
+        (V [3, Nil], 1),
+        (V [4, Nil], 1),
       ])
 
   suite "version":
@@ -200,15 +200,15 @@ proc main* =
     test "simple on_row and on_collection":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, 1)].COL),
-          ([0].VER, [([2, 3].ARR, 1)].COL),
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
         ]
         result_rows: seq[Row] = @[]
         result_data: seq[(Version, Collection)] = @[]
-        correct_rows: seq[Row] = @[([0, 1].ARR, -1), ([2, 3].ARR, -1)]
+        correct_rows: seq[Row] = @[(V [0, 1], -1), (V [2, 3], -1)]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, -1)].COL),
-          ([0].VER, [([2, 3].ARR, -1)].COL),
+          ([0].VER, [(V [0, 1], -1)].COL),
+          ([0].VER, [(V [2, 3], -1)].COL),
         ]
         b = init_builder()
           .negate()
@@ -224,12 +224,12 @@ proc main* =
     test "simple accumulate_results":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, 1)].COL),
-          ([0].VER, [([2, 3].ARR, 1)].COL),
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, -1)].COL),
-          ([0].VER, [([2, 3].ARR, -1)].COL),
+          ([0].VER, [(V [0, 1], -1)].COL),
+          ([0].VER, [(V [2, 3], -1)].COL),
         ]
         b = init_builder()
           .negate
@@ -243,12 +243,12 @@ proc main* =
     test "simple map":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
-          ([0].VER, [([2, 3].ARR, 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([1, 0].ARR, 1), ([9, 8].ARR, 5)].COL),
-          ([0].VER, [([3, 2].ARR, 1)].COL),
+          ([0].VER, [(V [1, 0], 1), (V [9, 8], 5)].COL),
+          ([0].VER, [(V [3, 2], 1)].COL),
         ]
         b = init_builder()
           .map((e) => [e[1], e[0]].ARR)
@@ -262,12 +262,12 @@ proc main* =
     test "simple filter":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, 1)].COL),
-          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
-          ([0].VER, [([2, 3].ARR, 1)].COL),
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([8, 9].ARR, 5)].COL),
+          ([0].VER, [(V [8, 9], 5)].COL),
         ]
         b = init_builder()
           .filter((e) => e[0] > 5.0.v)
@@ -281,14 +281,14 @@ proc main* =
     test "simple flat_map":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [([0, 1].ARR, 1)].COL),
-          ([0].VER, [([0, 1].ARR, 1), ([8, 9].ARR, 5)].COL),
-          ([0].VER, [([2, 3].ARR, 1)].COL),
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
         ]
         correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [(0.0.v, 1), (1.0.v, 1)].COL),
-          ([0].VER, [(0.0.v, 1), (1.0.v, 1), (8.0.v, 5), (9.0.v, 5)].COL),
-          ([0].VER, [(2.0.v, 1), (3.0.v, 1)].COL),
+          ([0].VER, [(V 0, 1), (V 1, 1)].COL),
+          ([0].VER, [(V 0, 1), (V 1, 1), (V 8, 5), (V 9, 5)].COL),
+          ([0].VER, [(V 2, 1), (V 3, 1)].COL),
         ]
         b = init_builder()
           .flat_map((e) => [e[0], e[1]].ARR.as_arr)
@@ -298,4 +298,51 @@ proc main* =
       g.send([[1].VER].FTR)
       g.step
       check b.node.results == correct_data
+
+#[
+    test "task: send more money":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, toSeq(0..<10).map(i => (i.float64.v, 1)).COL)
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V 0, 1), (V 1, 1)].COL),
+          ([0].VER, [(V 0, 1), (V 1, 1), (V 8, 5), (V 9, 5)].COL),
+          ([0].VER, [(V 2, 1), (V 3, 1)].COL),
+        ]
+        flat_map_fn = proc (e: Entry): ImArray =
+          return [e].ARR.as_arr
+        # sendmory
+        input = init_builder()
+        s = input.filter(e => e != 0.0)
+          .map(e => [(STR"s", e)].MAP)
+          .join(0, input)
+        e = s.filter(e => e[STR"s"] != e[1])
+          .map(e => e[0].set(STR"e", e[1]))
+          .join(0, input)
+        n = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1])
+          .map(e => e[0].set(STR"n", e[1]))
+          .join(0, input)
+        d = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1])
+          .map(e => e[0].set(STR"d", e[1]))
+          .join(0, input)
+        m = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[1] != 0.0)
+          .map(e => e[0].set(STR"m", e[1]))
+          .join(0, input)
+        o = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1])
+          .map(e => e[0].set(STR"o", e[1]))
+          .join(0, input)
+        r = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1] && e[STR"o"] != e[1])
+          .map(e => e[0].set(STR"r", e[1]))
+          .join(0, input)
+        y = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1] && e[STR"o"] != e[1] && e[STR"r"] != e[1])
+          .map(e => e[0].set(STR"y", e[1]))
+          .join(0, input)
+        results = s.accumulate_results
+        g = input.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check results.node.results == correct_data
+]#
 
