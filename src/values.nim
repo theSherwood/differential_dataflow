@@ -1137,7 +1137,6 @@ proc Map_impl(x: NimNode): NimNode =
       return quote do: init_map(`brak`)
     else:
       return quote do: init_map(`x`)
-      # raise newException(TypeException, &"Cannot call Map on {x.repr}")
 macro Map*(x: untyped): untyped =
   Map_impl(x)
 macro Map*(): untyped =
@@ -1152,11 +1151,25 @@ proc Arr_impl(x: NimNode): NimNode =
       return quote do: init_array(`brak`)
     else: 
       return quote do: init_array(`x`)
-      # raise newException(TypeException, &"Cannot call Arr on {x.repr}")
 macro Arr*(x: untyped): untyped =
   Arr_impl(x)
 macro Arr*(): untyped =
   return quote do: init_array([])
+
+proc Set_impl(x: NimNode): NimNode =
+  case x.kind:
+    of nnkBracket, nnkCurly:
+      var brak = quote do: []
+      for c in x.children:
+        brak.add(V_impl(c))
+      return quote do: init_set(`brak`)
+    else: 
+      return quote do: init_set(`x`)
+macro Set*(x: untyped): untyped =
+  Set_impl(x)
+macro Set*(): untyped =
+  return quote do: init_set([])
+
 
 # ImValue Fns #
 # ---------------------------------------------------------------------

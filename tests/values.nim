@@ -173,19 +173,21 @@ proc main* =
   suite "set":
     test "simple":
       var
-        s1 = init_set()
-        s2 = init_set([])
+        s1 = Set()
+        s2 = Set []
+        s3 = Set {}
       check s1 == s2
+      check s2 == s3
       check s1.has(1.0) == False
     test "init":
       var
-        s1 = init_set([1.0.v, 2.0.v, 3.0.v, 3.0.v, 2.0.v, 1.0.v])
-        s2 = init_set([1.0.v, 2.0.v, 3.0.v])
+        s1 = Set {1, 2, 3, 3, 2, 1}
+        s2 = Set {1, 2, 3}
       check s1.size == 3
       check s1 == s2
     test "add and del":
       var
-        s1 = init_set()
+        s1 = Set {}
         s2 = s1.add(3.0.v)
         s3 = s1.add(3.0.v)
       check s1 != s2
@@ -206,9 +208,9 @@ proc main* =
       check s6.size == 0
     test "nested":
       var
-        s1 = init_set()
-        s2 = init_set([3.0.v, s1.v, s1.v])
-        s3 = init_set([s1.v, s2.v, 4.0.v])
+        s1 = Set {}
+        s2 = Set {3, s1, s1}
+        s3 = Set {s1, s2, 4}
         s4 = s3.add(s3.v)
         s5 = s4.del(s2.v)
       check s2.size == 2
@@ -223,10 +225,10 @@ proc main* =
       var
         m1 = Map {1: 2}
         a1 = Arr [m1, m1]
-        s1 = init_set([m1.v, a1.v])
+        s1 = Set {m1, a1}
         m2 = Map {m1: s1, a1: m1, s1: a1}
         a2 = Arr [m1, a1, s1, m2]
-        s2 = init_set([m1.v, a1.v, s1.v, m2.v, a2.v])
+        s2 = Set {m1, a1, s1, m2, a2}
       check get_in(s2.v, [s2.v, m2.v]) == Nil.v
       check get_in(s2.v, [a2.v]) == a2.v
       check get_in(s2.v, [a2.v, 3.0.v]) == m2.v
