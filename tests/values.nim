@@ -22,23 +22,23 @@ proc main* =
   suite "string":
     test "simple":
       var
-        s1 = init_string("some string")
-        s2 = init_string(" and more")
+        s1 = Str "some string"
+        s2 = Str " and more"
       check s1.size == 11
       check s2.size == 9
       check s1 != s2
       var s3 = s1.concat(s2)
       check s3.size == 20
-      check s3 == init_string("some string and more")
-      check s3[0] == init_string("s").v
-      check s3[0] != init_string("n").v
+      check s3 == Str "some string and more"
+      check s3[0] == Str "s"
+      check s3[0] != Str "n"
     test "concat":
       var
-        s1 = init_string("foobar")
-        s2 = init_string("foo")
+        s1 = Str "foobar"
+        s2 = Str "foo"
       check s1 != s2
-      var s3 = s2.concat(init_string("bar"))
-      var s4 = s2 & init_string("bar")
+      var s3 = s2.concat(Str "bar")
+      var s4 = s2 & Str "bar"
       check s3 != s2
       check s3 == s1
       check s4 == s3

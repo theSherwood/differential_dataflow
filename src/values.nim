@@ -500,6 +500,9 @@ func `==`*(v1, v2: ImV): bool =
 func `==`*(v: ImV, f: float64): bool = return v == f.as_v
 func `==`*(f: float64, v: ImV): bool = return v == f.as_v
 
+template `==`*(v1: ImValue, v2: ImV): bool = v1.as_v == v2.as_v
+template `==`*(v1: ImV, v2: ImValue): bool = v1.as_v == v2.as_v
+
 proc `<`*(a, b: ImValue): bool
 proc `<=`*(a, b: ImValue): bool
 
@@ -1170,6 +1173,9 @@ macro Set*(x: untyped): untyped =
 macro Set*(): untyped =
   return quote do: init_set([])
 
+## TODO
+## - add format string capabilities
+template Str*(x: string): ImString = x.init_string
 
 # ImValue Fns #
 # ---------------------------------------------------------------------
