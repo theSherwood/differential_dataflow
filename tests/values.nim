@@ -127,13 +127,13 @@ proc main* =
   suite "array":
     test "init":
       var
-        a1 = init_array(@[])
-        a2 = init_array([])
-        a3 = init_array()
+        a1 = Arr []
+        a2 = Arr []
+        a3 = Arr()
       check a1 == a2
       check a3 == a2
     test "get":
-      var a1 = init_array(@[1.0.v, 3.0.v, 9.7.v])
+      var a1 = Arr([1, 3, 9.7])
       check a1.size == 3
       check a1[0] == 1.0.v
       check a1[100] == Nil.v
@@ -142,7 +142,7 @@ proc main* =
       check a1[3.0] == Nil.v
     test "set":
       var
-        a1 = init_array([1.0.v, 3.0.v, 9.7.v])
+        a1 = Arr([1, 3, 9.7])
         a2 = a1.set(1, 11.5.v)
         a3 = a2.set(1, 3.0.v)
       check a1 != a2
@@ -156,15 +156,15 @@ proc main* =
       check a2[1] == 11.5.v
     test "concat":
       var
-        a1 = init_array(@[1.0.v, 2.0.v, 3.0.v])
+        a1 = Arr [1, 2, 3]
         a3 = a1.concat(a1)
         a4 = a1 & a1
       check a3 == a4
       check a3.size == 6
     test "nested":
       var
-        a1 = init_array([1.0.v, 2.0.v])
-        a2 = init_array([a1.v, a1.v, 3.0.v])
+        a1 = Arr [1, 2]
+        a2 = Arr [a1, a1, 3]
         a3 = a2.set(0, a2.v)
       check a3[0].v == a2.v
       check a2[0] == a2[1]
@@ -222,10 +222,10 @@ proc main* =
     test "get_in":
       var
         m1 = Map {1: 2}
-        a1 = init_array([m1.v, m1.v])
+        a1 = Arr [m1, m1]
         s1 = init_set([m1.v, a1.v])
         m2 = Map {m1: s1, a1: m1, s1: a1}
-        a2 = init_array([m1.v, a1.v, s1.v, m2.v])
+        a2 = Arr [m1, a1, s1, m2]
         s2 = init_set([m1.v, a1.v, s1.v, m2.v, a2.v])
       check get_in(s2.v, [s2.v, m2.v]) == Nil.v
       check get_in(s2.v, [a2.v]) == a2.v
@@ -236,9 +236,9 @@ proc main* =
     test "set_in":
       var
         m1 = Map {1: 2}
-        a1 = init_array([m1.v, m1.v])
+        a1 = Arr [m1, m1]
         m2 = Map {m1: a1, a1: m1}
-        a2 = init_array([m1.v, a1.v, m2.v])
+        a2 = Arr [m1, a1, m2]
         # the path exists until the last key (excl)
         a3 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 3.0.v], 4.0.v)
         # the path exists until the last key (excl) but we set to Nil

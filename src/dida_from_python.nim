@@ -2,8 +2,6 @@ import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strforma
 import hashes
 import values
 
-template ARR(vs: openArray[ImValue]): ImValue = init_array(vs).v
-
 # Collections #
 # ---------------------------------------------------------------------
 
@@ -103,7 +101,7 @@ proc join*(c1, c2: Collection): Collection =
   t.to_row_table_by_key(c1)
   for r in c2:
     for r2 in t.getOrDefault(r.key, empty_seq):
-      result.add(([r.key, [r2.value, r.value].ARR].ARR, r.multiplicity * r2.multiplicity))
+      result.add((V [r.key, [r2.value, r.value]], r.multiplicity * r2.multiplicity))
 
 ## Keys must not be changed by the reduce fn
 proc reduce*(c: Collection, f: ReduceFn): Collection =
@@ -117,7 +115,7 @@ proc count_inner(rows: seq[Row]): seq[Row] =
   let k = rows[0].key
   var cnt = 0
   for r in rows: cnt += r.multiplicity
-  return @[([k, cnt.float64.v].ARR, 1)]
+  return @[(V [k, cnt.float64], 1)]
 
 proc count*(c: Collection): Collection =
   return c.reduce(count_inner)
@@ -126,7 +124,7 @@ proc sum_inner(rows: seq[Row]): seq[Row] =
   let k = rows[0].key
   var cnt = 0.float64
   for r in rows: cnt += r.value.as_f64 * r.multiplicity.float64
-  return @[([k, cnt.v].ARR, 1)]
+  return @[(V [k, cnt], 1)]
 
 proc sum*(c: Collection): Collection =
   return c.reduce(sum_inner)
@@ -162,7 +160,7 @@ proc min_inner(rows: seq[Row]): seq[Row] =
       elif e.value < min_val:
         min_val = e.value
   if value_seen:
-    return @[([k, min_val].ARR, 1)]
+    return @[(V [k, min_val], 1)]
   else:
     return @[]
 
@@ -189,7 +187,7 @@ proc max_inner(rows: seq[Row]): seq[Row] =
       elif e.value > max_val:
         max_val = e.value
   if value_seen:
-    return @[([k, max_val].ARR, 1)]
+    return @[(V [k, max_val], 1)]
   else:
     return @[]
 

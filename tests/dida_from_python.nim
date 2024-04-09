@@ -1,17 +1,6 @@
 import std/[sugar, sequtils]
 import ../src/[test_utils, dida_from_python, values]
 
-template STR*(): ImValue = init_string().v
-template STR*(s: string): ImValue = init_string(s).v
-template ARR*(): ImValue = init_array().v
-template ARR*(vs: openArray[ImValue]): ImValue = init_array(vs).v
-template ARR*(vs: openArray[float64]): ImValue = init_array(toSeq(vs).map(f => f.v)).v
-template ARR*(vs: openArray[int]): ImValue = init_array(toSeq(vs).map(i => i.float64.v)).v
-template SET*(): ImValue = init_set().v
-template SET*(vs: openArray[ImValue]): ImValue = init_set(vs).v
-template MAP*(): ImValue = init_map().v
-template MAP*(vs: openArray[(ImValue, ImValue)]): ImValue = init_map(vs).v
-
 template COL*(rows: openArray[Row]): Collection = init_collection(rows)
 template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
 template FTR*(versions: openArray[Version]): Frontier = init_frontier(versions)
@@ -71,7 +60,7 @@ proc main* =
       check a.filter(proc (e: Entry): bool = e.key == V "apple") == COL([
         (V ["apple", "$5"], 2),
       ])
-      check a.map((e) => [e.value, e.key].ARR) == COL([
+      check a.map((e) => V([e.value, e.key])) == COL([
         (V ["$5", "apple"], 2),
         (V ["$2", "banana"], 1),
       ])
@@ -144,7 +133,7 @@ proc main* =
     test "iterate":
       var a = COL([(V [1, Nil], 1)])
       proc add_one(c: Collection): Collection =
-        return c.map((e) => [(e.key.as_f64 + 1.0).v, e.value].ARR)
+        return c.map((e) => V([(e.key.as_f64 + 1.0).v, e.value]))
           .concat(c)
           .filter(proc (e: Entry): bool = e.key < V 5.0)
           .distinct
@@ -251,7 +240,7 @@ proc main* =
           ([0].VER, [(V [3, 2], 1)].COL),
         ]
         b = init_builder()
-          .map((e) => [e[1], e[0]].ARR)
+          .map((e) => V([e[1], e[0]]))
           .accumulate_results
         g = b.graph
       for (v, c) in initial_data: g.send(v, c)
@@ -291,7 +280,7 @@ proc main* =
           ([0].VER, [(V 2, 1), (V 3, 1)].COL),
         ]
         b = init_builder()
-          .flat_map((e) => [e[0], e[1]].ARR.as_arr)
+          .flat_map((e) => Arr([e[0], e[1]]))
           .accumulate_results
         g = b.graph
       for (v, c) in initial_data: g.send(v, c)

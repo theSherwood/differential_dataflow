@@ -1114,6 +1114,8 @@ proc Map_impl(x: NimNode): NimNode =
       for tup in x.children:
         if tup.kind != nnkTupleConstr:
           raise newException(TypeException, &"Cannot call Map on {x.repr}")
+        if tup.len != 2:
+          raise newException(TypeException, &"Cannot call Map on {x.repr}")
         parens = quote do: ()
         for c in tup.children:
           parens.add(V_impl(c))
@@ -1134,9 +1136,27 @@ proc Map_impl(x: NimNode): NimNode =
         brak.add(parens)
       return quote do: init_map(`brak`)
     else:
-      raise newException(TypeException, &"Cannot call Map on {x.repr}")
+      return quote do: init_map(`x`)
+      # raise newException(TypeException, &"Cannot call Map on {x.repr}")
 macro Map*(x: untyped): untyped =
   Map_impl(x)
+macro Map*(): untyped =
+  return quote do: init_map([])
+
+proc Arr_impl(x: NimNode): NimNode =
+  case x.kind:
+    of nnkBracket:
+      var brak = copyNimNode(x)
+      for c in x.children:
+        brak.add(V_impl(c))
+      return quote do: init_array(`brak`)
+    else: 
+      return quote do: init_array(`x`)
+      # raise newException(TypeException, &"Cannot call Arr on {x.repr}")
+macro Arr*(x: untyped): untyped =
+  Arr_impl(x)
+macro Arr*(): untyped =
+  return quote do: init_array([])
 
 # ImValue Fns #
 # ---------------------------------------------------------------------
