@@ -395,7 +395,6 @@ type
     tInput
     tOutput
     tIndex
-    tConcat
     tMap
     tFilter
     tFlatMap
@@ -409,6 +408,8 @@ type
     tNegate
     tConsolidate
     # binary
+    tConcat
+    tJoinColumns
     tJoin
     # freeform - useful for debugging and tests
     tOnRow
@@ -467,7 +468,7 @@ proc connect*(g: Graph, n1, n2: Node) =
   if n == nil:
     n = g.top_node
   else:
-    doAssert n in g.nodes
+    doAssert n in g.nodes or n == g.top_node
   var e = Edge()
   e.id = edge_id
   edge_id += 1
@@ -540,13 +541,15 @@ proc send*(g: Graph, v: Version, c: Collection) = g.top_node.send(v, c)
 proc send*(g: Graph, f: Frontier) = g.top_node.send(f)
 proc send*(g: Graph, m: Message) = g.top_node.send(m)
 
-template handle_frontier_message_unary(n: Node, m: Message) {.dirty.} =
-  doAssert n.input_frontiers[0].le(m.frontier)
-  n.input_frontiers[0] = m.frontier
+template handle_frontier_message(n: Node, m: Message, idx: int) {.dirty.} =
+  doAssert n.input_frontiers[idx].le(m.frontier)
+  n.input_frontiers[idx] = m.frontier
   doAssert n.output_frontier.le(m.frontier)
   if n.output_frontier.lt(m.frontier):
     n.output_frontier = m.frontier
     n.send(m)
+template handle_frontier_message_unary(n: Node, m: Message) {.dirty.} =
+  handle_frontier_message(n, m, 0)
 
 # Builder #
 # ---------------------------------------------------------------------
@@ -555,7 +558,7 @@ proc init_builder*(g: Graph, f: Frontier): Builder =
   var b = Builder()
   b.graph = g
   b.frontier = f
-  b.node = nil
+  b.node = g.top_node
   return b
 template init_builder*(f: Frontier): Builder =
   init_builder(init_graph(init_node(tPassThrough, f)), f)
@@ -624,6 +627,7 @@ proc `$`*(t: NodeTag): string =
     of tPrint:        "Print"
     of tNegate:       "Negate"
     of tConcat:       "Concat"
+    of tJoinColumns:  "JoinColumns"
     of tJoin:         "Join"
     of tMap:          "Map"
     of tFilter:       "Filter"
@@ -723,6 +727,17 @@ proc step(n: Node) =
             if new_coll.size > 0: n.send(m.version, new_coll)
           of tFrontier: n.handle_frontier_message_unary(m)
       n.inputs[0].clear
+    of tConcat:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:     n.send(m)
+          of tFrontier: n.handle_frontier_message(m, 0)
+      n.inputs[0].clear
+      for m in n.inputs[1].queue:
+        case m.tag:
+          of tData:     n.send(m)
+          of tFrontier: n.handle_frontier_message(m, 1)
+      n.inputs[1].clear
     of tOnRow:
       for m in n.inputs[0].queue:
         case m.tag:

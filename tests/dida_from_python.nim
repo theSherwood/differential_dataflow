@@ -288,11 +288,34 @@ proc main* =
       g.step
       check b.node.results == correct_data
 
+    test "negate with concat":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5)].COL),
+          ([0].VER, [(V [2, 3], 1)].COL),
+          ([0].VER, [(V [0, 1], -1)].COL),
+          ([0].VER, [(V [0, 1], -1), (V [8, 9], -5)].COL),
+          ([0].VER, [(V [2, 3], -1)].COL),
+        ]
+        input = init_builder()
+        r = input.concat(input.negate).accumulate_results
+        g = input.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[1].VER].FTR)
+      g.step
+      check r.node.results == correct_data
+
 #[
     test "task: send more money":
       var
         initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, toSeq(0..<10).map(i => (i.float64.v, 1)).COL)
+          ([0].VER, toSeq(0..<10).map(i => (V i, 1)).COL)
         ]
         correct_data: seq[(Version, Collection)] = @[
           ([0].VER, [(V 0, 1), (V 1, 1)].COL),
@@ -300,38 +323,38 @@ proc main* =
           ([0].VER, [(V 2, 1), (V 3, 1)].COL),
         ]
         flat_map_fn = proc (e: Entry): ImArray =
-          return [e].ARR.as_arr
+          return Arr([e])
         # sendmory
         input = init_builder()
         s = input.filter(e => e != 0.0)
-          .map(e => [(STR"s", e)].MAP)
+          .map(e => V({"e": e}))
           .join(0, input)
-        e = s.filter(e => e[STR"s"] != e[1])
-          .map(e => e[0].set(STR"e", e[1]))
+        e = s.filter(e => e["s"] != e[1])
+          .map(e => e[0].set("e", e[1]))
           .join(0, input)
-        n = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1])
-          .map(e => e[0].set(STR"n", e[1]))
+        n = e.filter(e => e["s"] != e[1] && e["e"] != e[1])
+          .map(e => e[0].set("n", e[1]))
           .join(0, input)
-        d = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1])
-          .map(e => e[0].set(STR"d", e[1]))
+        d = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1])
+          .map(e => e[0].set("d", e[1]))
           .join(0, input)
-        m = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[1] != 0.0)
-          .map(e => e[0].set(STR"m", e[1]))
+        m = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e[1] != 0.0)
+          .map(e => e[0].set("m", e[1]))
           .join(0, input)
-        o = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1])
-          .map(e => e[0].set(STR"o", e[1]))
+        o = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1])
+          .map(e => e[0].set("o", e[1]))
           .join(0, input)
-        r = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1] && e[STR"o"] != e[1])
-          .map(e => e[0].set(STR"r", e[1]))
+        r = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1] && e["o"] != e[1])
+          .map(e => e[0].set("r", e[1]))
           .join(0, input)
-        y = e.filter(e => e[STR"s"] != e[1] && e[STR"e"] != e[1] && e[STR"n"] != e[1] && e[STR"d"] != e[1] && e[STR"m"] != e[1] && e[STR"o"] != e[1] && e[STR"r"] != e[1])
-          .map(e => e[0].set(STR"y", e[1]))
+        y = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1] && e["o"] != e[1] && e["r"] != e[1])
+          .map(e => e[0].set("y", e[1]))
           .join(0, input)
         results = s.accumulate_results
         g = input.graph
       for (v, c) in initial_data: g.send(v, c)
       g.send([[1].VER].FTR)
       g.step
-      check results.node.results == correct_data
+      check 1 == 1
+      # check results.node.results == correct_data
 ]#
-
