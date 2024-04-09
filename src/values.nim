@@ -489,9 +489,6 @@ func `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
-
-func `==`*(v1: ImSV, v2: float64): bool = return v1.as_f64 == v2
-func `==`*(v1: float64, v2: ImSV): bool = return v1 == v2.as_f64
 func `==`*(v1, v2: ImSV): bool = return v1.as_u64 == v2.as_u64
   
 func `==`*(v1, v2: ImV): bool =

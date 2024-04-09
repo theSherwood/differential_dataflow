@@ -219,6 +219,28 @@ proc main* =
       check s2.v in s3
       check s3.v in s4
       check not(s2.v in s5)
+  
+  suite "mix generic with specific":
+    test "equality":
+      var
+        m1 = Map {1: 2}
+        a1 = Arr [m1, m1]
+        s1 = Set {m1, a1}
+        m2 = Map {m1: s1, a1: m1, s1: a1}
+        a2 = Arr [m1, a1, s1, m2]
+        s2 = Set {m1, a1, s1, m2, a2}
+        vm1 = V {1: 2}
+        va1 = V [m1, m1]
+        vs1 = V {m1, a1}
+        vm2 = V {m1: s1, a1: m1, s1: a1}
+        va2 = V [m1, a1, s1, m2]
+        vs2 = V {m1, a1, s1, m2, a2}
+      check m1 == vm1
+      check a1 == va1
+      check s1 == vs1
+      check m2 == vm2
+      check a2 == va2
+      check s2 == vs2
 
   suite "mixed nesting":
     test "get_in":
