@@ -1,5 +1,10 @@
-import std/[tables]
+import std/[tables, strutils]
 import ../src/[test_utils, values]
+
+##[
+  TODO
+   - make sure we've got good spread on hashes
+]##
 
 proc main* =
   suite "number":
@@ -51,7 +56,7 @@ proc main* =
       check m1 == m2
       check m1.size == 0
       check m2.size == 0
-      var m3 = m1.set(1.0, 3.0)
+      var m3 = m1.set(1, 3)
       check m3 != m1
       check m3 != m2
       check m1 == m2
@@ -65,14 +70,14 @@ proc main* =
       var
         m1 = Map {}
         m2 = m1.set(1.0, 3.0)
-        m3 = m2.set(1.0, Nil.v)
+        m3 = m2.set(1.0, Nil)
         m4 = m1.del(1.0)
       check m2.size == 1
       check m3.size == 0
       check m3 == m1
       check m3 == m4
-      check m3.get(1.0) == Nil.v
-      check m4.get(1.0) == Nil.v
+      check m3.get(1.0) == Nil
+      check m4.get(1.0) == Nil
       check not(1.0 in m3)
       check not(1.0 in m4)
       check 1.0 in m2
@@ -87,10 +92,11 @@ proc main* =
       check m1[4.5.v] == 13.5.v
     test "init with duplicates":
       var
-        m1 = Map {1: 3, 4.5: 13.5, 4.5: 15.5}
-        m2 = Map {1: 3, 4.5: 15.5}
-      check m1.size == 2
+        m1 = Map {1: 3, 4.5: 13.5, 4.5: 15.5, "foo": "bar", "foo": "bar"}
+        m2 = Map {1: 3, 4.5: 15.5, "foo": "bar"}
+      check m1.size == 3
       check m1[4.5.v] == 15.5.v
+      check m1.v["foo"] == V "bar"
       check m1 == m2
     test "init with Nil values":
       var
@@ -123,6 +129,19 @@ proc main* =
       check m5.size == m4.size + 1
       check m5.get(m4.v) == m2.v
       check m5[m4.v].as_map[1.0.v] == 5.0.v
+    test "string key regression":
+      var
+        m1 = Map {"foo": "bar", "foo": "bar"}
+        m2 = m1.set("foo", "bar")
+        m3 = m2.set("foo", "bar")
+        m4 = m3.set("foo", "bar")
+      check m1 == m2
+      check m2 == m3
+      check m3 == m4
+      check m1.size == 1
+      check m1.size == m2.size
+      check m2.size == m3.size
+      check m3.size == m4.size
 
   suite "array":
     test "init":
@@ -185,6 +204,22 @@ proc main* =
         s2 = Set {1, 2, 3}
       check s1.size == 3
       check s1 == s2
+    test "distinct":
+      var
+        a1 = V [1, 2]
+        a2 = V [3, a1]
+        m1 = V {1: 5, a1: a2}
+        m2 = V {m1: m1}
+        s1 = V {a1, a2, m1, m2, "foo", "bar", a1, a2, m1, m2, "foo", "bar"}
+        s2 = V {a1, a2, m1, m2, "foo", "bar"}
+        s3 = V {s1, s2}
+        s4 = V {s1}
+      # for v in Arr [a1, a2, m1, m2, s1, s2, s3, s4]:
+      #   echo "hash: ", v.hash.to_hex
+      check s1 == s2
+      check s1.size == s2.size
+      check s3 == s4
+      check s3.size == s4.size
     test "add and del":
       var
         s1 = Set {}

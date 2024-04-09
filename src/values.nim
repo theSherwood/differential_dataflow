@@ -238,6 +238,10 @@ type
   ImHV* = ImString or ImArray or ImMap or ImSet
   ImV* = ImSV or ImHV
 
+## Forward declare this so that we make sure the same hash function is always
+## used for every operation involving ImValue
+func hash*(v: ImValue): Hash
+
 # Casts #
 # ---------------------------------------------------------------------
 
@@ -266,6 +270,16 @@ template v*(x: ImMap): ImValue = x.as_v
 template v*(x: ImNil): ImValue = x.as_v
 template v*(x: ImBool): ImValue = x.as_v
 template v*(x: float64): ImValue = x.as_v
+template v*(x: int): ImValue = x.float64.v
+
+# A couple of forward declarations for the conversions
+proc init_string*(s: string = ""): ImString
+proc init_array*(new_data: seq[ImValue]): ImArray
+
+template v*(x: string): ImValue = x.init_string.v
+template v*(x: openArray[int]): ImValue = toSeq(x).map(x => x.v).init_array.v
+template v*(x: openArray[float64]): ImValue = toSeq(x).map(x => x.v).init_array.v
+template v*(x: openArray[ImValue]): ImValue = x.init_array.v
 
 # Masks #
 # ---------------------------------------------------------------------
@@ -684,6 +698,11 @@ when c32:
     let truncated_head = bitand(previous_head, bitnot(MASK_SHORT_HASH))
     return bitor(truncated_head, short_hash.uint32).as_u32
 
+const INITIAL_STR_HASH = MASK_TYPE_STR.as_hash
+const INITIAL_SET_HASH = MASK_TYPE_SET.as_hash
+const INITIAL_ARR_HASH = MASK_TYPE_ARR.as_hash
+const INITIAL_MAP_HASH = MASK_TYPE_MAP.as_hash
+
 # ImString Impl #
 # ---------------------------------------------------------------------
 
@@ -702,7 +721,7 @@ template buildImString(new_hash, new_data: typed) {.dirty.} =
     var new_string = ImString(p: bitor(MASK_SIG_STR, re.as_p.as_u64).as_p)
   
 func init_string_empty(): ImString =
-  let hash = 0
+  let hash = INITIAL_STR_HASH
   let data = ""
   buildImString(hash, data)
   return new_string
@@ -753,7 +772,7 @@ template buildImMap(new_hash, new_data: typed) {.dirty.} =
     var new_map = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
 
 func init_map_empty(): ImMap =
-  let hash = 0
+  let hash = INITIAL_MAP_HASH
   let data = initTable[ImValue, ImValue]()
   buildImMap(hash, data)
   return new_map
@@ -767,7 +786,7 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap
 proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
   if init_data.len == 0: return empty_map
   var new_data: Table[ImValue, ImValue]
-  var new_hash = 0.as_hash
+  var new_hash = INITIAL_MAP_HASH
   for (k, v) in init_data:
     if k in new_data:
       new_hash = calc_hash(new_hash, hash_entry(k, new_data[k]))
@@ -786,12 +805,10 @@ proc clear*(m: ImMap): ImMap =
 proc contains*(m: ImMap, k: ImValue): bool = k.as_v in m.payload.data
 proc contains*(m: ImMap, k: float64): bool = k.as_v in m.payload.data
 
-template get_impl(m: ImMap, k: typed): ImValue =
-  m.payload.data.getOrDefault(k.as_v, Nil.as_v).as_v
-proc `[]`*(m: ImMap, k: ImValue): ImValue = return get_impl(m, k)
-proc `[]`*(m: ImMap, k: float64): ImValue = return get_impl(m, k.v)
-proc get*(m: ImMap, k: ImValue): ImValue  = return get_impl(m, k)
-proc get*(m: ImMap, k: float64): ImValue  = return get_impl(m, k.v)
+proc get_impl(m: ImMap, k: ImValue): ImValue =
+  return m.payload.data.getOrDefault(k, Nil.as_v).as_v
+template `[]`*(m: ImMap, k: typed): ImValue = get_impl(m, k.v)
+template get*(m: ImMap, k: typed): ImValue = get_impl(m, k.v)
 
 proc del*(m: ImMap, k: ImValue): ImMap =
   if not(k in m.payload.data): return m
@@ -802,7 +819,7 @@ proc del*(m: ImMap, k: ImValue): ImMap =
   let new_hash = calc_hash(m.payload.hash, entry_hash)
   buildImMap(new_hash, table_copy)
   return new_map
-proc del*(m: ImMap, k: float64): ImMap = return m.del(k.as_v)
+template del*(m: ImMap, key: typed): ImMap = m.del(key.v)
 
 proc set*(m: ImMap, k, v: ImValue): ImMap =
   if v == Nil.as_v: return m.del(k)
@@ -816,9 +833,7 @@ proc set*(m: ImMap, k, v: ImValue): ImMap =
   table_copy[k] = v
   buildImMap(new_hash, table_copy)
   return new_map
-proc set*(m: ImMap, k: float64, v: float64): ImMap = return m.set(k.as_v, v.as_v)
-proc set*(m: ImMap, k: ImValue, v: float64): ImMap = return m.set(k, v.as_v)
-proc set*(m: ImMap, k: float64, v: ImValue): ImMap = return m.set(k.as_v, v)
+template set*(m: ImMap, key, val: typed): ImMap = set(m, key.v, val.v)
 
 func size*(m: ImMap): int =
   return m.payload.data.len.int
@@ -877,7 +892,7 @@ template buildImArray(new_hash, new_data: typed) {.dirty.} =
     var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
 
 proc init_array_empty(): ImArray =
-  let new_hash = 0
+  let new_hash = INITIAL_ARR_HASH
   let new_data: seq[ImValue] = @[]
   buildImArray(new_hash, new_data)
   return new_array
@@ -887,7 +902,7 @@ let empty_array = init_array_empty()
 proc init_array*(): ImArray = return empty_array
 proc init_array*(init_data: openArray[ImValue]): ImArray =
   if init_data.len == 0: return empty_array
-  var new_hash = 0.as_hash
+  var new_hash = INITIAL_ARR_HASH
   var new_data = newSeq[ImValue]()
   for v in init_data:
     new_hash = calc_hash(new_hash, v.hash)
@@ -896,7 +911,7 @@ proc init_array*(init_data: openArray[ImValue]): ImArray =
   return new_array
 proc init_array*(new_data: seq[ImValue]): ImArray =
   if new_data.len == 0: return empty_array
-  var new_hash = 0.as_hash
+  var new_hash = INITIAL_ARR_HASH
   for v in new_data:
     new_hash = calc_hash(new_hash, v.hash)
   buildImArray(new_hash, new_data)
@@ -1008,7 +1023,7 @@ template buildImSet(new_hash, new_data: typed) {.dirty.} =
     var new_set = ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
 
 proc init_set_empty(): ImSet =
-  let new_hash = 0
+  let new_hash = INITIAL_SET_HASH
   var new_data: HashSet[ImValue]
   buildImSet(new_hash, new_data)
   return new_set
@@ -1018,7 +1033,7 @@ let empty_set = init_set_empty()
 proc init_set*(): ImSet = return empty_set
 proc init_set*(init_data: openArray[ImValue]): ImSet =
   if init_data.len == 0: return empty_set
-  var new_hash = 0.as_hash
+  var new_hash = INITIAL_SET_HASH
   var new_data = toHashSet(init_data)
   for v in new_data:
     new_hash = calc_hash(new_hash, v.hash)
@@ -1063,12 +1078,6 @@ proc size*(s: ImSet): int =
 
 # More Conversions #
 # ---------------------------------------------------------------------
-
-template v*(x: int): ImValue = x.float64.v
-template v*(x: string): ImValue = x.to_str.v
-template v*(x: openArray[int]): ImValue = toSeq(x).map(x => x.v).init_array.v
-template v*(x: openArray[float64]): ImValue = toSeq(x).map(x => x.v).init_array.v
-template v*(x: openArray[ImValue]): ImValue = x.init_array.v
 
 proc V_impl(x: NimNode): NimNode =
   case x.kind:
@@ -1191,10 +1200,10 @@ proc get_in(it: ImValue, path: openArray[ImValue], i: int, default: ImValue): Im
     if new_it != Nil.v: return new_it
     return default
   else: return get_in(new_it, path, i + 1, default)
-proc get_in*(it: ImValue, path: openArray[ImValue], default: ImValue): ImValue =
-  return get_in(it, path, 0, default)
-proc get_in*(it: ImValue, path: openArray[ImValue]): ImValue =
-  return get_in(it, path, 0, Nil.v)
+template get_in*(it: ImValue, path: openArray[ImValue], default: ImValue): ImValue =
+  get_in(it, path, 0, default)
+template get_in*(it: ImValue, path: openArray[ImValue]): ImValue =
+  get_in(it, path, 0, Nil.v)
 
 ## If a key in the path does not exist, maps are created
 proc set_in*(it: ImValue, path: openArray[ImValue], v: ImValue): ImValue =
@@ -1260,9 +1269,7 @@ proc `[]`*(a, b: ImValue): ImValue =
     # of MASK_SIG_STR: return a.as_map[b]
     else: discard
   raise newException(TypeException, &"Cannot index into {$a} of type {a.type_label} with {$b} of type {b.type_label}")
-template `[]`*(a: ImValue, b: float64): ImValue = a[b.v]
-template `[]`*(a: ImValue, b: int): ImValue = a[b.float64.v]
-template `[]`*(a: ImValue, b: string): ImValue = a[b.to_str.v]
+template `[]`*(a: ImValue, b: typed): ImValue = a[b.v]
 
 proc set*(coll, k, v: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
@@ -1272,8 +1279,7 @@ proc set*(coll, k, v: ImValue): ImValue =
     # of MASK_SIG_STR: return coll.as_str.set(k, v)
     else: discard
   raise newException(TypeException, &"Cannot set into {$coll} of type {coll.type_label} with key {$k} of type {k.type_label} and value {$v} of type {v.type_label}")
-template set*(coll, k: ImValue, v: string): ImValue = set(coll, k, v.to_str.v)
-template set*(coll, k: ImValue, v: float64): ImValue = set(coll, k, v.v)
+template set*(coll: ImValue, key, val: typed): ImValue = set(coll, key.v, val.v)
 
 proc size*(coll: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
