@@ -46,8 +46,8 @@ proc main* =
   suite "map":
     test "immutable updates":
       var
-        m1 = init_map()
-        m2 = init_map()
+        m1 = Map {}
+        m2 = Map {}
       check m1 == m2
       check m1.size == 0
       check m2.size == 0
@@ -63,7 +63,7 @@ proc main* =
       check m4 == m1
     test "nil":
       var
-        m1 = init_map()
+        m1 = Map {}
         m2 = m1.set(1.0, 3.0)
         m3 = m2.set(1.0, Nil.v)
         m4 = m1.del(1.0)
@@ -76,26 +76,31 @@ proc main* =
       check not(1.0 in m3)
       check not(1.0 in m4)
       check 1.0 in m2
+    test "init with different literal styles":
+      var
+        m1 = Map([(1, "foo"), (4.5, 13.5), (4.5, [1, 2, "bar", Nil])])
+        m2 = Map {1: "foo", 4.5: 13.5, 4.5: [1, 2, "bar", Nil]}
+      check m1 == m2
     test "init":
-      var m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v)])
+      var m1 = Map {1: 3, 4.5: 13.5}
       check m1.size == 2
       check m1[4.5.v] == 13.5.v
     test "init with duplicates":
       var
-        m1 = init_map([(1.0.v, 3.0.v), (4.5.v, 13.5.v), (4.5.v, 15.5.v)])
-        m2 = init_map([(1.0.v, 3.0.v), (4.5.v, 15.5.v)])
+        m1 = Map {1: 3, 4.5: 13.5, 4.5: 15.5}
+        m2 = Map {1: 3, 4.5: 15.5}
       check m1.size == 2
       check m1[4.5.v] == 15.5.v
       check m1 == m2
     test "init with Nil values":
       var
         m1 = Map([(1, Nil), (4.5, 13.5), (4.5, Nil)])
-        m2 = init_map()
+        m2 = Map {}
       check m1 == m2
     test "merge":
       var
-        m1 = Map([(1, 3), (4.5, 13.5)])
-        m2 = init_map([(1.0.v, 5.0.v), (5.5.v, 13.5.v)])
+        m1 = Map {1: 3, 4.5: 13.5}
+        m2 = Map {1: 5, 5.5: 13.5}
         m3 = m1 & m2
         m4 = m2 & m1
         m5 = m1 & m1
@@ -107,10 +112,10 @@ proc main* =
       check m5 == m1
     test "nested":
       var
-        m1 = init_map()
-        m2 = init_map([(1.0.v, 5.0.v), (5.5.v, 13.5.v)])
-        m3 = init_map([(init_string("foo").v, init_string("bar").v)])
-        m4 = init_map([(m1.v, m2.v), (Nil.v, m3.v)])
+        m1 = Map {}
+        m2 = Map {1: 5, 5.5: 13.5}
+        m3 = Map {"foo": "bar"}
+        m4 = Map {m1: m2, Nil: m3}
       check m4[m1.v] == m2.v
       check m4[Nil.v] == m3.v
       check m4[m2.v] == Nil.v
@@ -216,10 +221,10 @@ proc main* =
   suite "mixed nesting":
     test "get_in":
       var
-        m1 = init_map([(1.0.v, 2.0.v)])
+        m1 = Map {1: 2}
         a1 = init_array([m1.v, m1.v])
         s1 = init_set([m1.v, a1.v])
-        m2 = init_map([(m1.v, s1.v), (a1.v, m1.v), (s1.v, a1.v)])
+        m2 = Map {m1: s1, a1: m1, s1: a1}
         a2 = init_array([m1.v, a1.v, s1.v, m2.v])
         s2 = init_set([m1.v, a1.v, s1.v, m2.v, a2.v])
       check get_in(s2.v, [s2.v, m2.v]) == Nil.v
@@ -230,9 +235,9 @@ proc main* =
       check get_in(s2.v, [a2.v, 3.0.v, s1.v, 1.0.v, 1.0.v]) == 2.0.v
     test "set_in":
       var
-        m1 = init_map([(1.0.v, 2.0.v)])
+        m1 = Map {1: 2}
         a1 = init_array([m1.v, m1.v])
-        m2 = init_map([(m1.v, a1.v), (a1.v, m1.v)])
+        m2 = Map {m1: a1, a1: m1}
         a2 = init_array([m1.v, a1.v, m2.v])
         # the path exists until the last key (excl)
         a3 = a2.v.set_in([2.0.v, m1.v, 1.0.v, 3.0.v], 4.0.v)

@@ -1118,12 +1118,12 @@ proc Map_impl(x: NimNode): NimNode =
         for c in tup.children:
           parens.add(V_impl(c))
         brak.add(parens)
-      return newCall("init_map", brak)
+      return quote do: init_map(`brak`)
     of nnkCurly:
       var brak = quote do: []
       if x.len > 0:
         raise newException(TypeException, &"Cannot call Map on {x.repr}")
-      return newCall("init_map", brak)
+      return quote do: init_map(`brak`)
     of nnkTableConstr:
       var brak = quote do: []
       var parens = quote do: ()
@@ -1132,8 +1132,7 @@ proc Map_impl(x: NimNode): NimNode =
         for c in colon_expr.children:
           parens.add(V_impl(c))
         brak.add(parens)
-      echo "brak: ", brak.repr
-      return newCall("init_map", brak)
+      return quote do: init_map(`brak`)
     else:
       raise newException(TypeException, &"Cannot call Map on {x.repr}")
 macro Map*(x: untyped): untyped =
