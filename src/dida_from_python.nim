@@ -20,7 +20,7 @@ type
   ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
   CollIterateFn* = proc (c: Collection): Collection {.closure.}
 
-proc size*(c: Collection): int = return c.rows.len
+func size*(c: Collection): int = return c.rows.len
 
 proc key*(e: Entry): Value =
   doAssert e.is_array
@@ -44,7 +44,7 @@ iterator items*(c: Collection): Row =
 ## This is quite an expensive operation. It would be good to find a faster way
 ## to compute this.
 ## Using an xor-based hash for entries could help a lot.
-proc `==`*(c1, c2: Collection): bool =
+func `==`*(c1, c2: Collection): bool =
   var
     t1 = initTable[Entry, int]()
     t2 = initTable[Entry, int]()
@@ -54,30 +54,33 @@ proc `==`*(c1, c2: Collection): bool =
     t2[e] = m + t2.getOrDefault(e, 0)
   return t1 == t2
 
-proc map*(c: Collection, f: MapFn): Collection =
+func map*(c: Collection, f: MapFn): Collection =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (f(c[i].entry), c[i].multiplicity)
 
-proc filter*(c: Collection, f: FilterFn): Collection =
+func filter*(c: Collection, f: FilterFn): Collection =
   for r in c:
     if f(r.entry): result.add(r)
 
-proc flat_map*(c: Collection, f: FlatMapFn): Collection =
+func flat_map*(c: Collection, f: FlatMapFn): Collection =
   for r in c:
     for e in f(r.entry):
       result.add((e, r.multiplicity))
 
-proc negate*(c: Collection): Collection =
+func negate*(c: Collection): Collection =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (c[i].entry, 0 - c[i].multiplicity)
 
-proc concat*(c1, c2: Collection): Collection =
+func concat*(c1, c2: Collection): Collection =
   for r in c1: result.add(r)
   for r in c2: result.add(r)
 
-proc consolidate*(c: Collection): Collection =
+proc mut_concat(c1: var Collection, c2: Collection) =
+  for r in c2: c1.add(r)
+
+func consolidate*(c: Collection): Collection =
   var t = initTable[Entry, int]()
   for (e, m) in c:
     t[e] = m + t.getOrDefault(e, 0)
@@ -429,6 +432,8 @@ type
     case tag*: NodeTag:
       of tPrint:
         label*: string
+      of tConsolidate:
+        collections*: Table[Version, Collection]
       of tMap:
         map_fn*: MapFn
       of tFilter:
@@ -520,37 +525,6 @@ proc pending_data*(n: Node): bool =
     if not(e.is_empty): return true
   return false
 
-template send*(e: Edge, v: Version, c: Collection) =
-  e.queue.add(Message(tag: tData, version: v, collection: c))
-template send*(e: Edge, f: Frontier) =
-  e.queue.add(Message(tag: tFrontier, frontier: f))
-template send*(e: Edge, m: Message) =
-  e.queue.add(m)
-
-template send(n: Node, v: Version, c: Collection) {.dirty.} =
-  for e in n.outputs:
-    e.send(v, c)
-template send(n: Node, f: Frontier) {.dirty.} =
-  for e in n.outputs:
-    e.send(f)
-template send(n: Node, m: Message) {.dirty.} =
-  for e in n.outputs:
-    e.send(m)
-
-proc send*(g: Graph, v: Version, c: Collection) = g.top_node.send(v, c)
-proc send*(g: Graph, f: Frontier) = g.top_node.send(f)
-proc send*(g: Graph, m: Message) = g.top_node.send(m)
-
-template handle_frontier_message(n: Node, m: Message, idx: int) {.dirty.} =
-  doAssert n.input_frontiers[idx].le(m.frontier)
-  n.input_frontiers[idx] = m.frontier
-  doAssert n.output_frontier.le(m.frontier)
-  if n.output_frontier.lt(m.frontier):
-    n.output_frontier = m.frontier
-    n.send(m)
-template handle_frontier_message_unary(n: Node, m: Message) {.dirty.} =
-  handle_frontier_message(n, m, 0)
-
 # Builder #
 # ---------------------------------------------------------------------
 
@@ -592,6 +566,9 @@ proc negate*(b: Builder): Builder =
 proc concat*(b: Builder, other: Node): Builder =
   build_binary(b, tConcat, other)
 template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
+
+proc consolidate*(b: Builder): Builder =
+  build_unary(b, tConsolidate)
 
 proc map*(b: Builder, fn: MapFn): Builder =
   build_unary(b, tMap)
@@ -681,10 +658,53 @@ template pprint_recursive*(n: Node, indent = 0): string =
 proc pprint*(g: Graph): string =
   return g.top_node.pprint_recursive(0)
 
+# Send #
+# ---------------------------------------------------------------------
+
+template send*(e: Edge, v: Version, c: Collection) =
+  e.queue.add(Message(tag: tData, version: v, collection: c))
+template send*(e: Edge, f: Frontier) =
+  e.queue.add(Message(tag: tFrontier, frontier: f))
+template send*(e: Edge, m: Message) =
+  e.queue.add(m)
+
+template send(n: Node, v: Version, c: Collection) {.dirty.} =
+  for e in n.outputs:
+    e.send(v, c)
+template send(n: Node, f: Frontier) {.dirty.} =
+  for e in n.outputs:
+    e.send(f)
+template send(n: Node, m: Message) {.dirty.} =
+  for e in n.outputs:
+    e.send(m)
+
+proc send*(g: Graph, v: Version, c: Collection) = g.top_node.send(v, c)
+proc send*(g: Graph, f: Frontier) = g.top_node.send(f)
+proc send*(g: Graph, m: Message) = g.top_node.send(m)
+
 # Step #
 # ---------------------------------------------------------------------
 
+proc handle_frontier_message(n: Node, m: Message, idx: int) =
+  doAssert n.input_frontiers[idx].le(m.frontier)
+  n.input_frontiers[idx] = m.frontier
+template handle_frontier_message_unary(n: Node, m: Message) =
+  handle_frontier_message(n, m, 0)
+
+proc output_frontier_message(n: Node) =
+  var input_frontier: Frontier
+  let l = n.input_frontiers.len
+  if l == 1:
+    input_frontier = n.input_frontiers[0]
+  elif l == 2:
+    input_frontier = n.input_frontiers[0].meet(n.input_frontiers[1])
+  doAssert n.output_frontier.le(input_frontier)
+  if n.output_frontier.lt(input_frontier):
+    n.output_frontier = input_frontier
+    n.send(input_frontier)
+
 proc step(n: Node) =
+  var frontier_change = false
   case n.tag:
     of tInput:
       discard "TODO"
@@ -702,14 +722,20 @@ proc step(n: Node) =
     of tNegate:
       for m in n.inputs[0].queue:
         case m.tag:
-          of tData:     n.send(m.version, m.collection.negate)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tData:
+            n.send(m.version, m.collection.negate)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tMap:
       for m in n.inputs[0].queue:
         case m.tag:
-          of tData:     n.send(m.version, m.collection.map(n.map_fn))
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tData:
+            n.send(m.version, m.collection.map(n.map_fn))
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tFilter:
       for m in n.inputs[0].queue:
@@ -717,7 +743,9 @@ proc step(n: Node) =
           of tData:
             let new_coll = m.collection.filter(n.filter_fn)
             if new_coll.size > 0: n.send(m.version, new_coll)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tFlatMap:
       for m in n.inputs[0].queue:
@@ -725,19 +753,47 @@ proc step(n: Node) =
           of tData:
             let new_coll = m.collection.flat_map(n.flat_map_fn)
             if new_coll.size > 0: n.send(m.version, new_coll)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
       n.inputs[0].clear
     of tConcat:
       for m in n.inputs[0].queue:
         case m.tag:
-          of tData:     n.send(m)
-          of tFrontier: n.handle_frontier_message(m, 0)
+          of tData: n.send(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
       n.inputs[0].clear
       for m in n.inputs[1].queue:
         case m.tag:
-          of tData:     n.send(m)
-          of tFrontier: n.handle_frontier_message(m, 1)
+          of tData: n.send(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 1)
       n.inputs[1].clear
+    of tConsolidate:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            if n.collections.hasKey(m.version):
+              n.collections[m.version].mut_concat(m.collection)
+            else:
+              n.collections[m.version] = m.collection
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
+      let input_frontier = n.input_frontiers[0]
+      var deletions: seq[Version]
+      if frontier_change:
+        for (v, c) in n.collections.pairs:
+          if not(input_frontier.le(v)):
+            let new_c = c.consolidate()
+            if new_c.size > 0: n.send(v, new_c)
+            deletions.add(v)
+      for v in deletions:
+        n.collections.del(v)
+      n.inputs[0].clear
     of tOnRow:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -745,7 +801,9 @@ proc step(n: Node) =
             for r in m.collection:
               n.on_row(r)
             n.send(m)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
       n.inputs[0].clear
     of tOnCollection:
       for m in n.inputs[0].queue:
@@ -753,7 +811,9 @@ proc step(n: Node) =
           of tData:
             n.on_collection(m.version, m.collection)
             n.send(m)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
       n.inputs[0].clear
     of tAccumulateResults:
       for m in n.inputs[0].queue:
@@ -761,10 +821,14 @@ proc step(n: Node) =
           of tData:
             n.results.add((m.version, m.collection))
             n.send(m)
-          of tFrontier: n.handle_frontier_message_unary(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
       n.inputs[0].clear
     else:
       discard
+  if frontier_change:
+    n.output_frontier_message
 proc step*(g: Graph) =
   for n in g.nodes: n.step
 
