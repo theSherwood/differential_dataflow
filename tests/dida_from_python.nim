@@ -345,6 +345,96 @@ proc main* =
       g.step
       check r.node.results == correct_data
 
+      #[
+      # Rete-like approaches
+      var
+        alpha_network = init_builder()
+        alpha = alpha_network
+        beta_network = init_builder()
+        # An approach without tuples (just the bare value)
+        attempt1 = beta_network
+          .var_bind(alpha, Var(ident: "s",
+            match: (bindings, candidate) => candidate != 0))
+          .var_bind(alpha, Var(ident: "e",
+            match: (b, c) => c != b["s"]))
+          .var_bind(alpha, Var(ident: "n",
+            match: (b, c) => c != b["s"] and c != b["e"]))
+          .var_bind(alpha, Var(ident: "d",
+            match: (b, c) => c != b["s"] and c != b["e"] and c != b["n"]))
+          .var_bind(alpha, Var(ident: "m",
+            match: (b, c) => c != b["s"] and c != b["e"] and c != b["n"] and c != b["d"] and c != 0))
+          .var_bind(alpha, Var(ident: "o",
+            match: (b, c) => c != b["s"] and c != b["e"] and c != b["n"] and c != b["d"] and c != b["m"]))
+          .var_bind(alpha, Var(ident: "r",
+            match: (b, c) => c != b["s"] and c != b["e"] and c != b["n"] and c != b["d"] and c != b["m"] and c != b["o"]))
+          .var_bind(alpha, Var(ident: "y",
+            match: (b, c) => c != b["s"] and c != b["e"] and c != b["n"] and c != b["d"] and c != b["m"] and c != b["o"] and c != b["r"]))
+        # An alternative approach that uses tuples (seqs)
+        attempt2 = beta_network
+          .match(alpha, @[Var(id: "s", fn: (b, c) => c != 0)])
+          .match(alpha, @[Var(id: "e", fn: (b, c) => c != b["s"])])
+          .match(alpha, @[Var(id: "n", fn: (b, c) => c != b["s"] and c != b["e"])])
+          .match(alpha, @[Var(id: "d", fn: (b, c) => c != b["s"] and c != b["e"] and c != b["n"])])
+          # ...
+        # This seems to work fine for tuples but not for other things like maps or for bare values
+        # Also still not clear how the `Var` thing is supposed to work
+        attempt3 = beta_network
+          .match(alpha, @[Var(id: "Parent"), V "age", Var(id: "ParentAge", fn: (bindings, candidate) => candidate > 40.0)])
+          .match(alpha, @[Var(id: "Parent"), V "child", Var(id: "Child")])
+          .match(alpha, @[Var(id: "Child"), V "age", Var(id: "ChildAge", fn: (b, c) => c < 4.0)])
+        # This is more generic: (is_binding, key, value)
+        # But not as convenient to write by hand, so we need some helpers
+        # So this approach seems like it would work for maps and arrays but doesn't yet work for bare Values
+        # We could use flags instead of booleans for the first element in the tuple
+        # We don't yet have a solution for functions
+        attempt4 = beta_network
+          .match(alpha, @[
+            (true, 0.0, V {id: "Parent"}),
+            (false, 1.0, V "age"),
+            (true, 2.0, V {id: "ParentAge", fn: (bindings, candidate) => candidate > 40.0}),
+          ])
+          .match(alpha, @[
+            (true, 0.0, V {id: "Parent"}),
+            (false, 1.0, V "child"),
+            (true, 2.0, V {id: "Child"}),
+          ])
+          .match(alpha, @[
+            (true, 0.0, V {id: "Child"}),
+            (false, 1.0, V "age"),
+            (true, 2.0, V {id: "ChildAge", fn: (b, c) => c < 4.0})
+          ])
+        # tuple (path_to_value, exact_match, predicate, binding)
+        # if the path is empty (len 0), then the canidate is the bare object
+        # should just make this an object instead of a tuple
+        # still unclear how to handle functions
+        #
+        # the path thing might not be the best approach? it would be cool to figure
+        # out how to make unpacking or structural matching work
+        attempt5 = beta_network
+          # indexing into Arr
+          .match(alpha, @[
+            (V [0],                    Nil.v,   V "Parent",    Nil.v),
+            (V [1],                    V "age", Nil.v,         Nil.v),
+            (V [2],                    Nil.v,   V "ParentAge", (bindings, candidate) => candidate > 40.0),
+          ])
+          # binding to bare value
+          .match(alpha, @[
+            (V [],                     Nil.v,   V "Thing",     Nil.v),
+          ])
+          # binding to bare value with predicate
+          .match(alpha, @[
+            (V [],                     Nil.v,   V "Thing",     (b, c) => c < 4.0),
+          ])
+          # Map
+          .match(alpha, @[
+            (V ["foo", 1, [4, "bar"]], Nil.v,   V "Child",     Nil.v),
+            (V ["foo", Nil, "shoot"],  V "age", Nil.v,         Nil.v),
+            (V [3, 4, 5],              Nil.v,   V "ChildAge",  (b, c) => c < 4.0),
+          ])
+      ]#
+          
+
+    #[
     test "task: send more money":
       var
         initial_data: seq[(Version, Collection)] = @[
@@ -384,7 +474,7 @@ proc main* =
         # let res =
         #         $s * 1000 + $e * 100 + $n * 10 + $d + $m * 1000 + $o * 100 + $r * 10 + $e ===
         #         $m * 10000 + $o * 1000 + $n * 100 + $e * 10 + $y;
-        final = d.filter(proc (e: Entry): bool =
+        final = n.filter(proc (e: Entry): bool =
           return e["s"].as_f64 * 1000.0 + 
             e["e"].as_f64 * 100.0 + 
             e["n"].as_f64 * 10.0 + 
@@ -406,3 +496,4 @@ proc main* =
       g.step
       check 1 == 1
       check results.node.results == correct_data
+]#
