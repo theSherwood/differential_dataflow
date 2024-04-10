@@ -80,6 +80,13 @@ func concat*(c1, c2: Collection): Collection =
 proc mut_concat(c1: var Collection, c2: Collection) =
   for r in c2: c1.add(r)
 
+func consolidate*(rows: seq[Row]): seq[Row] =
+  var t = initTable[Entry, int]()
+  for (e, m) in rows:
+    t[e] = m + t.getOrDefault(e, 0)
+  for e, m in t.pairs:
+    if m != 0: result.add((e, m))
+
 func consolidate*(c: Collection): Collection =
   var t = initTable[Entry, int]()
   for (e, m) in c:
@@ -261,6 +268,13 @@ proc meet*(v1, v2: Version): Version =
     timestamps.add(min(v1[i], v2[i]))
   return to_version(timestamps)
 
+proc advance_by*(v: Version, f: Frontier): Version =
+  if f.versions.len == 0: return v
+  var curr = v.join(f.versions[0])
+  for v2 in f.versions:
+    curr = curr.meet(v.join(v2))
+  return curr
+
 proc extend*(v: Version): Version =
   var timestamps = toSeq(v.timestamps)
   timestamps.add(0)
@@ -367,6 +381,117 @@ proc step*(f: Frontier, delta: int): Frontier =
   new_f.update_hash
   return new_f
 
+# Index #
+# ---------------------------------------------------------------------
+
+type
+  Index* = ref object
+    compaction_frontier*: Frontier
+    # Might be better as a tuple tree
+    key_to_versions*: Table[Value, seq[Version]] 
+    key_version_to_rows*: Table[(Value, Version), seq[Row]]
+
+proc is_empty(i: Index): bool =
+  return i.key_to_versions.len == 0
+
+proc validate(i: Index, v: Version) =
+  if i.compaction_frontier.isNil: return
+  doAssert i.compaction_frontier.le(v)
+proc validate(i: Index, f: Frontier) =
+  if i.compaction_frontier.isNil: return
+  doAssert i.compaction_frontier.le(f)
+
+proc reconstruct_at(i: Index, key: Value, v: Version): seq[Row] =
+  i.validate(v)
+  for vers in i.key_to_versions.getOrDefault(key):
+    if vers.le(v):
+      result.add(i.key_version_to_rows.getOrDefault((key, vers)))
+
+proc versions(i: Index, key: Value): seq[Version] =
+  return i.key_to_versions.getOrDefault(key)
+
+proc add(i: var Index, key: Value, version: Version, row: Row) =
+  if key in i.key_to_versions:
+    var s = i.key_to_versions[key]
+    if s.find(version) == -1:
+      s.add(version)
+    if (key, version) in i.key_version_to_rows:
+      i.key_version_to_rows[(key, version)].add(row)
+    else:
+      i.key_version_to_rows[(key, version)] = @[row]
+  else:
+    i.key_to_versions[key] = @[version]
+    i.key_version_to_rows[(key, version)] = @[row]
+proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
+  if key in i.key_to_versions:
+    var s = i.key_to_versions[key]
+    if s.find(version) == -1:
+      s.add(version)
+    if (key, version) in i.key_version_to_rows:
+      i.key_version_to_rows[(key, version)].add(rows)
+    else:
+      i.key_version_to_rows[(key, version)] = rows
+  else:
+    i.key_to_versions[key] = @[version]
+    i.key_version_to_rows[(key, version)] = rows
+
+proc mut_concat(i1: var Index, i2: Index) =
+  if i2.is_empty: return
+  for (kv, rows) in i2.key_version_to_rows.pairs:
+    let (key, version) = kv
+    if key in i1.key_to_versions:
+      var s = i1.key_to_versions[key]
+      if s.find(version) == -1:
+        s.add(version)
+      if kv in i1.key_version_to_rows:
+        i1.key_version_to_rows[kv].add(rows)
+      else:
+        i1.key_version_to_rows[kv] = rows
+    else:
+      i1.key_to_versions[key] = @[version]
+      i1.key_version_to_rows[kv] = rows
+
+proc product_join(i1, i2: Index): seq[(Version, Collection)] =
+  echo "i1: ", i1.key_version_to_rows
+  echo "i2: ", i2.key_version_to_rows
+  if i1.is_empty or i2.is_empty: return
+  var join_version: Version
+  var version_to_rows: Table[Version, seq[Row]]
+  var rows, rows1, rows2: seq[Row]
+  for (key, versions) in i1.key_to_versions.pairs:
+    if key notin i2.key_to_versions: continue
+    let versions2 = i2.key_to_versions[key]
+    for v1 in versions:
+      rows1 = i1.key_version_to_rows.getOrDefault((key, v1))
+      for v2 in versions2:
+        rows2 = i2.key_version_to_rows.getOrDefault((key, v2))
+        join_version = v1.join(v2)
+        if join_version in version_to_rows:
+          rows = version_to_rows[join_version]
+        else:
+          rows = @[]
+          version_to_rows[join_version] = rows
+        for r1 in rows1:
+          for r2 in rows2:
+            rows.add((V [r1.entry, r2.entry], r1.multiplicity * r2.multiplicity))
+  for (v, rows) in version_to_rows.pairs:
+    result.add((v, Collection(rows: rows)))
+
+proc compact(i: var Index, compaction_frontier: Frontier) =
+  i.validate(compaction_frontier)
+  var to_consolidate: seq[Version] = @[]
+  for (key, versions) in i.key_to_versions.pairs:
+    for version in versions:
+      if compaction_frontier.le(version):
+        let rows = i.key_version_to_rows.getOrDefault((key, version))
+        let new_version = version.advance_by(compaction_frontier)
+        i.add(key, version, rows)
+        to_consolidate.add(version)
+    for version in to_consolidate:
+      i.key_version_to_rows[(key, version)] = i.key_version_to_rows[(key, version)].consolidate
+  doAssert i.compaction_frontier.isNil or i.compaction_frontier.le(compaction_frontier)
+  i.compaction_frontier = compaction_frontier
+
 # Nodes #
 # ---------------------------------------------------------------------
 
@@ -411,6 +536,7 @@ type
     tNegate
     tConsolidate
     # binary
+    tProduct
     tConcat
     tJoinColumns
     tJoin
@@ -434,6 +560,8 @@ type
         label*: string
       of tConsolidate:
         collections*: Table[Version, Collection]
+      of tProduct:
+        indexes*: (Index, Index)
       of tMap:
         map_fn*: MapFn
       of tFilter:
@@ -567,6 +695,11 @@ proc concat*(b: Builder, other: Node): Builder =
   build_binary(b, tConcat, other)
 template concat*(b1, b2: Builder): Builder = b1.concat(b2.node)
 
+proc product*(b: Builder, other: Node): Builder =
+  build_binary(b, tProduct, other)
+  n.indexes = (Index(), Index())
+template product*(b1, b2: Builder): Builder = b1.product(b2.node)
+
 proc consolidate*(b: Builder): Builder =
   build_unary(b, tConsolidate)
 
@@ -604,6 +737,7 @@ proc `$`*(t: NodeTag): string =
     of tPrint:        "Print"
     of tNegate:       "Negate"
     of tConcat:       "Concat"
+    of tProduct:      "Product"
     of tJoinColumns:  "JoinColumns"
     of tJoin:         "Join"
     of tMap:          "Map"
@@ -772,6 +906,29 @@ proc step(n: Node) =
             frontier_change = true
             n.handle_frontier_message(m, 1)
       n.inputs[1].clear
+    of tProduct:
+      var deltas = [Index(), Index()]
+      for idx in 0..<2:
+        for m in n.inputs[idx].queue:
+          case m.tag:
+            of tData:
+              for row in m.collection:
+                deltas[idx].add(Nil.v, m.version, row)
+            of tFrontier:
+              frontier_change = true
+              n.handle_frontier_message(m, idx)
+        n.inputs[idx].clear
+      for (v, c) in deltas[0].product_join(n.indexes[1]): n.send(v, c)
+      for (v, c) in n.indexes[0].product_join(deltas[1]): n.send(v, c)
+      n.indexes[0].mut_concat(deltas[0])
+      n.indexes[1].mut_concat(deltas[1])
+      echo "in0: ", n.indexes[0].key_version_to_rows
+      echo "in1: ", n.indexes[1].key_version_to_rows
+      if frontier_change:
+        n.output_frontier_message
+        n.indexes[0].compact(n.output_frontier)
+        n.indexes[1].compact(n.output_frontier)
+      frontier_change = false
     of tConsolidate:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -827,8 +984,7 @@ proc step(n: Node) =
       n.inputs[0].clear
     else:
       discard
-  if frontier_change:
-    n.output_frontier_message
+  if frontier_change: n.output_frontier_message
 proc step*(g: Graph) =
   for n in g.nodes: n.step
 
