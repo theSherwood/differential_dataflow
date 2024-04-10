@@ -452,8 +452,6 @@ proc mut_concat(i1: var Index, i2: Index) =
       i1.key_version_to_rows[kv] = rows
 
 proc product_join(i1, i2: Index): seq[(Version, Collection)] =
-  echo "i1: ", i1.key_version_to_rows
-  echo "i2: ", i2.key_version_to_rows
   if i1.is_empty or i2.is_empty: return
   var join_version: Version
   var version_to_rows: Table[Version, seq[Row]]
@@ -470,12 +468,12 @@ proc product_join(i1, i2: Index): seq[(Version, Collection)] =
           rows = version_to_rows[join_version]
         else:
           rows = @[]
-          version_to_rows[join_version] = rows
         for r1 in rows1:
           for r2 in rows2:
             rows.add((V [r1.entry, r2.entry], r1.multiplicity * r2.multiplicity))
+        version_to_rows[join_version] = rows
   for (v, rows) in version_to_rows.pairs:
-    result.add((v, Collection(rows: rows)))
+    if rows.len > 0: result.add((v, Collection(rows: rows)))
 
 proc compact(i: var Index, compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
@@ -919,11 +917,9 @@ proc step(n: Node) =
               n.handle_frontier_message(m, idx)
         n.inputs[idx].clear
       for (v, c) in deltas[0].product_join(n.indexes[1]): n.send(v, c)
-      for (v, c) in n.indexes[0].product_join(deltas[1]): n.send(v, c)
       n.indexes[0].mut_concat(deltas[0])
+      for (v, c) in n.indexes[0].product_join(deltas[1]): n.send(v, c)
       n.indexes[1].mut_concat(deltas[1])
-      echo "in0: ", n.indexes[0].key_version_to_rows
-      echo "in1: ", n.indexes[1].key_version_to_rows
       if frontier_change:
         n.output_frontier_message
         n.indexes[0].compact(n.output_frontier)

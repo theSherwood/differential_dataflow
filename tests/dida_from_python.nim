@@ -356,32 +356,50 @@ proc main* =
         flat_map_fn = proc (e: Entry): ImArray =
           return Arr([e])
         # sendmory
-        input = init_builder().print("Input")
-        s = input.filter(e => e != 0.0).print("S filter")
-          .map(e => V({"e": e})).print("S map")
-          .product(input).print("S product")
-        # e = s.filter(e => e["s"] != e[1])
-        #   .map(e => e[0].set("e", e[1]))
-        #   .product(input)
-        # n = e.filter(e => e["s"] != e[1] && e["e"] != e[1])
-        #   .map(e => e[0].set("n", e[1]))
-        #   .product(input)
-        # d = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1])
+        input = init_builder()
+        s = input.filter(e => e != 0.0)
+          .map(e => V({"s": e}))
+          .product(input)
+        e = s.filter(e => e["s"] != e[1])
+          .map(e => e[0].set("e", e[1]))
+          .product(input)
+        n = e.filter(e => e["s"] != e[1] and e["e"] != e[1])
+          .map(e => e[0].set("n", e[1]))
+          .product(input)
+        # d = n.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1])
         #   .map(e => e[0].set("d", e[1]))
         #   .product(input)
-        # m = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e[1] != 0.0)
+        # m = d.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e[1] != 0.0)
         #   .map(e => e[0].set("m", e[1]))
         #   .product(input)
-        # o = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1])
+        # o = m.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1])
         #   .map(e => e[0].set("o", e[1]))
         #   .product(input)
-        # r = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1] && e["o"] != e[1])
+        # r = o.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1] and e["o"] != e[1])
         #   .map(e => e[0].set("r", e[1]))
         #   .product(input)
-        # y = e.filter(e => e["s"] != e[1] && e["e"] != e[1] && e["n"] != e[1] && e["d"] != e[1] && e["m"] != e[1] && e["o"] != e[1] && e["r"] != e[1])
+        # y = r.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1] and e["o"] != e[1] and e["r"] != e[1])
         #   .map(e => e[0].set("y", e[1]))
-        #   .product(input)
-        results = s.accumulate_results
+        #   .print("AFTER Y")
+        # let res =
+        #         $s * 1000 + $e * 100 + $n * 10 + $d + $m * 1000 + $o * 100 + $r * 10 + $e ===
+        #         $m * 10000 + $o * 1000 + $n * 100 + $e * 10 + $y;
+        final = d.filter(proc (e: Entry): bool =
+          return e["s"].as_f64 * 1000.0 + 
+            e["e"].as_f64 * 100.0 + 
+            e["n"].as_f64 * 10.0 + 
+            e["d"].as_f64 + 
+            e["m"].as_f64 * 1000.0 + 
+            e["o"].as_f64 * 100.0 + 
+            e["r"].as_f64 * 10.0 + 
+            e["e"].as_f64 ==
+            e["m"].as_f64 * 10000.0 + 
+            e["o"].as_f64 * 1000.0 + 
+            e["n"].as_f64 * 100.0 + 
+            e["e"].as_f64 * 10.0 +
+            e["y"].as_f64
+        )
+        results = final.accumulate_results
         g = input.graph
       for (v, c) in initial_data: g.send(v, c)
       g.send([[1].VER].FTR)
