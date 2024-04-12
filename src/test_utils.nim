@@ -553,14 +553,14 @@ template test*(name, body) {.dirty.} =
     for formatter in formatters:
       formatter.testStarted(name)
 
-    {.push warning[BareExcept]:off.}
+    # {.push warning[BareExcept]:off.}
     try:
       when declared(testSetupIMPLFlag): testSetupIMPL()
       when declared(testTeardownIMPLFlag):
         defer: testTeardownIMPL()
-      {.push warning[BareExcept]:on.}
+      # {.push warning[BareExcept]:on.}
       body
-      {.pop.}
+      # {.pop.}
 
     except:
       let e = getCurrentException()
@@ -583,7 +583,7 @@ template test*(name, body) {.dirty.} =
       )
       testEnded(testResult)
       checkpoints = @[]
-    {.pop.}
+    # {.pop.}
 
 proc checkpoint*(msg: string) =
   ## Set a checkpoint identified by `msg`. Upon test failure all
@@ -773,11 +773,11 @@ macro expect*(exceptions: varargs[typed], body: untyped): untyped =
       defectiveRobot()
 
   template expectBody(errorTypes, lineInfoLit, body): NimNode {.dirty.} =
-    {.push warning[BareExcept]:off.}
+    # {.push warning[BareExcept]:off.}
     try:
-      {.push warning[BareExcept]:on.}
+      # {.push warning[BareExcept]:on.}
       body
-      {.pop.}
+      # {.pop.}
       checkpoint(lineInfoLit & ": Expect Failed, no exception was thrown.")
       fail()
     except errorTypes:
@@ -785,7 +785,7 @@ macro expect*(exceptions: varargs[typed], body: untyped): untyped =
     except:
       checkpoint(lineInfoLit & ": Expect Failed, unexpected exception was thrown.")
       fail()
-    {.pop.}
+    # {.pop.}
 
   var errorTypes = newNimNode(nnkBracket)
   for exp in exceptions:

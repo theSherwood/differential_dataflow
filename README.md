@@ -1,39 +1,45 @@
 # differential_dataflow
 
-## Compile
+## Build
 
-### Build Wasm
+### Build Native
 
 ```sh
-./run.sh -wu
+./run.sh -tu native
 ```
 
 OR
 
 ```sh
-wach -o "src/**" "./run.sh -wu"
+wach -o "src/**" "./run.sh -tu native"
 ```
+
+TODO
 
 ## Test
 
 ### Test Native
 
 ```sh
-./run.sh -tu
+./run.sh -tur native
 ```
 
 OR
 
 ```sh
-wach ./run.sh -tu
+wach ./run.sh -tur native
 ```
 
 ### Test Wasm in Node
 
-Compile wasm:
+```sh
+./run.sh -tur node
+```
+
+OR
 
 ```sh
-wach -o "src/**" "./run.sh -utw && node --experimental-default-type=module src/run_wasm.js"
+wach -o "src/**" "./run.sh -tur node"
 ```
 
 ### Test Wasm in Browser
@@ -41,7 +47,7 @@ wach -o "src/**" "./run.sh -utw && node --experimental-default-type=module src/r
 Compile wasm:
 
 ```sh
-wach -o "src/**" "./run.sh -utw"
+wach -o "src/**" "./run.sh -tu browser"
 ```
 
 Start the server:
@@ -52,24 +58,8 @@ dev start
 
 Go to http://localhost:3000/
 
-## Run the code natively
+OR
 
 ```sh
-nim r --os: macosx --threads: off --cc: gcc --stackTrace: on --d: debug TODO.nim
+./run.sh -tur browser
 ```
-
-## Run the compiled wasm
-
-### Node
-
-```sh
-node --experimental-default-type=module src/run_wasm.js
-```
-
-### Browser
-
-```sh
-dev start
-```
-
-Then go to http://localhost:3000/

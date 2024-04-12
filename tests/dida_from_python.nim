@@ -404,7 +404,7 @@ proc main* =
             (true, 2.0, V {id: "ChildAge", fn: (b, c) => c < 4.0})
           ])
         # tuple (path_to_value, exact_match, predicate, binding)
-        # if the path is empty (len 0), then the canidate is the bare object
+        # if the path is empty (len 0) or Nil, then the canidate is the bare object
         # should just make this an object instead of a tuple
         # still unclear how to handle functions
         #
@@ -423,7 +423,7 @@ proc main* =
           ])
           # binding to bare value with predicate
           .match(alpha, @[
-            (V [],                     Nil.v,   V "Thing",     (b, c) => c < 4.0),
+            (Nil.v,                    Nil.v,   V "Thing",     (b, c) => c < 4.0),
           ])
           # Map
           .match(alpha, @[
@@ -431,6 +431,17 @@ proc main* =
             (V ["foo", Nil, "shoot"],  V "age", Nil.v,         Nil.v),
             (V [3, 4, 5],              Nil.v,   V "ChildAge",  (b, c) => c < 4.0),
           ])
+
+      ## Matching/unpacking
+      ## 
+      ## There are a few issues here:
+      ## - what should definition syntax look like in Nim
+      ## - what should definition syntax look like in some DSL?
+      ## - what algorithm implementation to use?
+      ## - can the same algorithm be used for regex/strings?
+      ## - can the same algorithm be used for large texts? tree-sitter style?
+      ## - how do we get extra context into the predicate fns?
+      ## - how do we get bindings out (efficiently)?
       ]#
           
 

@@ -1,74 +1,122 @@
 #!/bin/bash
 
 __help_string="
-Usage: $(basename $0) [OPTIONS]
-
-Example:
-
-  $(basename $0)      # builds native without user variables
-  $(basename $0) -utw # runs wasm tests with user variables
+Usage:
+  $(basename $0)      # builds native
+  $(basename $0) -tw  # runs wasm tests
 
 Options:
-  -h|-?     Print this usage information
-  -u        Use user_settings.sh to setup variables
-  -t        Run tests
-  -w        Target wasm (native is default)
+  -? -h --help         Print this usage information.
+  -r --run             Run the compiled output.
+  -u --user_settings   Use user_settings.sh to setup variables.
+  -t --test            Test.
 "
 
+RUN=0
 TEST=0
-WASM=0
 USER_SETTINGS=0
 
 # A POSIX variable
 OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
-# Initialize our own variables:
-output_file=""
-verbose=0
-
-while getopts "h?twu" opt; do
+while getopts "h?rtu" opt; do
   case "$opt" in
     h|\?)
       echo "$__help_string"
       exit 0
       ;;
-    t) TEST=1
-      ;;
-    w) WASM=1
-      ;;
-    u) USER_SETTINGS=1
+    r) RUN=1 ;;
+    t) TEST=1 ;;
+    u) USER_SETTINGS=1 ;;
+    -)
+      case "${OPTARG}" in
+        help)
+          echo "$__help_string"
+          exit 0
+          ;;
+        run           ) RUN=1 ;;
+        test          ) TEST=1 ;;
+        user_settings ) USER_SETTINGS=1 ;;
+        *)
+          echo "Invalid option: --$OPTARG"
+          exit 1
+          ;;
+      esac
       ;;
   esac
 done
 
 shift $((OPTIND-1))
 
-# default to building native 
-TARGET="native"
-ACTION="build"
-
+FILE=""
+NAME=""
 if [ $TEST -eq 1 ]; then
-  ACTION="test"
-fi
-if [ $WASM -eq 1 ]; then
-  TARGET="wasm"
+  export FILE="tests/test.nim"
+  export NAME="test"
 fi
 
-# The user settings exports some variables with paths to be configured per user.
-#
-# - EMSCRIPTEN
-# - NIMBASE
-# - NIM
-# - CC
-#
-# At some point, move to a dockerized or otherwise reproducible build system.
-if [ $USER_SETTINGS -eq 1 ]; then
-  source "scripts/user_settings.sh"
-fi
+native_built=0
+wasm_built=0
 
-echo "Running scripts/${ACTION}_${TARGET}.sh"
+build_native() {
+  if [ $TEST -eq 1 ]; then
+    native_built=1
+    opt_str="-"
+    if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    if [ $OPTIMIZE -eq 1 ]; then opt_str+="o"; fi
+    if [[ opt_str = "-" ]]; then opt_str=""; fi
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" "${opt_str}")
+  else
+    echo "TODO"
+  fi
+}
 
-chmod 755 "./scripts/${ACTION}_${TARGET}.sh"
+build_wasm() {
+  if [ $TEST -eq 1 ]; then
+    wasm_built=1
+    opt_str="-wo"
+    if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" "${opt_str}")
+  else
+    echo "TODO"
+  fi
+}
 
-# Run the target script
-./scripts/${ACTION}_${TARGET}.sh
+for arg in "$@"
+do
+  case "$arg" in
+    native)
+      if [ $native_built -eq 0 ]; then build_native; fi
+      if [ $RUN -eq 1 ] && [ $native_built -eq 1 ]; then
+        echo "============================================="
+        echo "Running native"
+        echo "============================================="
+        ("./dist/${NAME}")
+      fi
+      ;;
+    node)
+      if [ $wasm_built -eq 0 ]; then build_wasm; fi
+      if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
+        echo "============================================="
+        echo "Running wasm in node"
+        echo "============================================="
+        (node --experimental-default-type=module src/run_wasm_in_node.js "./dist/${NAME}.wasm")
+      fi
+      ;;
+    browser)
+      if [ $wasm_built -eq 0 ]; then build_wasm; fi
+      if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
+        echo "============================================="
+        echo "Running wasm in browser"
+        echo "============================================="
+        # pass the wasm path to the webpage
+        export VITE_WASM_PATH="./dist/${NAME}.wasm"
+        (npm run start)
+      fi
+      ;;
+    *)
+      echo "Unrecognized arg: ${arg}"
+      exit 1
+      ;;
+  esac
+done

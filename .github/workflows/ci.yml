@@ -114,7 +114,10 @@ jobs:
         shell: bash
         run: |
           cd project
-          ./run.sh -t
+          # find nimbase
+          export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
+          echo "$NIMBASE"
+          ./run.sh -tr native
         env:
           NIM: nim
           CC: gcc
@@ -127,7 +130,7 @@ jobs:
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         uses: actions/setup-node@v4
 
-      - name: Compile to WASI32
+      - name: Tests (wasi32)
         if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
         shell: bash
         run: |
@@ -136,16 +139,8 @@ jobs:
           # find nimbase
           export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
           echo "$NIMBASE"
-          ./run.sh -tw
+          ./run.sh -tr node
         env:
           EMSCRIPTEN: emcc
           NIM: nim
           CC: gcc
-
-      - name: Tests (wasi32)
-        if: matrix.target.name == 'wasi32' && matrix.compiler.name == 'nimskull'
-        shell: bash
-        run: |
-          cd project
-          npm install
-          node --experimental-default-type=module src/run_wasm.js

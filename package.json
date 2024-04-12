@@ -1,7 +1,7 @@
 {
-  "name": "nim_wasm",
+  "name": "",
   "version": "1.0.0",
-  "description": "This template includes:",
+  "description": "",
   "main": "index.html",
   "directories": {
     "example": "examples",
