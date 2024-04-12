@@ -213,7 +213,7 @@ else # NATIVE (not WASM)
     c ${FILE}
 
     # Link nimbase.h
-    ln -sfw ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
+    ln -sf ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
   )
 
   echo "============================================="

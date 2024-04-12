@@ -136,6 +136,7 @@ jobs:
         run: |
           emcc -v
           cd project
+          npm install
           # find nimbase
           export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
           echo "$NIMBASE"
