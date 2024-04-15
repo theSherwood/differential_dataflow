@@ -5,7 +5,7 @@ import ../src/[values]
 # We have to multiply our seconds by 1_000_000 to get microseconds
 const SCALE = 1_000_000
 const WARMUP = 100_000 # microseconds
-const TIMEOUT = SCALE
+const TIMEOUT = 500_000
 
 when defined(wasm):
   proc get_time(): float64 {.importc.}
@@ -67,7 +67,6 @@ proc warmup() =
     End = get_time()
 
 proc bench(key: string, fn: proc(tr: TaskResult): void) =
-  warmup()
   var
     tr = make_tr(key)
     Start = get_time()
@@ -79,20 +78,17 @@ proc bench(key: string, fn: proc(tr: TaskResult): void) =
 proc benchmark_test(tr: TaskResult) =
   let Start = get_time()
   var s = 0.0
-  var f = 0.0
   for i in 0..<5000000:
-    f = i.float64
-    s += f
+    s += i.float64
     if tr.runs.len > 1000000: echo s
     if tr.runs.len > 10000000: echo s
   tr.add(get_time() - Start)
 
 proc run_benchmarks() =
+  warmup()
   bench("test?", benchmark_test)
   block:
     for tr in csv_rows:
       tr.to_row.write_row
-  echo get_time()
-  echo get_time()
 
 run_benchmarks()
