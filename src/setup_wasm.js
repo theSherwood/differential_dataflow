@@ -2,51 +2,45 @@ import { WASI, File, OpenFile, ConsoleStdout } from "@bjorn3/browser_wasi_shim";
 
 const VERBOSE = 0;
 
-function get_imports() {
+function get_default_wasi() {
+  let wasi;
+  let args = [];
+  let env = [];
+  let fds = [
+    new OpenFile(new File([])), // stdin
+    ConsoleStdout.lineBuffered((msg) => console.log(msg)),
+    ConsoleStdout.lineBuffered((msg) => console.warn(msg)),
+  ];
+  wasi = new WASI(args, env, fds);
+  if (VERBOSE) console.log("wasi", wasi.wasiImport);
+  return wasi;
+}
+
+function get_default_env_imports() {
   let memory = new WebAssembly.Memory({
     initial: 10000,
     maximum: 10000,
   });
-  const imports = {
-    env: {
-      memory,
-      // functions
-      get_time: () => Date.now() * 1000,
-      random_f64: () => Math.random(),
-    },
+  const env_imports = {
+    memory,
+    // functions
+    get_time: () => Date.now() * 1000,
   };
-  return imports;
-}
-
-export function run_nim_main(wasm_data) {
-  return wasm_data.exports.NimMain()
+  return env_imports;
 }
 
 export async function instantiate_wasm(wasm, opts = {}) {
   if (VERBOSE) console.log("import.meta", import.meta);
 
-  let { streaming } = opts;
-
-  /* setup wasi */
-  let wasi;
-  {
-    let args = [];
-    let env = [];
-    let fds = [
-      new OpenFile(new File([])), // stdin
-      ConsoleStdout.lineBuffered((msg) => console.log(msg)),
-      ConsoleStdout.lineBuffered((msg) => console.warn(msg)),
-    ];
-    wasi = new WASI(args, env, fds);
-    if (VERBOSE) console.log("wasi", wasi.wasiImport);
-  }
+  let { streaming, env_imports, wasi } = opts;
 
   /* setup imports */
   let imports;
+  if (!env_imports) env_imports = get_default_env_imports();
+  if (!wasi) wasi = get_default_wasi();
   {
-    let env_imports = get_imports();
     imports = {
-      env: env_imports.env,
+      env: env_imports,
       wasi_snapshot_preview1: wasi.wasiImport,
     };
   }
@@ -82,4 +76,8 @@ export async function instantiate_wasm(wasm, opts = {}) {
     imports,
     exports: new_exports,
   };
+}
+
+export function run_nim_main(wasm_data) {
+  return wasm_data.exports.NimMain();
 }

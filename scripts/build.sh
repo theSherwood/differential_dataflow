@@ -124,6 +124,8 @@ if [ $WASM -eq 1 ]; then
   (rm -Rf "./dist/${NAME}.wasm")
 
   (
+    # --opt: speed \
+
     # Compile Nim to C
     ${NIM} \
     -c \
@@ -132,14 +134,13 @@ if [ $WASM -eq 1 ]; then
     --gc: arc \
     --cpu: wasm32 \
     --app: lib \
-    --opt: speed \
     --noMain: on \
     --threads: off \
     --stackTrace: off \
     --exceptions: goto \
     --d: cpu32 \
     --d: wasm \
-    --d: release \
+    --d: debug \
     --d: useMalloc \
     --d: noSignalHandler \
     --nimcache: ${PATH_TO_C_ASSETS} \
@@ -155,11 +156,11 @@ if [ $WASM -eq 1 ]; then
 
   (
     # -s MALLOC=emmalloc-verbose \
-    # -g \
 
     # Compile C to Wasm
     ${EMSCRIPTEN} \
     ${OPTIMIZE} \
+    -g \
     -s PURE_WASI=1 \
     -s IMPORTED_MEMORY=1 \
     -s ALLOW_MEMORY_GROWTH=1 \

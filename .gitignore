@@ -15,3 +15,4 @@ nimcache
 *.ilk
 tmp
 node_modules
+dist

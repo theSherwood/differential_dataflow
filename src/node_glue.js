@@ -2,6 +2,7 @@ import { instantiate_wasm, run_nim_main } from "./setup_wasm.js";
 import fs from "node:fs"
 
 const WASM_PATH = process.argv[2]
+console.log("WASM_PATH", WASM_PATH)
 
 async function run_wasm() {
   try {
