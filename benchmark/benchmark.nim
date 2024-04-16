@@ -105,18 +105,40 @@ proc sanity_check(tr: TaskResult, n: int) =
 # VALUE BENCHMARKS #
 # ---------------------------------------------------------------------
 
-proc create_plain_maps(tr: TaskResult, n: int) =
+proc map_create(tr: TaskResult, n: int) =
   let Start = get_time()
   var maps: seq[ImValue] = @[]
   for i in 0..<n:
     maps.add(V {i:i})
   tr.add(get_time() - Start)
 
-proc create_plain_arrays(tr: TaskResult, n: int) =
+proc arr_create(tr: TaskResult, n: int) =
   let Start = get_time()
   var arrs: seq[ImValue] = @[]
   for i in 0..<n:
     arrs.add(V [i])
+  tr.add(get_time() - Start)
+
+proc map_add_entry(tr: TaskResult, n: int) =
+  # setup
+  var maps: seq[ImValue] = @[]
+  for i in 0..<n:
+    maps.add(V {i:i})
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    maps[i] = maps[i].set(i + 1, i + 1)
+  tr.add(get_time() - Start)
+
+proc map_overwrite_entry(tr: TaskResult, n: int) =
+  # setup
+  var maps: seq[ImValue] = @[]
+  for i in 0..<n:
+    maps.add(V {i:i})
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    maps[i] = maps[i].set(i, i + 1)
   tr.add(get_time() - Start)
 
 # RULES BENCHMARKS #
@@ -133,8 +155,10 @@ proc run_benchmarks() =
   # value benchmarks
   block:
     for it in [10, 100, 1000]:
-      bench("create_map", "immutable", create_plain_maps, it)
-      bench("create_arr", "immutable", create_plain_arrays, it)
+      bench("map_create", "immutable", map_create, it)
+      bench("map_add_entry", "immutable", map_add_entry, it)
+      bench("map_overwrite_entry", "immutable", map_overwrite_entry, it)
+      bench("arr_create", "immutable", arr_create, it)
 
   # rules benchmarks
   block:
