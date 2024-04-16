@@ -93,6 +93,9 @@ function sanity_check(tr, n) {
   tr.runs.push(get_time() - start);
 }
 
+/* VALUE BENCHMARKS */
+/*--------------------------------------------------------------------*/
+
 function create_plain_maps(tr, n) {
   let start = get_time();
   let maps = [];
@@ -128,6 +131,9 @@ function create_immutable_arrays(tr, n) {
   }
   tr.runs.push(get_time() - start);
 }
+
+/* RULES BENCHMARKS */
+/*--------------------------------------------------------------------*/
 
 /**
  *
@@ -235,27 +241,33 @@ async function waltz_db_nools(tr, n) {
 async function run_benchmarks() {
   await warmup();
   bench_sync("sanity_check", "--", sanity_check, 5000000);
-  for (let it of [10, 100, 1000]) {
-    bench_sync("create_map", "plain", create_plain_maps, it, LOW_TIMEOUT);
-    bench_sync("create_arr", "plain", create_plain_arrays, it, LOW_TIMEOUT);
-    bench_sync("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
-    bench_sync("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
+  /* value benchmarks */
+  {
+    for (let it of [10, 100, 1000]) {
+      bench_sync("create_map", "plain", create_plain_maps, it, LOW_TIMEOUT);
+      bench_sync("create_arr", "plain", create_plain_arrays, it, LOW_TIMEOUT);
+      bench_sync("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
+      bench_sync("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
+    }
   }
-  /* nools */
-  if (RUN_NOOLS) {
-    await Promise.all([
-      bench_sync("send_more_money", "nools", send_more_money_nools, 1),
-      bench_async("manners", "nools", manners_nools, 5),
-      bench_async("manners", "nools", manners_nools, 8),
-      // bench_async("manners", "nools", manners_nools, 16),
-      // bench_async("manners", "nools", manners_nools, 32),
-      // bench_async("manners", "nools", manners_nools, 64),
-      // bench_async("manners", "nools", manners_nools, 128),
-      bench_async("waltz_db", "nools", waltz_db_nools, 4),
-      bench_async("waltz_db", "nools", waltz_db_nools, 8),
-      // bench_async("waltz_db", "nools", waltz_db_nools, 12),
-      // bench_async("waltz_db", "nools", waltz_db_nools, 16),
-    ]);
+  /* rules benchmarks */
+  {
+    /* nools */
+    if (RUN_NOOLS) {
+      await Promise.all([
+        bench_sync("send_more_money", "nools", send_more_money_nools, 1),
+        bench_async("manners", "nools", manners_nools, 5),
+        bench_async("manners", "nools", manners_nools, 8),
+        // bench_async("manners", "nools", manners_nools, 16),
+        // bench_async("manners", "nools", manners_nools, 32),
+        // bench_async("manners", "nools", manners_nools, 64),
+        // bench_async("manners", "nools", manners_nools, 128),
+        bench_async("waltz_db", "nools", waltz_db_nools, 4),
+        bench_async("waltz_db", "nools", waltz_db_nools, 8),
+        // bench_async("waltz_db", "nools", waltz_db_nools, 12),
+        // bench_async("waltz_db", "nools", waltz_db_nools, 16),
+      ]);
+    }
   }
 }
 

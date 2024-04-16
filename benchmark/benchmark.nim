@@ -102,6 +102,9 @@ proc sanity_check(tr: TaskResult, n: int) =
     if tr.runs.len > 10000000: echo s
   tr.add(get_time() - Start)
 
+# VALUE BENCHMARKS #
+# ---------------------------------------------------------------------
+
 proc create_plain_maps(tr: TaskResult, n: int) =
   let Start = get_time()
   var maps: seq[ImValue] = @[]
@@ -116,6 +119,9 @@ proc create_plain_arrays(tr: TaskResult, n: int) =
     arrs.add(V [i])
   tr.add(get_time() - Start)
 
+# RULES BENCHMARKS #
+# ---------------------------------------------------------------------
+
 # #endregion ==========================================================
 #            RUN BENCHMARKS
 # #region =============================================================
@@ -123,10 +129,18 @@ proc create_plain_arrays(tr: TaskResult, n: int) =
 proc run_benchmarks() =
   warmup()
   bench("sanity_check", "--", sanity_check, 5000000)
-  for it in [10, 100, 1000]:
-    bench("create_map", "immutable", create_plain_maps, it)
-    bench("create_arr", "immutable", create_plain_arrays, it)
 
+  # value benchmarks
+  block:
+    for it in [10, 100, 1000]:
+      bench("create_map", "immutable", create_plain_maps, it)
+      bench("create_arr", "immutable", create_plain_arrays, it)
+
+  # rules benchmarks
+  block:
+    discard
+
+  # output results
   block:
     write_row("\"key\",\"sys\",\"desc\",\"runs\",\"minimum\",\"maximum\",\"mean\",\"median\"")
     for tr in csv_rows:
