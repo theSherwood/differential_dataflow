@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import { Map as ImMap, List as ImArr } from "immutable";
-import * as nools from "nools";
-
-// console.log("nools", nools)
+import nools from "nools";
 
 const OUTPUT_PATH = "./benchmark/results_js.csv";
 const WARMUP = 100_000; // microseconds
@@ -110,6 +108,45 @@ function create_immutable_arrays(tr, n) {
   tr.runs.push(get_time() - start);
 }
 
+/**
+ * 
+ * @link
+ * https://github.com/noolsjs/nools/blob/master/examples/browser/rules/sendMoreMoney.nools
+ * https://github.com/noolsjs/nools/blob/master/examples/browser/sendMoreMoney.html
+ */
+function send_more_money_nools(tr, n) {
+  let nools_code = `
+rule SendMoreMoney {
+  when {
+      s : Number s != 0;
+      e : Number e != s;
+      n : Number n != s && n != e;
+      d : Number d != s && d != e && d != n;
+      m : Number m != 0 && m != s && m != e && m != n && m != d;
+      o : Number o != s && o != e && o != n && o != d && o != m;
+      r : Number r != s && r != e && r != n && r != d && r != m && r != o;
+      y : Number y != s && y != e && y != n && y != d && y != m && y != o && y != r
+          && (s*1000 + e*100 + n*10 + d + m*1000 + o*100 + r*10 + e) == (m*10000 + o*1000 + n*100 + e*10 + y);
+  }
+  then {
+      emit("solved", {s : s, e : e, n : n, d : d, m : m, o: o, r : r, y : y});
+  }
+}`;
+  var flow = nools.compile(nools_code, { name: "SendMoreMoney" });
+  let start = get_time();
+  let session;
+  for (let i = 0; i < n; i++) {
+    // calculate
+    (session = flow.getSession(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+      .on("solved", function (solved) {})
+      .match()
+      .then(function () {
+        session.dispose();
+      });
+  }
+  tr.runs.push(get_time() - start);
+}
+
 // #endregion ==========================================================
 //            RUN BENCHMARKS
 // #region =============================================================
@@ -123,6 +160,7 @@ async function run_benchmarks() {
     bench("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
     bench("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
   }
+  bench("send_more_money", "nools", send_more_money_nools, 1);
 }
 
 run_benchmarks().then(() => {
