@@ -1,8 +1,8 @@
 "key","sys","desc","runs","minimum","maximum","mean","median"
-"sanity_check_5000000","native","--",17,5741.00,7366.00,5968.24,5849.50
-"create_map_10","native","immutable",8908,1.00,95.00,9.99,9.00
-"create_arr_10","native","immutable",39737,0.00,37.00,1.44,1.00
-"create_map_100","native","immutable",1159,68.00,251.00,85.04,83.00
-"create_arr_100","native","immutable",11026,5.00,87.00,7.90,7.00
-"create_map_1000","native","immutable",119,725.00,1382.00,841.33,791.50
-"create_arr_1000","native","immutable",1256,59.00,274.00,78.22,66.00
+"sanity_check_5000000","native","--",11,9642.00,11711.00,10132.18,9651.50
+"create_map_10","native","immutable",6624,4.00,38.00,13.38,13.00
+"create_arr_10","native","immutable",25130,1.00,47.00,2.28,2.00
+"create_map_100","native","immutable",801,111.00,151.00,122.96,121.00
+"create_arr_100","native","immutable",7300,8.00,43.00,11.95,12.00
+"create_map_1000","native","immutable",81,1180.00,1611.00,1235.48,1206.50
+"create_arr_1000","native","immutable",946,98.00,132.00,103.92,103.00

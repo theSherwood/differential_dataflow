@@ -1,6 +1,12 @@
 import fs from "node:fs";
+import path from "node:path";
 import { Map as ImMap, List as ImArr } from "immutable";
 import nools from "nools";
+import { fileURLToPath } from "node:url";
+import { load_guests } from "./data/manners.js";
+
+// Polyfill __dirname because we are doing some esm nonsense
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const OUTPUT_PATH = "./benchmark/results_js.csv";
 const WARMUP = 100_000; // microseconds
@@ -45,7 +51,7 @@ async function warmup() {
   return setTimeout(() => {}, WARMUP / 1000);
 }
 
-async function bench(key, desc, fn, iterations, timeout = TIMEOUT) {
+function bench_sync(key, desc, fn, iterations, timeout = TIMEOUT) {
   let tr = { key: key + "_" + iterations, desc, runs: [] };
   csv_rows.push(tr);
   let start = get_time();
@@ -54,6 +60,19 @@ async function bench(key, desc, fn, iterations, timeout = TIMEOUT) {
     fn(tr, iterations);
     end = get_time();
   }
+  console.log(`done js ${tr.key}`);
+}
+
+async function bench_async(key, desc, fn, iterations, timeout = TIMEOUT) {
+  let tr = { key: key + "_" + iterations, desc, runs: [] };
+  csv_rows.push(tr);
+  let start = get_time();
+  let end = get_time();
+  while (timeout > end - start) {
+    await fn(tr, iterations);
+    end = get_time();
+  }
+  console.log(`done js ${tr.key}`);
 }
 
 // #endregion ==========================================================
@@ -109,29 +128,14 @@ function create_immutable_arrays(tr, n) {
 }
 
 /**
- * 
+ *
  * @link
- * https://github.com/noolsjs/nools/blob/master/examples/browser/rules/sendMoreMoney.nools
  * https://github.com/noolsjs/nools/blob/master/examples/browser/sendMoreMoney.html
  */
 function send_more_money_nools(tr, n) {
-  let nools_code = `
-rule SendMoreMoney {
-  when {
-      s : Number s != 0;
-      e : Number e != s;
-      n : Number n != s && n != e;
-      d : Number d != s && d != e && d != n;
-      m : Number m != 0 && m != s && m != e && m != n && m != d;
-      o : Number o != s && o != e && o != n && o != d && o != m;
-      r : Number r != s && r != e && r != n && r != d && r != m && r != o;
-      y : Number y != s && y != e && y != n && y != d && y != m && y != o && y != r
-          && (s*1000 + e*100 + n*10 + d + m*1000 + o*100 + r*10 + e) == (m*10000 + o*1000 + n*100 + e*10 + y);
-  }
-  then {
-      emit("solved", {s : s, e : e, n : n, d : d, m : m, o: o, r : r, y : y});
-  }
-}`;
+  let nools_code = fs
+    .readFileSync(path.resolve(__dirname, "./src/send_more_money.nools"))
+    .toString();
   var flow = nools.compile(nools_code, { name: "SendMoreMoney" });
   let start = get_time();
   let session;
@@ -147,20 +151,65 @@ rule SendMoreMoney {
   tr.runs.push(get_time() - start);
 }
 
+/**
+ * @link
+ * https://github.com/noolsjs/nools/blob/master/examples/browser/manners.html
+ *
+ * @param {128 | 64 | 32 | 16 | 8 | 5} n
+ */
+async function manners_nools(tr, n) {
+  let name = "manners" + n;
+  let nools_code = fs.readFileSync(path.resolve(__dirname, "./src/manners.nools")).toString();
+  let session,
+    flow = nools.compile(nools_code, { name }),
+    Count = flow.getDefined("count"),
+    guests = load_guests(flow, name);
+  session = flow.getSession();
+  for (var i = 0, l = guests.length; i < l; i++) {
+    session.assert(guests[i]);
+  }
+  session.assert(new Count({ value: 1 }));
+  let start = get_time();
+  await new Promise((resolve, reject) => {
+    session
+      .on("pathDone", function (obj) {})
+      .match()
+      .then(
+        function () {
+          /* done */
+          resolve();
+        },
+        function (e) {
+          console.error(e);
+          reject();
+        }
+      );
+  });
+  tr.runs.push(get_time() - start);
+}
+
 // #endregion ==========================================================
 //            RUN BENCHMARKS
 // #region =============================================================
 
 async function run_benchmarks() {
   await warmup();
-  bench("sanity_check", "--", sanity_check, 5000000);
+  bench_sync("sanity_check", "--", sanity_check, 5000000);
   for (let it of [10, 100, 1000]) {
-    bench("create_map", "plain", create_plain_maps, it, LOW_TIMEOUT);
-    bench("create_arr", "plain", create_plain_arrays, it, LOW_TIMEOUT);
-    bench("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
-    bench("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
+    bench_sync("create_map", "plain", create_plain_maps, it, LOW_TIMEOUT);
+    bench_sync("create_arr", "plain", create_plain_arrays, it, LOW_TIMEOUT);
+    bench_sync("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
+    bench_sync("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
   }
-  bench("send_more_money", "nools", send_more_money_nools, 1);
+  await Promise.all([
+    bench_sync("send_more_money", "nools", send_more_money_nools, 1),
+    bench_async("manners", "nools", manners_nools, 5),
+    bench_async("manners", "nools", manners_nools, 8),
+    // bench_async("manners", "nools", manners_nools, 16),
+    // bench_async("manners", "nools", manners_nools, 32),
+    // bench_async("manners", "nools", manners_nools, 64),
+    // bench_async("manners", "nools", manners_nools, 128),
+  ]);
 }
 
 run_benchmarks().then(() => {

@@ -1,8 +1,8 @@
 "key","sys","desc","runs","minimum","maximum","mean","median"
-"sanity_check_5000000","wasm","--",9,11159.06,13536.54,12222.45,12374.34
-"create_map_10","wasm","immutable",14260,1.77,217.06,2.12,1.89
-"create_arr_10","wasm","immutable",51858,1.16,111.32,1.36,1.23
-"create_map_100","wasm","immutable",1499,15.23,132.80,18.41,15.52
-"create_arr_100","wasm","immutable",7330,8.92,90.60,9.69,9.08
-"create_map_1000","wasm","immutable",163,152.75,454.25,172.65,170.11
-"create_arr_1000","wasm","immutable",704,83.57,262.21,100.48,85.74
+"sanity_check_5000000","wasm","--",6,17757.18,18725.46,18207.26,18563.68
+"create_map_10","wasm","immutable",8688,2.98,283.71,3.40,3.10
+"create_arr_10","wasm","immutable",33589,1.99,161.33,2.10,2.08
+"create_map_100","wasm","immutable",986,25.98,147.94,27.97,26.54
+"create_arr_100","wasm","immutable",4502,15.13,166.46,15.86,15.48
+"create_map_1000","wasm","immutable",98,262.85,761.98,289.37,272.82
+"create_arr_1000","wasm","immutable",366,145.26,1828.24,196.11,148.46
