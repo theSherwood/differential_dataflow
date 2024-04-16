@@ -107,14 +107,17 @@ if [ $BENCHMARK -eq 1 ]; then
       echo "Invalid: When -b is passed, no positional arguments are accepted."
       exit 1
   fi
-  # build_native
-  # build_wasm
+  build_native
+  build_wasm
   if [ $RUN -eq 1 ]; then
-    # ("./dist/${NAME}")
-    # (node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm")
-    # (node --experimental-default-type=module benchmark/benchmark.js)
-    # Collect the individual results
-    (node --experimental-default-type=module benchmark/collect.js)
+    # run native
+    ("./dist/${NAME}")
+    # run wasm in node
+    (node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm")
+    # run js
+    (node --experimental-default-type=module benchmark/benchmark.js)
+    # Create a report from the individual results
+    (node --experimental-default-type=module benchmark/report.js)
     exit 0
   fi
 

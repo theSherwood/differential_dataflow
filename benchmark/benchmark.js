@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { Map as ImMap, List as ImArr } from "immutable";
 import * as nools from "nools";
 
-console.log("nools", nools)
+// console.log("nools", nools)
 
 const OUTPUT_PATH = "./benchmark/results_js.csv";
 const WARMUP = 100_000; // microseconds
@@ -111,7 +111,7 @@ function create_immutable_arrays(tr, n) {
 
 async function run_benchmarks() {
   await warmup();
-  bench("sanity_check", "", sanity_check, 5000000);
+  bench("sanity_check", "--", sanity_check, 5000000);
   bench("create_map", "plain", create_plain_maps, 1000);
   bench("create_arr", "plain", create_plain_arrays, 1000);
   bench("create_map", "immutable.js", create_immutable_maps, 1000);

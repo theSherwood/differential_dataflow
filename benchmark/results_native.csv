@@ -1,4 +1,4 @@
 "key","sys","desc","runs","minimum","maximum","mean","median"
-"sanity_check","native","",8,7713.00,21649.00,12911.25,7779.00
-"create_map","native","immutable",76,1180.00,1856.00,1315.11,1276.00
-"create_arr","native","immutable",901,101.00,170.00,109.05,108.00
+"sanity_check","native","--",21,4456.00,6491.00,4799.48,4634.00
+"create_map","native","immutable",99,737.00,1626.00,1008.94,1009.00
+"create_arr","native","immutable",1251,62.00,211.00,78.60,77.00

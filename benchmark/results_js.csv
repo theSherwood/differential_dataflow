@@ -1,6 +1,6 @@
 "key","sys","desc","runs","minimum","maximum","mean","median"
-"sanity_check","js","",3,18859.90,42438.18,33537.95,40876.97
-"create_map","js","plain",9007,6.63,1014.06,10.70,7.20
-"create_arr","js","plain",7257,9.88,313.33,13.50,10.62
-"create_map","js","immutable.js",185,445.07,4157.35,540.42,449.86
-"create_arr","js","immutable.js",842,72.18,1886.28,118.49,77.22
+"sanity_check","js","--",5,10374.36,25867.21,20890.60,23375.19
+"create_map","js","plain",16099,3.78,315.15,6.00,4.28
+"create_arr","js","plain",11785,5.52,254.09,8.34,6.16
+"create_map","js","immutable.js",323,222.69,2062.19,310.86,230.37
+"create_arr","js","immutable.js",1404,42.41,2108.68,70.98,55.43
