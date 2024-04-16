@@ -130,6 +130,22 @@ proc map_add_entry(tr: TaskResult, n: int) =
     maps[i] = maps[i].set(i + 1, i + 1)
   tr.add(get_time() - Start)
 
+proc map_add_entry_multiple(tr: TaskResult, n: int) =
+  # setup
+  var maps: seq[ImValue] = @[]
+  for i in 0..<n:
+    maps.add(V {i:i})
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    maps[i] = maps[i]
+      .set(i + 1, i + 1)
+      .set(i + 2, i + 2)
+      .set(i + 3, i + 3)
+      .set(i + 4, i + 4)
+      .set(i + 5, i + 5)
+  tr.add(get_time() - Start)
+
 proc map_overwrite_entry(tr: TaskResult, n: int) =
   # setup
   var maps: seq[ImValue] = @[]
@@ -157,6 +173,7 @@ proc run_benchmarks() =
     for it in [10, 100, 1000]:
       bench("map_create", "immutable", map_create, it)
       bench("map_add_entry", "immutable", map_add_entry, it)
+      bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, it)
       bench("map_overwrite_entry", "immutable", map_overwrite_entry, it)
       bench("arr_create", "immutable", arr_create, it)
 

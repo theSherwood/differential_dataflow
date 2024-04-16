@@ -59,10 +59,11 @@ function bench_sync(key, desc, fn, iterations, timeout = TIMEOUT) {
   csv_rows.push(tr);
   let start = get_time();
   let end = get_time();
-  while (timeout > end - start) {
+  // Ensure that it runs at least once
+  do {
     fn(tr, iterations);
     end = get_time();
-  }
+  } while (timeout > end - start);
   console.log(`done js ${tr.key}`);
 }
 
@@ -71,10 +72,11 @@ async function bench_async(key, desc, fn, iterations, timeout = TIMEOUT) {
   csv_rows.push(tr);
   let start = get_time();
   let end = get_time();
-  while (timeout > end - start) {
+  // Ensure that it runs at least once
+  do {
     await fn(tr, iterations);
     end = get_time();
-  }
+  } while (timeout > end - start);
   console.log(`done js ${tr.key}`);
 }
 
@@ -133,7 +135,7 @@ function immutable_arr_create(tr, n) {
   tr.runs.push(get_time() - start);
 }
 
-function pojo_add_entry(tr, n) {
+function pojo_add_entry_by_mutation(tr, n) {
   /* setup */
   let objs = [];
   for (let i = 0; i < n; i++) {
@@ -191,7 +193,7 @@ function immer_pojo_add_entry(tr, n) {
   tr.runs.push(get_time() - start);
 }
 
-function pojo_add_entry_multiple_batched(tr, n) {
+function pojo_add_entry_by_mutation_multiple(tr, n) {
   /* setup */
   let objs = [];
   for (let i = 0; i < n; i++) {
@@ -206,6 +208,82 @@ function pojo_add_entry_multiple_batched(tr, n) {
     o[i + 3] = i + 3;
     o[i + 4] = i + 4;
     o[i + 5] = i + 5;
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function pojo_add_entry_by_spread_multiple(tr, n) {
+  /* setup */
+  let objs = [];
+  for (let i = 0; i < n; i++) {
+    objs.push({ i: i });
+  }
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    objs[i] = {
+      ...{
+        ...{
+          ...{
+            ...{
+              ...objs[i],
+              [i + 1]: i + 1,
+            },
+            [i + 2]: i + 2,
+          },
+          [i + 3]: i + 3,
+        },
+        [i + 4]: i + 4,
+      },
+      [i + 5]: i + 5,
+    };
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_add_entry_multiple(tr, n) {
+  /* setup */
+  let maps = [];
+  for (let i = 0; i < n; i++) {
+    maps.push(ImMap({ i: i }));
+  }
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    maps[i] = maps[i]
+      .set(i + 1, i + 1)
+      .set(i + 2, i + 2)
+      .set(i + 3, i + 3)
+      .set(i + 4, i + 4)
+      .set(i + 5, i + 5);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immer_pojo_add_entry_multiple(tr, n) {
+  /* setup */
+  let maps = [];
+  for (let i = 0; i < n; i++) {
+    maps.push({ i: i });
+  }
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    maps[i] = produce(maps[i], (m) => {
+      m[i + 1] = i + 1;
+    });
+    maps[i] = produce(maps[i], (m) => {
+      m[i + 2] = i + 2;
+    });
+    maps[i] = produce(maps[i], (m) => {
+      m[i + 3] = i + 3;
+    });
+    maps[i] = produce(maps[i], (m) => {
+      m[i + 4] = i + 4;
+    });
+    maps[i] = produce(maps[i], (m) => {
+      m[i + 5] = i + 5;
+    });
   }
   tr.runs.push(get_time() - start);
 }
@@ -456,13 +534,17 @@ async function run_benchmarks() {
       /* map */
       bench_sync("map_create", PLAIN, pojo_create, it, LOW_TIMEOUT);
       bench_sync("map_create", IMMUTABLEJS, immutable_map_create, it, LOW_TIMEOUT);
-      bench_sync("map_add_entry", PLAIN_MUTATION, pojo_add_entry, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry", PLAIN_MUTATION, pojo_add_entry_by_mutation, it, LOW_TIMEOUT);
       bench_sync("map_add_entry", PLAIN_SPREAD, pojo_add_entry_by_spread, it, LOW_TIMEOUT);
       bench_sync("map_add_entry", IMMUTABLEJS, immutable_map_add_entry, it, LOW_TIMEOUT);
       bench_sync("map_add_entry", IMMER_POJO, immer_pojo_add_entry, it, LOW_TIMEOUT);
-      bench_sync("map_add_entry_multiple_batched", IMMUTABLEJS, immutable_map_add_entry_multiple_batched, it, LOW_TIMEOUT);
-      bench_sync("map_add_entry_multiple_batched", PLAIN_MUTATION, pojo_add_entry_multiple_batched, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple", PLAIN_MUTATION, pojo_add_entry_by_mutation_multiple, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple", PLAIN_SPREAD, pojo_add_entry_by_spread_multiple, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple", IMMUTABLEJS, immutable_map_add_entry_multiple, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple", IMMER_POJO, immer_pojo_add_entry_multiple, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple_batched", PLAIN_MUTATION, pojo_add_entry_by_mutation_multiple, it, LOW_TIMEOUT);
       bench_sync("map_add_entry_multiple_batched", PLAIN_SPREAD, pojo_add_entry_by_spread_multiple_batched, it, LOW_TIMEOUT);
+      bench_sync("map_add_entry_multiple_batched", IMMUTABLEJS, immutable_map_add_entry_multiple_batched, it, LOW_TIMEOUT);
       bench_sync("map_add_entry_multiple_batched", IMMER_POJO, immer_pojo_add_entry_multiple_batched, it, LOW_TIMEOUT);
       bench_sync("map_overwrite_entry", PLAIN_MUTATION, pojo_overwrite_entry, it, LOW_TIMEOUT);
       bench_sync("map_overwrite_entry", PLAIN_SPREAD, pojo_overwrite_entry_by_spread, it, LOW_TIMEOUT);
