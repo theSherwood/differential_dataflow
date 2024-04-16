@@ -3,7 +3,8 @@ import path from "node:path";
 import { Map as ImMap, List as ImArr } from "immutable";
 import nools from "nools";
 import { fileURLToPath } from "node:url";
-import { load_guests } from "./data/manners.js";
+import { load_manners_data } from "./data/manners.js";
+import { load_waltz_db_data } from "./data/waltz_db.js";
 
 // Polyfill __dirname because we are doing some esm nonsense
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +16,7 @@ const WARMUP = 100_000; // microseconds
 // for use when we want it.
 const TIMEOUT = 100_000;
 const LOW_TIMEOUT = 2;
+const RUN_NOOLS = true;
 
 let csv_rows = [];
 
@@ -158,12 +160,12 @@ function send_more_money_nools(tr, n) {
  * @param {128 | 64 | 32 | 16 | 8 | 5} n
  */
 async function manners_nools(tr, n) {
-  let name = "manners" + n;
+  let name = tr.key;
   let nools_code = fs.readFileSync(path.resolve(__dirname, "./src/manners.nools")).toString();
   let session,
     flow = nools.compile(nools_code, { name }),
     Count = flow.getDefined("count"),
-    guests = load_guests(flow, name);
+    guests = load_manners_data(flow, name);
   session = flow.getSession();
   for (var i = 0, l = guests.length; i < l; i++) {
     session.assert(guests[i]);
@@ -173,6 +175,44 @@ async function manners_nools(tr, n) {
   await new Promise((resolve, reject) => {
     session
       .on("pathDone", function (obj) {})
+      .match()
+      .then(
+        function () {
+          /* done */
+          resolve();
+        },
+        function (e) {
+          console.error(e);
+          reject();
+        }
+      );
+  });
+  tr.runs.push(get_time() - start);
+}
+
+/**
+ * @link
+ * https://github.com/noolsjs/nools/blob/master/examples/browser/waltzDb.html
+ *
+ * @param {16 | 12 | 8 | 4} n
+ */
+async function waltz_db_nools(tr, n) {
+  let name = tr.key;
+  let nools_code = fs.readFileSync(path.resolve(__dirname, "./src/waltz_db.nools")).toString();
+  let session,
+    flow = nools
+      .compile(nools_code, { name })
+      .conflictResolution(["salience", "factRecency", "activationRecency"]),
+    data = load_waltz_db_data(flow, name);
+  session = flow.getSession();
+  for (var i = 0, l = data.length; i < l; i++) {
+    session.assert(data[i]);
+  }
+  session.assert(new (flow.getDefined("stage"))({ value: "DUPLICATE" }));
+  let start = get_time();
+  await new Promise((resolve, reject) => {
+    session
+      .on("log", function (obj) {})
       .match()
       .then(
         function () {
@@ -201,15 +241,22 @@ async function run_benchmarks() {
     bench_sync("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
     bench_sync("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
   }
-  await Promise.all([
-    bench_sync("send_more_money", "nools", send_more_money_nools, 1),
-    bench_async("manners", "nools", manners_nools, 5),
-    bench_async("manners", "nools", manners_nools, 8),
-    // bench_async("manners", "nools", manners_nools, 16),
-    // bench_async("manners", "nools", manners_nools, 32),
-    // bench_async("manners", "nools", manners_nools, 64),
-    // bench_async("manners", "nools", manners_nools, 128),
-  ]);
+  /* nools */
+  if (RUN_NOOLS) {
+    await Promise.all([
+      bench_sync("send_more_money", "nools", send_more_money_nools, 1),
+      bench_async("manners", "nools", manners_nools, 5),
+      bench_async("manners", "nools", manners_nools, 8),
+      // bench_async("manners", "nools", manners_nools, 16),
+      // bench_async("manners", "nools", manners_nools, 32),
+      // bench_async("manners", "nools", manners_nools, 64),
+      // bench_async("manners", "nools", manners_nools, 128),
+      bench_async("waltz_db", "nools", waltz_db_nools, 4),
+      bench_async("waltz_db", "nools", waltz_db_nools, 8),
+      // bench_async("waltz_db", "nools", waltz_db_nools, 12),
+      // bench_async("waltz_db", "nools", waltz_db_nools, 16),
+    ]);
+  }
 }
 
 run_benchmarks().then(() => {

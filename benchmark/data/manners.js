@@ -3,9 +3,9 @@
  * https://github.com/noolsjs/nools/blob/master/examples/browser/src/guests.js
  */
 
-function get_guests() {
+function get_data() {
   var guests = {
-    manners128: [
+    manners_128: [
       {
         type: "guest ",
         args: {
@@ -3523,1089 +3523,7 @@ function get_guests() {
         },
       },
     ],
-    manners16: [
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n6",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n6",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n8",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n8",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n10",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n10",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n11",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n11",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n11",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n12",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n12",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n13",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n13",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n13",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n14",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n14",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "lastSeat ",
-        args: {
-          seat: 16,
-        },
-      },
-      {
-        type: "context ",
-        args: {
-          state: "start",
-        },
-      },
-    ],
-    manners32: [
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n6",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n6",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n6",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n7",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n8",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n8",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n8",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n9",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n10",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n10",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n11",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n11",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n12",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n12",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n13",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n13",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n14",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n14",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n15",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n16",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n17",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n17",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n18",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n18",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n19",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n19",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n19",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n20",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n20",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n20",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n21",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n21",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n21",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n22",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n22",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n22",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n23",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n23",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n23",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n24",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n24",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n25",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n25",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n25",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n26",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n26",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n26",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n27",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n27",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n27",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n28",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n28",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n29",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n29",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n29",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n30",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n30",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n30",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n31",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n31",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n32",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n32",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n32",
-          sex: "m",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "lastSeat ",
-        args: {
-          seat: 32,
-        },
-      },
-      {
-        type: "context ",
-        args: {
-          state: "start",
-        },
-      },
-    ],
-    manners5: [
-      {
-        type: "guest ",
-        args: {
-          name: "n1",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n2",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "m",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n3",
-          sex: "m",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n4",
-          sex: "f",
-          hobby: "h3",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "f",
-          hobby: "h2",
-        },
-      },
-      {
-        type: "guest ",
-        args: {
-          name: "n5",
-          sex: "f",
-          hobby: "h1",
-        },
-      },
-      {
-        type: "lastseat ",
-        args: {
-          seat: 5,
-        },
-      },
-      {
-        type: "context ",
-        args: {
-          state: "start",
-        },
-      },
-    ],
-    manners64: [
+    manners_64: [
       {
         type: "guest ",
         args: {
@@ -5955,7 +4873,1003 @@ function get_guests() {
         },
       },
     ],
-    manners8: [
+    manners_32: [
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n6",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n6",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n6",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n8",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n8",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n8",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n10",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n10",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n11",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n11",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n12",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n12",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n13",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n13",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n14",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n14",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n17",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n17",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n18",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n18",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n19",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n19",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n19",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n20",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n20",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n20",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n21",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n21",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n21",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n22",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n22",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n22",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n23",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n23",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n23",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n24",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n24",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n25",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n25",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n25",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n26",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n26",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n26",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n27",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n27",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n27",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n28",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n28",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n29",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n29",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n29",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n30",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n30",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n30",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n31",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n31",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n32",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n32",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n32",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "lastSeat ",
+        args: {
+          seat: 32,
+        },
+      },
+      {
+        type: "context ",
+        args: {
+          state: "start",
+        },
+      },
+    ],
+    manners_16: [
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n6",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n6",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n7",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n8",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n8",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n9",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n10",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n10",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n11",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n11",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n11",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n12",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n12",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n13",
+          sex: "m",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n13",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n13",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n14",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n14",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n15",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n16",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "lastSeat ",
+        args: {
+          seat: 16,
+        },
+      },
+      {
+        type: "context ",
+        args: {
+          state: "start",
+        },
+      },
+    ],
+    manners_8: [
       {
         type: "guest ",
         args: {
@@ -6121,12 +6035,98 @@ function get_guests() {
         },
       },
     ],
+    manners_5: [
+      {
+        type: "guest ",
+        args: {
+          name: "n1",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n2",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "m",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n3",
+          sex: "m",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n4",
+          sex: "f",
+          hobby: "h3",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "f",
+          hobby: "h2",
+        },
+      },
+      {
+        type: "guest ",
+        args: {
+          name: "n5",
+          sex: "f",
+          hobby: "h1",
+        },
+      },
+      {
+        type: "lastseat ",
+        args: {
+          seat: 5,
+        },
+      },
+      {
+        type: "context ",
+        args: {
+          state: "start",
+        },
+      },
+    ],
   };
   return guests;
 }
 
-export function load_guests(flow, name) {
-  var arr = get_guests()[name],
+export function load_manners_data(flow, name) {
+  var arr = get_data()[name],
     i = -1,
     l = arr.length,
     ret = [],
