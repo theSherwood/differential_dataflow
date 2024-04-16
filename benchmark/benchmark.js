@@ -84,7 +84,7 @@ async function bench_async(key, desc, fn, sz, iterations, timeout = TIMEOUT) {
 //            BENCHMARK DEFINITIONS
 // #region =============================================================
 
-function sanity_check(tr, n) {
+function sanity_check(tr, _sz, n) {
   let start = get_time();
   var s = 0.0;
   for (let f = 0; f < n; f++) {

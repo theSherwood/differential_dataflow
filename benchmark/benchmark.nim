@@ -1,9 +1,6 @@
-import std/[math, algorithm, sequtils, strutils, strformat]
-from std/times import cpuTime
+import std/[math, algorithm, strutils, strformat]
 import ../src/[values]
 
-# We have to multiply our seconds by 1_000_000 to get microseconds
-const SCALE = 1_000_000
 const WARMUP = 100_000 # microseconds
 const TIMEOUT = 100_000
 
@@ -14,6 +11,9 @@ when defined(wasm):
     write_row_string(row[0].addr, row.len)
   const sys = "wasm"
 else:
+  from std/times import cpuTime
+  # We have to multiply our seconds by 1_000_000 to get microseconds
+  const SCALE = 1_000_000
   proc get_time(): float64 =
     return cpuTime() * SCALE
   let file_name = "./benchmark/results_native.csv"
@@ -173,7 +173,7 @@ proc map_overwrite_entry(tr: TaskResult, sz, n: int) =
 
 proc run_benchmarks() =
   warmup()
-  # bench("sanity_check", "--", sanity_check, 0, 5000000)
+  bench("sanity_check", "--", sanity_check, 0, 5000000)
 
   # value benchmarks
   block:

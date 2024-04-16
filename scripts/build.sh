@@ -116,7 +116,7 @@ c_files() {
 if [ $WASM -eq 1 ]; then
 
   echo "============================================="
-  echo "Compiling ${FILE} to C"
+  echo "Compiling \"${FILE}\" to C"
   echo "============================================="
 
   # Clean previous compilation results
@@ -188,7 +188,7 @@ if [ $WASM -eq 1 ]; then
 else # NATIVE (not WASM)
 
   echo "============================================="
-  echo "Compiling ${FILE} to C"
+  echo "Compiling \"${FILE}\" to C"
   echo "============================================="
 
   # Clean previous compilation results

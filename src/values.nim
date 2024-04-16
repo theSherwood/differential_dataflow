@@ -4,7 +4,7 @@
 ## -[ ] add a converter from int to ImValue
 ## -[ ] add an ability to push onto the end of an array
 
-import std/[tables, sets, bitops, strutils, strbasics, strformat, macros]
+import std/[tables, sets, bitops, strutils, strformat, macros]
 import hashes
 
 ## # Immutable Value Types
@@ -285,15 +285,15 @@ template v*(x: openArray[ImValue]): ImValue = x.init_array.v
 # ---------------------------------------------------------------------
 
 when c32:
-  const MASK_SIGN        = 0b10000000000000000000000000000000'u32
+  # const MASK_SIGN        = 0b10000000000000000000000000000000'u32
   const MASK_EXPONENT    = 0b01111111111100000000000000000000'u32
-  const MASK_QUIET       = 0b00000000000010000000000000000000'u32
+  # const MASK_QUIET       = 0b00000000000010000000000000000000'u32
   const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u32
   const MASK_SIGNATURE   = 0b11111111111111111000000000000000'u32
   const MASK_SHORT_HASH  = 0b00000000000000000111111111111111'u32
   const MASK_HEAP        = 0b11111111111110000000000000000000'u32
 
-  const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u32
+  # const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u32
   const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u32
   const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u32
   const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u32
@@ -307,14 +307,14 @@ when c32:
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
 
 else:
-  const MASK_SIGN        = 0b10000000000000000000000000000000'u64 shl 32
+  # const MASK_SIGN        = 0b10000000000000000000000000000000'u64 shl 32
   const MASK_EXPONENT    = 0b01111111111100000000000000000000'u64 shl 32
-  const MASK_QUIET       = 0b00000000000010000000000000000000'u64 shl 32
+  # const MASK_QUIET       = 0b00000000000010000000000000000000'u64 shl 32
   const MASK_EXP_OR_Q    = 0b01111111111110000000000000000000'u64 shl 32
   const MASK_SIGNATURE   = 0b11111111111111110000000000000000'u64 shl 32
   const MASK_HEAP        = 0b11111111111110000000000000000000'u64 shl 32
 
-  const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u64 shl 32
+  # const MASK_TYPE_NAN    = 0b00000000000000000000000000000000'u64 shl 32
   const MASK_TYPE_NIL    = 0b00000000000000010000000000000000'u64 shl 32
   const MASK_TYPE_FALSE  = 0b00000000000000011000000000000000'u64 shl 32
   const MASK_TYPE_TRUE   = 0b00000000000000011100000000000000'u64 shl 32
@@ -329,7 +329,7 @@ else:
 
   const MASK_POINTER     = 0x0000ffffffffffff'u64
 
-const MASK_SIG_NAN     = MASK_EXP_OR_Q
+# const MASK_SIG_NAN     = MASK_EXP_OR_Q
 const MASK_SIG_NIL     = MASK_EXP_OR_Q or MASK_TYPE_NIL
 const MASK_SIG_FALSE   = MASK_EXP_OR_Q or MASK_TYPE_FALSE
 const MASK_SIG_TRUE    = MASK_EXP_OR_Q or MASK_TYPE_TRUE
@@ -489,8 +489,6 @@ template eq_heap_value_generic*(v1, v2: typed) =
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
 
-template complete_eq(v1, v2: typed): bool =
-  if bitand(MASK_HEAP, v1.type_bits) == MASK_HEAP: eq_heap_value_generic(v1, v2) else: v1.as_u64 == v2.as_u64
 func `==`*(v1, v2: ImValue): bool =
   if bitand(MASK_HEAP, v1.type_bits) == MASK_HEAP: eq_heap_value_generic(v1, v2)
   else: return v1.as_u64 == v2.as_u64
@@ -535,86 +533,6 @@ proc to_bin_str*(v: int32): string = return toBin(v.as_i64, 32)
 proc to_bin_str*(v: int64): string = return toBin(v, 64)
 proc to_bin_str*(v: uint64): string = return toBin(v.as_i64, 64)
 
-proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void
-
-const MAX_PRINT_WIDTH = 50
-proc pprint(m: ImMap, indent: Natural, results: var seq[string]): void =
-  results.add("M[")
-  # for (k, v) in m.payload.data.pairs:
-  #   var i_results = newSeq[string]()
-  #   pprint(k, 0, i_results)
-  #   i_results.add(": ")
-  #   pprint(v, 0, i_results)
-  #   var tall = false
-  #   var sum = 0
-  #   for r in i_results:
-  #     if '\n' in r:
-  #       tall = true
-  #       break
-  #     sum = sum + r.len
-  #     if sum > MAX_PRINT_WIDTH:
-  #       tall = true
-  #       break
-  #   i_results.add("( ")
-  #   i_results.add(": ")
-  #   i_results.add(" )")
-  # results.add("]")
-
-  for (k, v) in m.payload.data.pairs:
-    results.add("\n")
-    results.add("( ".indent(indent + 2))
-    pprint(k, indent + 4, results)
-    if v.is_heap:
-      results.add(" :\n")
-      results.add("".indent(indent + 4))
-    else:
-      results.add(" : ")
-    pprint(v, indent + 4, results)
-    results.add(" ),")
-  results.add("]")
-
-proc pprint(a: ImArray, indent: Natural, results: var seq[string]): void =
-  results.add("A[")
-  for v in a.payload.data:
-    results.add("\n")
-    results.add("".indent(indent + 2))
-    pprint(v, indent + 2, results)
-    results.add(",")
-  results.add("]")
-
-proc pprint(s: ImSet, indent: Natural, results: var seq[string]): void =
-  results.add("S[")
-  for v in s.payload.data:
-    results.add("\n")
-    results.add("".indent(indent + 2))
-    pprint(v, indent + 2, results)
-    results.add(",")
-  results.add("]")
-
-proc pprint(s: ImString, indent: Natural, results: var seq[string]): void =
-  results.add("Str[".indent(indent))
-  results.add($s.payload.data)
-  results.add("]")
-
-proc pprint(v: ImValue, indent: Natural, results: var seq[string]): void =
-  let kind = get_type(v)
-  case kind:
-    of kNumber:  results.add($(v.as_f64))
-    of kNil:     results.add("Nil")
-    of kString:  pprint(v.as_str, indent, results)
-    of kMap:     pprint(v.as_map, indent, results)
-    of kArray:   pprint(v.as_arr, indent, results)
-    of kSet:     pprint(v.as_set, indent, results)
-    of kBool:
-      if v == True.v:      results.add("True")
-      elif v == False.v:   results.add("False")
-      else: discard
-    else:        discard
-proc pprint*(v: ImValue): string =
-  var results = newSeq[string]()
-  pprint(v, 0, results)
-  return results.join("")
-
 proc `$`*(k: ImValueKind): string =
   case k:
     of kNumber: return "Number"
@@ -627,7 +545,6 @@ proc `$`*(k: ImValueKind): string =
     else:       return "<unknown>"
 
 proc `$`*(v: ImValue): string =
-  # return pprint(v)
   let kind = get_type(v)
   case kind:
     of kNumber:           return $(v.as_f64)
