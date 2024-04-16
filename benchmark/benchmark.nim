@@ -5,13 +5,14 @@ import ../src/[values]
 # We have to multiply our seconds by 1_000_000 to get microseconds
 const SCALE = 1_000_000
 const WARMUP = 100_000 # microseconds
-const TIMEOUT = 500_000
+const TIMEOUT = 100_000
 
 when defined(wasm):
   proc get_time(): float64 {.importc.}
   proc write_row_string(p: ptr, len: int): void {.importc.}
   proc write_row(row: string): void =
     write_row_string(row[0].addr, row.len)
+  const sys = "wasm"
 else:
   proc get_time(): float64 =
     return cpuTime() * SCALE
@@ -19,10 +20,11 @@ else:
   let fd = file_name.open(fmWrite)
   proc write_row(row: string): void =
     fd.writeLine(row)
+  const sys = "native"
 
 type
   TaskResult = ref object
-    key*: string
+    key*, desc*: string
     runs*: seq[float64]
 
 var csv_rows: seq[TaskResult] = @[] 
@@ -32,7 +34,7 @@ template form(f: float64): string = f.formatFloat(ffDecimal, 2)
 proc to_row(tr: TaskResult): string =
   var
     l = tr.runs.len
-    s = &"\"{tr.key}\",{l},"
+    s = &"\"{tr.key}\",\"{sys}\",\"{tr.desc}\",{l},"
     sorted_runs = tr.runs.sorted()
     sum     = 0.0
     minimum = Inf
@@ -52,9 +54,10 @@ proc to_row(tr: TaskResult): string =
 
 template add(tr: TaskResult, v: float64) = tr.runs.add(v)
 
-proc make_tr(key: string): TaskResult = 
+proc make_tr(key, desc: string): TaskResult = 
   var tr = TaskResult()
   tr.key = key
+  tr.desc = desc
   tr.runs = @[]
   csv_rows.add(tr)
   return tr
@@ -66,28 +69,64 @@ proc warmup() =
   while WARMUP > End - Start:
     End = get_time()
 
-proc bench(key: string, fn: proc(tr: TaskResult): void) =
+proc bench(
+  key, desc: string,
+  fn: proc(tr: TaskResult, iterations: int): void,
+  iterations, timeout: int
+  ) =
   var
-    tr = make_tr(key)
+    tr = make_tr(key, desc)
     Start = get_time()
     End = get_time()
-  while TIMEOUT > (End - Start):
-    fn(tr)
+  while timeout.float64 > (End - Start):
+    fn(tr, iterations)
     End = get_time()
+template bench(
+  key, desc: string,
+  fn: proc(tr: TaskResult, iterations: int): void,
+  iterations: int
+  ) =
+  bench(key, desc, fn, iterations, TIMEOUT)
 
-proc benchmark_test(tr: TaskResult) =
+# #endregion ==========================================================
+#            BENCHMARK DEFINITIONS
+# #region =============================================================
+
+proc sanity_check(tr: TaskResult, n: int) =
   let Start = get_time()
   var s = 0.0
-  for i in 0..<5000000:
+  for i in 0..<n:
     s += i.float64
     if tr.runs.len > 1000000: echo s
     if tr.runs.len > 10000000: echo s
   tr.add(get_time() - Start)
 
+proc create_plain_maps(tr: TaskResult, n: int) =
+  let Start = get_time()
+  var maps: seq[ImValue] = @[]
+  for i in 0..<n:
+    maps.add(V {i:i})
+  tr.add(get_time() - Start)
+
+proc create_plain_arrays(tr: TaskResult, n: int) =
+  let Start = get_time()
+  var arrs: seq[ImValue] = @[]
+  for i in 0..<n:
+    arrs.add(V [i])
+  tr.add(get_time() - Start)
+
+# #endregion ==========================================================
+#            RUN BENCHMARKS
+# #region =============================================================
+
 proc run_benchmarks() =
   warmup()
-  bench("test?", benchmark_test)
+  bench("sanity_check", "", sanity_check, 5000000)
+  bench("create_map", "immutable", create_plain_maps, 1000)
+  bench("create_arr", "immutable", create_plain_arrays, 1000)
+
   block:
+    write_row("\"key\",\"sys\",\"desc\",\"runs\",\"minimum\",\"maximum\",\"mean\",\"median\"")
     for tr in csv_rows:
       tr.to_row.write_row
 
