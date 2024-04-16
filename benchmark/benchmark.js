@@ -6,7 +6,11 @@ import * as nools from "nools";
 
 const OUTPUT_PATH = "./benchmark/results_js.csv";
 const WARMUP = 100_000; // microseconds
+// We are probably going to be running into issues with JIT massively optimizing
+// things if we are using a timeout this long. So we also include a LOW_TIMEOUT
+// for use when we want it.
 const TIMEOUT = 100_000;
+const LOW_TIMEOUT = 2;
 
 let csv_rows = [];
 
@@ -33,7 +37,8 @@ function to_row(tr) {
     maximum = Math.max(maximum, r);
   }
   mean = sum / l;
-  median = (sorted_runs[Math.floor(l / 2)] + sorted_runs[Math.ceil(l / 2)]) / 2;
+  if (l == 1) median = sorted_runs[0];
+  else median = (sorted_runs[Math.floor(l / 2)] + sorted_runs[Math.ceil(l / 2)]) / 2;
   s += `${form(minimum)},${form(maximum)},${form(mean)},${form(median)}`;
   return s;
 }
@@ -43,7 +48,7 @@ async function warmup() {
 }
 
 async function bench(key, desc, fn, iterations, timeout = TIMEOUT) {
-  let tr = { key, desc, runs: [] };
+  let tr = { key: key + "_" + iterations, desc, runs: [] };
   csv_rows.push(tr);
   let start = get_time();
   let end = get_time();
@@ -112,10 +117,12 @@ function create_immutable_arrays(tr, n) {
 async function run_benchmarks() {
   await warmup();
   bench("sanity_check", "--", sanity_check, 5000000);
-  bench("create_map", "plain", create_plain_maps, 1000);
-  bench("create_arr", "plain", create_plain_arrays, 1000);
-  bench("create_map", "immutable.js", create_immutable_maps, 1000);
-  bench("create_arr", "immutable.js", create_immutable_arrays, 1000);
+  for (let it of [10, 100, 1000]) {
+    bench("create_map", "plain", create_plain_maps, it, LOW_TIMEOUT);
+    bench("create_arr", "plain", create_plain_arrays, it, LOW_TIMEOUT);
+    bench("create_map", "immutable.js", create_immutable_maps, it, LOW_TIMEOUT);
+    bench("create_arr", "immutable.js", create_immutable_arrays, it, LOW_TIMEOUT);
+  }
 }
 
 run_benchmarks().then(() => {

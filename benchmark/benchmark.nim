@@ -75,7 +75,7 @@ proc bench(
   iterations, timeout: int
   ) =
   var
-    tr = make_tr(key, desc)
+    tr = make_tr(&"{key}_{iterations}", desc)
     Start = get_time()
     End = get_time()
   while timeout.float64 > (End - Start):
@@ -122,8 +122,9 @@ proc create_plain_arrays(tr: TaskResult, n: int) =
 proc run_benchmarks() =
   warmup()
   bench("sanity_check", "--", sanity_check, 5000000)
-  bench("create_map", "immutable", create_plain_maps, 1000)
-  bench("create_arr", "immutable", create_plain_arrays, 1000)
+  for it in [10, 100, 1000]:
+    bench("create_map", "immutable", create_plain_maps, it)
+    bench("create_arr", "immutable", create_plain_arrays, it)
 
   block:
     write_row("\"key\",\"sys\",\"desc\",\"runs\",\"minimum\",\"maximum\",\"mean\",\"median\"")

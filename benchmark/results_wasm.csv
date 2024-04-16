@@ -1,4 +1,8 @@
 "key","sys","desc","runs","minimum","maximum","mean","median"
-"sanity_check","wasm","--",10,10267.07,12069.01,10868.56,10756.87
-"create_map","wasm","immutable",165,146.09,1054.47,164.70,149.71
-"create_arr","wasm","immutable",598,83.57,228.50,117.40,115.64
+"sanity_check_5000000","wasm","--",10,9994.24,11114.36,10416.45,10338.38
+"create_map_10","wasm","immutable",14149,1.71,156.83,2.10,1.80
+"create_arr_10","wasm","immutable",52689,1.11,161.78,1.33,1.20
+"create_map_100","wasm","immutable",1693,14.63,94.74,16.20,15.47
+"create_arr_100","wasm","immutable",7774,8.70,43.59,9.18,8.95
+"create_map_1000","wasm","immutable",169,159.89,470.03,170.84,168.21
+"create_arr_1000","wasm","immutable",806,81.68,284.36,87.65,82.23

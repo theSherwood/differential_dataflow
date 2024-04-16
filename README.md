@@ -63,3 +63,9 @@ OR
 ```sh
 ./run.sh -tur browser
 ```
+
+## Benchmark
+
+```sh
+./run.sh -bur
+```

@@ -76,10 +76,6 @@ if (WASM_PATH) {
     fs.writeFileSync(OUTPUT_PATH, csv_rows.join("\n"));
   });
 } else {
-  console.error(
-    new Error(
-      "An argument must be supplied with the path to a wasm file to run."
-    )
-  );
+  console.error(new Error("An argument must be supplied with the path to a wasm file to run."));
   process.exitCode = 1;
 }

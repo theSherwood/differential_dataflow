@@ -13,9 +13,7 @@ const OUTPUT_PATH = "./benchmarks.csv";
 
 const COLUMNS = "key sys desc runs minimum maximum mean median".split(" ");
 const COLUMNS_INCL_MULT =
-  "key sys desc runs run_m minimum min_m maximum max_m mean mean_m median med_m".split(
-    " "
-  );
+  "key sys desc runs run_m minimum min_m maximum max_m mean mean_m median med_m".split(" ");
 const COLUMNS_MULT = "key sys desc run_m min_m max_m mean_m med_m".split(" ");
 
 // Function to recursively search for CSV files in a directory
@@ -125,12 +123,7 @@ function empty_column_widths() {
   return widths;
 }
 
-function delimited_table(
-  table,
-  column_widths,
-  delimiter,
-  columns = COLUMNS_INCL_MULT
-) {
+function delimited_table(table, column_widths, delimiter, columns = COLUMNS_INCL_MULT) {
   let row_strs = table.map((row) =>
     columns
       .map((c) => {
@@ -141,11 +134,7 @@ function delimited_table(
   return row_strs.join("\n");
 }
 
-function delimited_column_headings(
-  column_widths,
-  delimiter,
-  columns = COLUMNS_INCL_MULT
-) {
+function delimited_column_headings(column_widths, delimiter, columns = COLUMNS_INCL_MULT) {
   return columns.map((c) => c.padStart(column_widths[c], " ")).join(delimiter);
 }
 
@@ -178,16 +167,9 @@ async function main() {
   // Write full report to csv
   if (WRITE_FULL_REPORT) {
     const DELIM = ",";
-    let str =
-      delimited_column_headings(
-        empty_column_widths(),
-        DELIM,
-        COLUMNS_INCL_MULT
-      ) + "\n";
+    let str = delimited_column_headings(empty_column_widths(), DELIM, COLUMNS_INCL_MULT) + "\n";
     tables.forEach((t) => {
-      str +=
-        delimited_table(t, empty_column_widths(), DELIM, COLUMNS_INCL_MULT) +
-        "\n";
+      str += delimited_table(t, empty_column_widths(), DELIM, COLUMNS_INCL_MULT) + "\n";
     });
     fs.writeFileSync(OUTPUT_PATH, str);
   }
