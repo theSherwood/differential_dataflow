@@ -46,9 +46,12 @@ proc to_row(tr: TaskResult): string =
     minimum = min(minimum, r)
     maximum = max(maximum, r)
   mean = sum / l.float64
-  median = (
-    sorted_runs[(l / 2).floor.int] + sorted_runs[(l / 2).ceil.int]
-  ) / 2
+  if sorted_runs.len == 1:
+    median = sorted_runs[0]
+  else:
+    median = (
+      sorted_runs[(l / 2).floor.int] + sorted_runs[(l / 2).ceil.int]
+    ) / 2
   s = &"{s}{minimum.form},{maximum.form},{mean.form},{median.form}"
   return s
 
@@ -71,29 +74,29 @@ proc warmup() =
 
 proc bench(
   key, desc: string,
-  fn: proc(tr: TaskResult, iterations: int): void,
-  iterations, timeout: int
+  fn: proc(tr: TaskResult, size, iterations: int): void,
+  size, iterations, timeout: int
   ) =
   var
-    tr = make_tr(&"{key}_{iterations}", desc)
+    tr = make_tr(&"{key}_{size}_{iterations}", desc)
     Start = get_time()
     End = get_time()
   while timeout.float64 > (End - Start):
-    fn(tr, iterations)
+    fn(tr, size, iterations)
     End = get_time()
   echo &"done {sys} {tr.key}"
 template bench(
   key, desc: string,
-  fn: proc(tr: TaskResult, iterations: int): void,
-  iterations: int
+  fn: proc(tr: TaskResult, size, iterations: int): void,
+  size, iterations: int
   ) =
-  bench(key, desc, fn, iterations, TIMEOUT)
+  bench(key, desc, fn, size, iterations, TIMEOUT)
 
 # #endregion ==========================================================
 #            BENCHMARK DEFINITIONS
 # #region =============================================================
 
-proc sanity_check(tr: TaskResult, n: int) =
+proc sanity_check(tr: TaskResult, sz, n: int) =
   let Start = get_time()
   var s = 0.0
   for i in 0..<n:
@@ -105,36 +108,42 @@ proc sanity_check(tr: TaskResult, n: int) =
 # VALUE BENCHMARKS #
 # ---------------------------------------------------------------------
 
-proc map_create(tr: TaskResult, n: int) =
+proc map_create(tr: TaskResult, sz, n: int) =
   let Start = get_time()
   var maps: seq[ImValue] = @[]
   for i in 0..<n:
     maps.add(V {i:i})
   tr.add(get_time() - Start)
 
-proc arr_create(tr: TaskResult, n: int) =
+proc arr_create(tr: TaskResult, sz, n: int) =
   let Start = get_time()
   var arrs: seq[ImValue] = @[]
   for i in 0..<n:
     arrs.add(V [i])
   tr.add(get_time() - Start)
 
-proc map_add_entry(tr: TaskResult, n: int) =
-  # setup
-  var maps: seq[ImValue] = @[]
+proc setup_seq_of_maps(sz, n: int): seq[ImValue] =
+  var k: int
+  var m: ImMap
   for i in 0..<n:
-    maps.add(V {i:i})
+    m = Map {}
+    for j in 1..<sz:
+      k = i * j * 17
+      m = m.set(k, k)
+    result.add(m.v)
+
+proc map_add_entry(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
   # test
   let Start = get_time()
   for i in 0..<n:
-    maps[i] = maps[i].set(i + 1, i + 1)
+    maps[i] = maps[i].set(i + 1, i)
   tr.add(get_time() - Start)
 
-proc map_add_entry_multiple(tr: TaskResult, n: int) =
+proc map_add_entry_multiple(tr: TaskResult, sz, n: int) =
   # setup
-  var maps: seq[ImValue] = @[]
-  for i in 0..<n:
-    maps.add(V {i:i})
+  var maps = setup_seq_of_maps(sz, n)
   # test
   let Start = get_time()
   for i in 0..<n:
@@ -146,11 +155,9 @@ proc map_add_entry_multiple(tr: TaskResult, n: int) =
       .set(i + 5, i + 5)
   tr.add(get_time() - Start)
 
-proc map_overwrite_entry(tr: TaskResult, n: int) =
+proc map_overwrite_entry(tr: TaskResult, sz, n: int) =
   # setup
-  var maps: seq[ImValue] = @[]
-  for i in 0..<n:
-    maps.add(V {i:i})
+  var maps = setup_seq_of_maps(sz, n)
   # test
   let Start = get_time()
   for i in 0..<n:
@@ -166,16 +173,18 @@ proc map_overwrite_entry(tr: TaskResult, n: int) =
 
 proc run_benchmarks() =
   warmup()
-  bench("sanity_check", "--", sanity_check, 5000000)
+  # bench("sanity_check", "--", sanity_check, 0, 5000000)
 
   # value benchmarks
   block:
     for it in [10, 100, 1000]:
-      bench("map_create", "immutable", map_create, it)
-      bench("map_add_entry", "immutable", map_add_entry, it)
-      bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, it)
-      bench("map_overwrite_entry", "immutable", map_overwrite_entry, it)
-      bench("arr_create", "immutable", arr_create, it)
+      bench("arr_create", "immutable", arr_create, 0, it)
+      bench("map_create", "immutable", map_create, 0, it)
+      for sz in [1, 10, 100, 1000]:
+        if it > 10 and sz > 10: continue
+        bench("map_add_entry", "immutable", map_add_entry, sz, it)
+        bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, sz, it)
+        bench("map_overwrite_entry", "immutable", map_overwrite_entry, sz, it)
 
   # rules benchmarks
   block:
