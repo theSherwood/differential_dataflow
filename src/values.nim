@@ -392,7 +392,7 @@ template is_set*(v: typed): bool =
 template is_map*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_MAP
 template is_heap*(v: typed): bool =
-  bitand(bitor(v.type_bits, MASK_EXP_OR_Q), MASK_HEAP) == MASK_HEAP
+  bitand(v.type_bits, MASK_HEAP) == MASK_HEAP
 
 proc get_type*(v: ImValue): ImValueKind =
   let type_carrier = v.type_bits
@@ -1186,11 +1186,12 @@ proc `[]`*(a, b: ImValue): ImValue =
   case a_sig:
     of MASK_SIG_ARR: return a.as_arr[b]
     of MASK_SIG_MAP: return a.as_map[b]
-    of MASK_SIG_SET: return a.as_map[b]
+    # of MASK_SIG_SET: return a.as_set[b]
     # of MASK_SIG_STR: return a.as_map[b]
     else: discard
   raise newException(TypeException, &"Cannot index into {$a} of type {a.type_label} with {$b} of type {b.type_label}")
 template `[]`*(a: ImValue, b: typed): ImValue = a[b.v]
+template get*(a: ImValue, b: typed): ImValue = a[b.v]
 
 proc set*(coll, k, v: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)

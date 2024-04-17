@@ -1,4 +1,4 @@
-import std/[math, algorithm, strutils, strformat, sequtils]
+import std/[math, algorithm, strutils, strformat, sequtils, tables]
 import ../src/[values]
 
 const WARMUP = 100_000 # microseconds
@@ -127,15 +127,21 @@ proc arr_create(tr: TaskResult, sz, n: int) =
   tr.add(get_time() - Start)
 
 proc setup_seq_of_maps(sz, it, offset: int): seq[ImValue] =
-  var k: int
+  var i_off, k: int
   var m: ImMap
   for i in 0..<it:
-    m = Map {i: i}
+    i_off = i + offset
+    m = Map {i_off: i_off}
     for j in 1..<sz:
-      k = (i + offset) + (j * 17)
+      k = i_off + (j * 17)
       m = m.set(k, k)
     result.add(m.v)
 template setup_seq_of_maps(sz, it: int): seq[ImValue] = setup_seq_of_maps(sz, it, 0)
+
+proc force_copy(m: ImMap): ImMap =
+  return m.set(-1, -1).del(-1)
+proc copy_maps(maps: seq[ImValue]): seq[ImValue] =
+  return maps.map(proc (m: ImValue): ImValue = m.as_map.force_copy.v)
 
 proc map_add_entry(tr: TaskResult, sz, n: int) =
   # setup
@@ -272,6 +278,30 @@ proc map_iter_entries(tr: TaskResult, sz, n: int) =
     iters.add(vals)
   tr.add(get_time() - Start)
 
+proc map_equal_true(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var copies = maps.copy_maps
+  var bools: seq[bool]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add(maps[i] == copies[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b)
+
+proc map_equal_false(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var maps2 = setup_seq_of_maps(sz, n, 3)
+  var bools: seq[bool]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add(maps[i] == maps2[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b.not)
+
 # RULES BENCHMARKS #
 # ---------------------------------------------------------------------
 
@@ -302,6 +332,8 @@ proc run_benchmarks() =
         bench("map_iter_keys", "immutable", map_iter_keys, sz, it)
         bench("map_iter_values", "immutable", map_iter_values, sz, it)
         bench("map_iter_entries", "immutable", map_iter_entries, sz, it)
+        bench("map_equal_true", "immutable", map_equal_true, sz, it)
+        bench("map_equal_false", "immutable", map_equal_false, sz, it)
 
   # rules benchmarks
   block:

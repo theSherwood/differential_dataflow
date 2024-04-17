@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { load_manners_data } from "./data/manners.js";
 import { load_waltz_db_data } from "./data/waltz_db.js";
 import { produce } from "immer";
+import deep_eq from "deep-equal";
 
 // Polyfill __dirname because we are doing some ESM nonsense
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -138,10 +139,12 @@ function immutable_arr_create(tr, sz, n) {
 
 function setup_arr_of_pojos(sz, n, offset = 0) {
   let pojos = [];
+  let i_off, k;
   for (let i = 0; i < n; i++) {
-    let pojo = { [i]: i };
+    i_off = i + offset;
+    let pojo = { [i_off]: i_off };
     for (let j = 1; j < sz; j++) {
-      let k = i + offset + j * 17;
+      k = i_off + j * 17;
       pojo[k] = k;
     }
     pojos.push(pojo);
@@ -151,15 +154,21 @@ function setup_arr_of_pojos(sz, n, offset = 0) {
 
 function setup_arr_of_immutable_maps(sz, n, offset = 0) {
   let maps = [];
+  let i_off, k;
   for (let i = 0; i < n; i++) {
-    let map = ImMap({ [i]: i });
+    i_off = i + offset;
+    let map = ImMap({ [i_off]: i_off });
     for (let j = 1; j < sz; j++) {
-      let k = i + offset + j * 17;
+      k = i_off + j * 17;
       map = map.set(k, k);
     }
     maps.push(map);
   }
   return maps;
+}
+
+function force_copy(m) {
+  return m.set(-1, -1).delete(-1);
 }
 
 function pojo_add_entry_by_mutation(tr, sz, n) {
@@ -697,6 +706,76 @@ function immutable_map_iter_entries(tr, sz, n) {
   tr.runs.push(get_time() - start);
 }
 
+function pojo_equal_true(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let copies = objs.map((o) => Object.assign({}, o));
+  let bools = [];
+  /* test */
+  let start = get_time();
+  let opts = { strict: true };
+  for (let i = 0; i < n; i++) {
+    bools[i] = deep_eq(objs[i], copies[i], opts);
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    bools.every((b) => b)
+  );
+}
+
+function pojo_equal_false(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let objs2 = setup_arr_of_pojos(sz, n, 3);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  let opts = { strict: true };
+  for (let i = 0; i < n; i++) {
+    bools[i] = deep_eq(objs[i], objs2[i], opts);
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    bools.every((b) => b === false)
+  );
+}
+
+function immutable_map_equal_true(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let copies = maps.map(force_copy);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = maps[i].equals(copies[i]);
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    bools.every((b) => b)
+  );
+}
+
+function immutable_map_equal_false(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let maps2 = setup_arr_of_immutable_maps(sz, n, 3);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = maps[i].equals(maps2[i]);
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    bools.every((b) => b === false)
+  );
+}
+
 /* RULES BENCHMARKS */
 /*--------------------------------------------------------------------*/
 
@@ -863,6 +942,10 @@ async function run_benchmarks() {
         bench_sync("map_iter_values", IMMUTABLEJS, immutable_map_iter_values, sz, it, LOW_TIMEOUT)
         bench_sync("map_iter_entries", PLAIN, pojo_iter_entries, sz, it, LOW_TIMEOUT)
         bench_sync("map_iter_entries", IMMUTABLEJS, immutable_map_iter_entries, sz, it, LOW_TIMEOUT)
+        bench_sync("map_equal_true", PLAIN, pojo_equal_true, sz, it, LOW_TIMEOUT)
+        bench_sync("map_equal_true", IMMUTABLEJS, immutable_map_equal_true, sz, it, LOW_TIMEOUT)
+        bench_sync("map_equal_false", PLAIN, pojo_equal_false, sz, it, LOW_TIMEOUT)
+        bench_sync("map_equal_false", IMMUTABLEJS, immutable_map_equal_false, sz, it, LOW_TIMEOUT)
       }
     }
   }
