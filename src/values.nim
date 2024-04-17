@@ -766,7 +766,7 @@ iterator pairs*(m: ImMap): (ImValue, ImValue) =
     yield p
 
 ## Asymmetric. Entries in m2 overwrite m1
-proc `&`*(m1, m2: ImMap): ImMap =
+proc merge*(m1, m2: ImMap): ImMap =
   if m2.size == 0: return m1
   if m1.size == 0: return m2
   if m1.size > m2.size:
@@ -790,6 +790,7 @@ proc `&`*(m1, m2: ImMap): ImMap =
       new_data[k] = v
     buildImMap(new_hash, new_data)
     return new_map
+template `&`*(m1, m2: ImMap): ImMap = m1.merge(m2)
 
 # ImArray Impl #
 # ---------------------------------------------------------------------
@@ -896,12 +897,11 @@ proc set*(a: ImArray, i: int, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
-proc concat*(a1, a2: ImArray): ImArray =
+proc merge*(a1, a2: ImArray): ImArray =
   let new_a = a1.payload.data & a2.payload.data
   return init_array(new_a)
-proc `&`*(a1, a2: ImArray): ImArray =
-  let new_a = a1.payload.data & a2.payload.data
-  return init_array(new_a)
+template concat*(a1, a2: ImArray): ImArray = a1.merge(a2)
+template `&`*(a1, a2: ImArray): ImArray = a1.merge(a2)
 
 proc size*(a: ImArray): int =
   return a.payload.data.len.int
@@ -1218,6 +1218,19 @@ proc size*(coll: ImValue): ImValue =
     of MASK_SIG_SET: return coll.as_set.size.v
     else: discard
   raise newException(TypeException, &"Cannot get the size of {$coll} of type {coll.type_label}")
+
+proc merge*(v1, v2: ImValue): ImValue =
+  let v1_sig = bitand(v1.type_bits, MASK_SIGNATURE)
+  let v2_sig = bitand(v2.type_bits, MASK_SIGNATURE)
+  if v1_sig == v2_sig:
+    case v1_sig:
+      of MASK_SIG_ARR: return v1.as_arr.merge(v2.as_arr).v
+      of MASK_SIG_MAP: return v1.as_map.merge(v2.as_map).v
+      # of MASK_SIG_SET: return v1.as_set.merge(v2.as_set).v
+      # of MASK_SIG_STR: return coll.as_str.set(k, v)
+      else: discard
+  raise newException(TypeException, &"Cannot merge {$v1} of type {v1.type_label} with {$v2} of type {v2.type_label}")
+proc `&`*(v1, v2: ImValue): ImValue = v1.merge(v2)
 
 ##
 ## nil < boolean < number < string < set < array < map

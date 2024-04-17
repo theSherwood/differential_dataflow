@@ -135,12 +135,12 @@ function immutable_arr_create(tr, sz, n) {
   tr.runs.push(get_time() - start);
 }
 
-function setup_arr_of_pojos(sz, n) {
+function setup_arr_of_pojos(sz, n, offset = 0) {
   let pojos = [];
   for (let i = 0; i < n; i++) {
     let pojo = {};
     for (let j = 1; j < sz; j++) {
-      let k = i * j * 17;
+      let k = (i + offset) * j * 17;
       pojo[k] = k;
     }
     pojos.push(pojo);
@@ -148,12 +148,12 @@ function setup_arr_of_pojos(sz, n) {
   return pojos;
 }
 
-function setup_arr_of_immutable_maps(sz, n) {
+function setup_arr_of_immutable_maps(sz, n, offset = 0) {
   let maps = [];
   for (let i = 0; i < n; i++) {
     let map = ImMap();
     for (let j = 1; j < sz; j++) {
-      let k = i * j * 17;
+      let k = (i + offset) * j * 17;
       map = map.set(k, k);
     }
     maps.push(map);
@@ -436,6 +436,60 @@ function immer_pojo_del_entry(tr, sz, n) {
   tr.runs.push(get_time() - start);
 }
 
+function pojo_merge_by_mutation(tr, sz, n) {
+  /* setup */
+  let objs1 = setup_arr_of_pojos(sz, n);
+  let objs2 = setup_arr_of_pojos(sz, n, 3);
+  let objs3 = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    objs3[i] = Object.assign(objs1[i], objs2[i]);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function pojo_merge_by_spread(tr, sz, n) {
+  /* setup */
+  let objs1 = setup_arr_of_pojos(sz, n);
+  let objs2 = setup_arr_of_pojos(sz, n, 3);
+  let objs3 = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    objs3[i] = { ...objs1[i], ...objs2[i] };
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_merge(tr, sz, n) {
+  /* setup */
+  let maps1 = setup_arr_of_immutable_maps(sz, n);
+  let maps2 = setup_arr_of_immutable_maps(sz, n, 3);
+  let maps3 = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    maps3[i] = maps1[i].merge(maps2[i]);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immer_pojo_merge(tr, sz, n) {
+  /* setup */
+  let objs1 = setup_arr_of_pojos(sz, n);
+  let objs2 = setup_arr_of_pojos(sz, n, 3);
+  let objs3 = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    objs3[i] = produce(objs1[i], (m) => {
+      Object.assign(m, objs2[i]);
+    });
+  }
+  tr.runs.push(get_time() - start);
+}
+
 /* RULES BENCHMARKS */
 /*--------------------------------------------------------------------*/
 
@@ -584,6 +638,10 @@ async function run_benchmarks() {
         bench_sync("map_del_entry", PLAIN_SPREAD, pojo_del_entry_by_spread, sz, it, LOW_TIMEOUT)
         bench_sync("map_del_entry", IMMUTABLEJS, immutable_map_del_entry, sz, it, LOW_TIMEOUT)
         bench_sync("map_del_entry", IMMER_POJO, immer_pojo_del_entry, sz, it, LOW_TIMEOUT)
+        bench_sync("map_merge", PLAIN_MUTATION, pojo_merge_by_mutation, sz, it, LOW_TIMEOUT)
+        bench_sync("map_merge", PLAIN_SPREAD, pojo_merge_by_spread, sz, it, LOW_TIMEOUT)
+        bench_sync("map_merge", IMMUTABLEJS, immutable_map_merge, sz, it, LOW_TIMEOUT)
+        bench_sync("map_merge", IMMER_POJO, immer_pojo_merge, sz, it, LOW_TIMEOUT)
       }
     }
   }

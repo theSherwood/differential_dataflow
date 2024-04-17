@@ -81,6 +81,10 @@ proc bench(
     tr = make_tr(&"{key}_{size}_{iterations}", desc)
     Start = get_time()
     End = get_time()
+  # run it at least once
+  block:
+    fn(tr, size, iterations)
+    End = get_time()
   while timeout.float64 > (End - Start):
     fn(tr, size, iterations)
     End = get_time()
@@ -122,15 +126,16 @@ proc arr_create(tr: TaskResult, sz, n: int) =
     arrs.add(V [i])
   tr.add(get_time() - Start)
 
-proc setup_seq_of_maps(sz, n: int): seq[ImValue] =
+proc setup_seq_of_maps(sz, it, offset: int): seq[ImValue] =
   var k: int
   var m: ImMap
-  for i in 0..<n:
+  for i in 0..<it:
     m = Map {}
     for j in 1..<sz:
-      k = i * j * 17
+      k = (i + offset) * j * 17
       m = m.set(k, k)
     result.add(m.v)
+template setup_seq_of_maps(sz, it: int): seq[ImValue] = setup_seq_of_maps(sz, it, 0)
 
 proc map_add_entry(tr: TaskResult, sz, n: int) =
   # setup
@@ -173,6 +178,17 @@ proc map_del_entry(tr: TaskResult, sz, n: int) =
     maps[i] = maps[i].del(i)
   tr.add(get_time() - Start)
 
+proc map_merge(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps1 = setup_seq_of_maps(sz, n)
+  var maps2 = setup_seq_of_maps(sz, n, 3)
+  var maps3: seq[ImValue] = @[]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    maps3.add(maps1[i].merge(maps2[i]))
+  tr.add(get_time() - Start)
+
 # RULES BENCHMARKS #
 # ---------------------------------------------------------------------
 
@@ -195,6 +211,7 @@ proc run_benchmarks() =
         bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, sz, it)
         bench("map_overwrite_entry", "immutable", map_overwrite_entry, sz, it)
         bench("map_del_entry", "immutable", map_del_entry, sz, it)
+        bench("map_merge", "immutable", map_merge, sz, it)
 
   # rules benchmarks
   block:
