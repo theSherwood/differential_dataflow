@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { strict as assert } from 'node:assert';
+import { strict as assert } from "node:assert";
 import { Map as ImMap, List as ImArr } from "immutable";
 import nools from "nools";
 import { fileURLToPath } from "node:url";
@@ -501,7 +501,10 @@ function pojo_has_key_true(tr, sz, n) {
     bools[i] = i in objs[i];
   }
   tr.runs.push(get_time() - start);
-  assert.equal(true, bools.every(b => b === true))
+  assert.equal(
+    true,
+    bools.every((b) => b === true)
+  );
 }
 
 function pojo_has_key_false(tr, sz, n) {
@@ -514,7 +517,10 @@ function pojo_has_key_false(tr, sz, n) {
     bools[i] = i + 1 in objs[i];
   }
   tr.runs.push(get_time() - start);
-  assert.equal(true, bools.every(b => b === false))
+  assert.equal(
+    true,
+    bools.every((b) => b === false)
+  );
 }
 
 function immutable_map_has_key_true(tr, sz, n) {
@@ -527,7 +533,10 @@ function immutable_map_has_key_true(tr, sz, n) {
     bools[i] = maps[i].has(i + "");
   }
   tr.runs.push(get_time() - start);
-  assert.equal(true, bools.every(b => b === true))
+  assert.equal(
+    true,
+    bools.every((b) => b === true)
+  );
 }
 
 function immutable_map_has_key_false(tr, sz, n) {
@@ -537,10 +546,77 @@ function immutable_map_has_key_false(tr, sz, n) {
   /* test */
   let start = get_time();
   for (let i = 0; i < n; i++) {
-    bools[i] = maps[i].has((i + 1) + "");
+    bools[i] = maps[i].has(i + 1 + "");
   }
   tr.runs.push(get_time() - start);
-  assert.equal(true, bools.every(b => b === false))
+  assert.equal(
+    true,
+    bools.every((b) => b === false)
+  );
+}
+
+function pojo_get_existing(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let vals = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals[i] = objs[i][i];
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    vals.every((v) => v !== undefined)
+  );
+}
+
+function pojo_get_non_existing(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let vals = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals[i] = objs[i][i + 1];
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    vals.every((v) => v === undefined)
+  );
+}
+
+function immutable_map_get_existing(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let vals = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals[i] = maps[i].get(i + "");
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    vals.every((v) => v !== undefined)
+  );
+}
+
+function immutable_map_get_non_existing(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let vals = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals[i] = maps[i].get(i + 1 + "");
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(
+    true,
+    vals.every((v) => v === undefined)
+  );
 }
 
 /* RULES BENCHMARKS */
@@ -699,7 +775,10 @@ async function run_benchmarks() {
         bench_sync("map_has_key_true", IMMUTABLEJS, immutable_map_has_key_true, sz, it, LOW_TIMEOUT)
         bench_sync("map_has_key_false", PLAIN, pojo_has_key_false, sz, it, LOW_TIMEOUT)
         bench_sync("map_has_key_false", IMMUTABLEJS, immutable_map_has_key_false, sz, it, LOW_TIMEOUT)
-
+        bench_sync("map_get_existing", PLAIN, pojo_get_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_get_existing", PLAIN, immutable_map_get_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_get_non_existing", PLAIN, pojo_get_non_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_get_non_existing", PLAIN, immutable_map_get_non_existing, sz, it, LOW_TIMEOUT)
       }
     }
   }

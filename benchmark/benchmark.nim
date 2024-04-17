@@ -211,6 +211,28 @@ proc map_has_key_false(tr: TaskResult, sz, n: int) =
   tr.add(get_time() - Start)
   doAssert bools.all(proc (b: bool): bool = b.not)
 
+proc map_get_existing(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var vals: seq[ImValue] = @[]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    vals.add(maps[i][i])
+  tr.add(get_time() - Start)
+  doAssert vals.all(proc (v: ImValue): bool = v != Nil.v)
+
+proc map_get_non_existing(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var vals: seq[ImValue] = @[]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    vals.add(maps[i][i + 1])
+  tr.add(get_time() - Start)
+  doAssert vals.all(proc (v: ImValue): bool = v == Nil.v)
+
 # RULES BENCHMARKS #
 # ---------------------------------------------------------------------
 
@@ -236,6 +258,8 @@ proc run_benchmarks() =
         bench("map_merge", "immutable", map_merge, sz, it)
         bench("map_has_key_true", "immutable", map_has_key_true, sz, it)
         bench("map_has_key_false", "immutable", map_has_key_false, sz, it)
+        bench("map_get_existing", "immutable", map_get_existing, sz, it)
+        bench("map_get_non_existing", "immutable", map_get_non_existing, sz, it)
 
   # rules benchmarks
   block:
