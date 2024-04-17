@@ -38,3 +38,12 @@ proc arr_pop*(tr: TaskResult, sz, n: int) =
   for i in 0..<n:
     arrs[i] = arrs[i].pop()[1]
   tr.add(get_time() - Start)
+
+proc arr_slice*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    arrs[i] = arrs[i].slice(i, arrs[i].size.as_f64 / 2.0)
+  tr.add(get_time() - Start)

@@ -876,6 +876,31 @@ iterator items*(a: ImArray): ImValue =
   for v in a.payload.data:
     yield v
 
+proc slice*(a: ImArray, i1, i2: int): ImArray =
+  let old_data = a.payload.data
+  var Start = i1
+  var End = i2
+  if End < 0: End = a.size + End
+  elif End > old_data.len: End = old_data.len
+  if End < Start: return empty_array
+  elif Start < 0: Start = 0
+  if Start == 0 and End == old_data.len: return a
+  var new_hash = INITIAL_ARR_HASH
+  var new_data = newSeq[ImValue](End - Start)
+  var it: ImValue
+  for idx in Start..<End:
+    it = old_data[idx]
+    new_hash = calc_hash(new_hash, it)
+    new_data[idx - Start] = it
+  buildImArray(new_hash, new_data)
+  return new_array
+proc slice*(a: ImArray, i1, i2: ImValue): ImArray =
+  if i1.is_num and i2.is_num:
+    return a.slice(i1.as_f64.int, i2.as_f64.int)
+  else:
+    raise newException(TypeException, &"Cannot slice with arguments of {$i1} of type {i1.type_label} and {$i2} of type {i2.type_label}")
+template slice*(a: ImArray, i1, i2: typed): ImArray = a.slice(i1.v, i2.v)
+
 template set_impl*(a: ImArray, i: int, v: ImValue) =
   let derefed = a.payload
   # hash the previous version's hash with the new value and the old value
@@ -1204,17 +1229,28 @@ proc `<=`*(a, b: ImValue): bool =
     else: discard
   raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
 
-proc `[]`*(a, b: ImValue): ImValue =
-  let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
-  case a_sig:
-    of MASK_SIG_ARR: return a.as_arr[b]
-    of MASK_SIG_MAP: return a.as_map[b]
-    # of MASK_SIG_SET: return a.as_set[b]
-    # of MASK_SIG_STR: return a.as_map[b]
+proc `[]`*(coll, k: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr[k]
+    of MASK_SIG_MAP: return coll.as_map[k]
+    # of MASK_SIG_SET: return coll.as_set[k]
+    # of MASK_SIG_STR: return coll.as_map[k]
     else: discard
-  raise newException(TypeException, &"Cannot index into {$a} of type {a.type_label} with {$b} of type {b.type_label}")
-template `[]`*(a: ImValue, b: typed): ImValue = a[b.v]
-template get*(a: ImValue, b: typed): ImValue = a[b.v]
+  raise newException(TypeException, &"Cannot index into {$coll} of type {coll.type_label} with {$k} of type {k.type_label}")
+template `[]`*(coll: ImValue, k: typed): ImValue = coll[k.v]
+template get*(coll: ImValue, k: typed): ImValue = coll[k.v]
+
+proc slice*(coll, i1, i2: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr.slice(i1, i2).v
+    # of MASK_SIG_MAP: return coll.as_map[k]
+    # of MASK_SIG_SET: return coll.as_set[k]
+    # of MASK_SIG_STR: return coll.as_map[k]
+    else: discard
+  raise newException(TypeException, &"Cannot slice into {$coll} of type {coll.type_label} with {$i1} of type {i1.type_label} and {$i2} of type {i2.type_label}")
+template slice*(coll: ImValue, i1, i2: typed): ImValue = coll.slice(i1.v, i2.v)
 
 proc set*(coll, k, v: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)

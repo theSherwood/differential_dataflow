@@ -115,3 +115,26 @@ export function immutable_arr_pop(tr, sz, n) {
   }
   tr.runs.push(get_time() - start);
 }
+
+export function plain_arr_slice(tr, sz, n) {
+  /* setup */
+  let arrs = setup_arr_of_arrs(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    arrs[i] = arrs[i].slice(i, arrs[i].length / 2)
+  }
+  tr.runs.push(get_time() - start);
+}
+
+export function immutable_arr_slice(tr, sz, n) {
+  /* setup */
+  let arrs = setup_arr_of_immutable_arrs(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    arrs[i] = arrs[i].slice(i, arrs[i].length / 2)
+  }
+  tr.runs.push(get_time() - start);
+}
+
