@@ -1,4 +1,4 @@
-import std/[math, algorithm, strutils, strformat]
+import std/[math, algorithm, strutils, strformat, sequtils]
 import ../src/[values]
 
 const WARMUP = 100_000 # microseconds
@@ -130,9 +130,9 @@ proc setup_seq_of_maps(sz, it, offset: int): seq[ImValue] =
   var k: int
   var m: ImMap
   for i in 0..<it:
-    m = Map {}
+    m = Map {i: i}
     for j in 1..<sz:
-      k = (i + offset) * j * 17
+      k = (i + offset) + (j * 17)
       m = m.set(k, k)
     result.add(m.v)
 template setup_seq_of_maps(sz, it: int): seq[ImValue] = setup_seq_of_maps(sz, it, 0)
@@ -189,6 +189,28 @@ proc map_merge(tr: TaskResult, sz, n: int) =
     maps3.add(maps1[i].merge(maps2[i]))
   tr.add(get_time() - Start)
 
+proc map_has_key_true(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var bools: seq[bool] = @[]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add(i in maps[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b)
+
+proc map_has_key_false(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  var bools: seq[bool] = @[]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add((i + 1) in maps[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b.not)
+
 # RULES BENCHMARKS #
 # ---------------------------------------------------------------------
 
@@ -212,6 +234,8 @@ proc run_benchmarks() =
         bench("map_overwrite_entry", "immutable", map_overwrite_entry, sz, it)
         bench("map_del_entry", "immutable", map_del_entry, sz, it)
         bench("map_merge", "immutable", map_merge, sz, it)
+        bench("map_has_key_true", "immutable", map_has_key_true, sz, it)
+        bench("map_has_key_false", "immutable", map_has_key_false, sz, it)
 
   # rules benchmarks
   block:

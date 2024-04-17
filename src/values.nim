@@ -3,6 +3,10 @@
 ## -[ ] add Infinity, -Infinity
 ## -[ ] add a converter from int to ImValue
 ## -[ ] add an ability to push onto the end of an array
+## -[ ] differentiate between inner api and outer api
+##   - Eg.
+##     - proc inner_contains(v1, v2: ImValue): bool
+##     - proc outer_contains(v1, v2: ImValue): ImValue
 
 import std/[tables, sets, bitops, strutils, strformat, macros]
 import hashes
@@ -350,10 +354,13 @@ when c32:
   template payload(v: ImArray): ref ImArrayPayload   = v.tail
   template payload(v: ImSet): ref ImSetPayload       = v.tail
 else:
-  template payload(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](v.p.to_clean_ptr)
-  template payload(v: ImMap): ref ImMapPayload       = cast[ref ImMapPayload](v.p.to_clean_ptr)
-  template payload(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](v.p.to_clean_ptr)
-  template payload(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](v.p.to_clean_ptr)
+  template to_clean_ptr(v: typed): pointer =
+    cast[pointer](bitand((v).as_u64, MASK_POINTER))
+
+  template payload(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](to_clean_ptr(v.p))
+  template payload(v: ImMap): ref ImMapPayload       = cast[ref ImMapPayload](to_clean_ptr(v.p))
+  template payload(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](to_clean_ptr(v.p))
+  template payload(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](to_clean_ptr(v.p))
 
 # Type Detection #
 # ---------------------------------------------------------------------
@@ -427,11 +434,7 @@ when c32:
     `=destroy`(x)
     x.head = y.head
     x.tail = y.tail
-
-when not c32:
-  template to_clean_ptr(v: typed): pointer =
-    cast[pointer](bitand((v).as_u64, MASK_POINTER))
-
+else:
   proc `=destroy`[T](x: var MaskedRef[T]) =
     GC_unref(cast[ref T](to_clean_ptr(x.p)))
   proc `=copy`[T](x: var MaskedRef[T], y: MaskedRef[T]) =
@@ -720,7 +723,7 @@ proc clear*(m: ImMap): ImMap =
   return empty_map
 
 proc contains*(m: ImMap, k: ImValue): bool = k.as_v in m.payload.data
-proc contains*(m: ImMap, k: float64): bool = k.as_v in m.payload.data
+template contains*(m: ImMap, k: typed): bool = k.v in m.payload.data
 
 proc get_impl(m: ImMap, k: ImValue): ImValue =
   return m.payload.data.getOrDefault(k, Nil.as_v).as_v
@@ -958,7 +961,7 @@ proc init_set*(init_data: openArray[ImValue]): ImSet =
   return new_set
 
 proc contains*(s: ImSet, k: ImValue): bool = k.as_v in s.payload.data
-proc contains*(s: ImSet, k: float64): bool = k.as_v in s.payload.data
+template contains*(s: ImSet, k: typed): bool = k.v in s.payload.data
 
 template has_inner(s: ImSet, k: typed) =
   let derefed = s.payload
@@ -1231,6 +1234,18 @@ proc merge*(v1, v2: ImValue): ImValue =
       else: discard
   raise newException(TypeException, &"Cannot merge {$v1} of type {v1.type_label} with {$v2} of type {v2.type_label}")
 proc `&`*(v1, v2: ImValue): ImValue = v1.merge(v2)
+
+proc contains*(coll, k: ImValue): bool =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    # of MASK_SIG_ARR: return coll.as_arr.set(k, v)
+    of MASK_SIG_MAP: return coll.as_map.contains(k)
+    of MASK_SIG_SET: return coll.as_set.contains(k)
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot check whether {$coll} of type {coll.type_label} contains {$k} of type {k.type_label}")
+template contains*(coll: ImValue, key: typed): bool = coll.contains(key.v)
+template has*(coll: ImValue, key: typed): bool = coll.contains(key.v)
 
 ##
 ## nil < boolean < number < string < set < array < map

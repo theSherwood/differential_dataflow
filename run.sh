@@ -4,14 +4,16 @@ __help_string="
 Usage:
   $(basename $0) -tru native node browser  # runs tests natively, in node (wasm), in browser (wasm)
   $(basename $0) -t native                 # builds tests for native
-  $(basename $0) -bru                      # runs benchmarks natively and in node (wasm), against js
+  $(basename $0) -bru                      # runs benchmarks native, wasm, and js
+  $(basename $0) -bru native js            # runs benchmarks native and js
+  $(basename $0) -bru native wasm          # runs benchmarks native and wasm
 
 Options:
   -? -h --help         Print this usage information.
   -r --run             Run the compiled output.
   -u --user_settings   Use user_settings.sh to setup variables.
-  -t --test            Test.
-  -b --bench           Benchmark (accepts no positional arguments).
+  -t --test            Test. Accepts positional args [native node browser].
+  -b --bench           Benchmark Accepts positional args [native wasm js].
 "
 
 RUN=0
@@ -103,19 +105,45 @@ build_wasm() {
 positional_args=("$@")
 
 if [ $BENCHMARK -eq 1 ]; then
-  if [ ${#positional_args[@]} -gt 0 ]; then
-      echo "Invalid: When -b is passed, no positional arguments are accepted."
-      exit 1
-  fi
-  build_native
-  build_wasm
+
   if [ $RUN -eq 1 ]; then
-    # run native
-    ("./dist/${NAME}")
-    # run wasm in node
-    (node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm")
-    # run js
-    (node --experimental-default-type=module benchmark/benchmark.js)
+    # delete previous partial reports
+    (node --experimental-default-type=module benchmark/cleanup.js)
+  fi
+
+  # default to benchmarking native, wasm, and js
+  if [ ${#positional_args[@]} -eq 0 ]; then
+    positional_args=("native" "wasm" "js")
+  fi
+
+  for arg in "${positional_args[@]}"
+  do
+    case "$arg" in
+      native)
+        if [ $native_built -eq 0 ]; then build_native; fi
+        if [ $RUN -eq 1 ] && [ $native_built -eq 1 ]; then
+          ("./dist/${NAME}")
+        fi
+        ;;
+      wasm)
+        if [ $wasm_built -eq 0 ]; then build_wasm; fi
+        if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
+          (node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm")
+        fi
+        ;;
+      js)
+        if [ $RUN -eq 1 ]; then
+          (node --experimental-default-type=module benchmark/benchmark.js)
+        fi
+        ;;
+      *)
+        echo "Unrecognized arg: ${arg}"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [ $RUN -eq 1 ]; then
     # Create a report from the individual results
     (node --experimental-default-type=module benchmark/report.js)
     exit 0
@@ -123,7 +151,12 @@ if [ $BENCHMARK -eq 1 ]; then
 
 else
 
-  for arg in "$positional_args"
+  # default to benchmarking native, wasm, and js
+  # if [ ${#positional_args[@]} -eq 0 ]; then
+  #   positional_args=("native" "node" "browser")
+  # fi
+
+  for arg in "${positional_args[@]}"
   do
     case "$arg" in
       native)

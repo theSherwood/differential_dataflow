@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { strict as assert } from 'node:assert';
 import { Map as ImMap, List as ImArr } from "immutable";
 import nools from "nools";
 import { fileURLToPath } from "node:url";
@@ -138,9 +139,9 @@ function immutable_arr_create(tr, sz, n) {
 function setup_arr_of_pojos(sz, n, offset = 0) {
   let pojos = [];
   for (let i = 0; i < n; i++) {
-    let pojo = {};
+    let pojo = { [i]: i };
     for (let j = 1; j < sz; j++) {
-      let k = (i + offset) * j * 17;
+      let k = i + offset + j * 17;
       pojo[k] = k;
     }
     pojos.push(pojo);
@@ -151,9 +152,9 @@ function setup_arr_of_pojos(sz, n, offset = 0) {
 function setup_arr_of_immutable_maps(sz, n, offset = 0) {
   let maps = [];
   for (let i = 0; i < n; i++) {
-    let map = ImMap();
+    let map = ImMap({ [i]: i });
     for (let j = 1; j < sz; j++) {
-      let k = (i + offset) * j * 17;
+      let k = i + offset + j * 17;
       map = map.set(k, k);
     }
     maps.push(map);
@@ -490,6 +491,58 @@ function immer_pojo_merge(tr, sz, n) {
   tr.runs.push(get_time() - start);
 }
 
+function pojo_has_key_true(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = i in objs[i];
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(true, bools.every(b => b === true))
+}
+
+function pojo_has_key_false(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = i + 1 in objs[i];
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(true, bools.every(b => b === false))
+}
+
+function immutable_map_has_key_true(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = maps[i].has(i + "");
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(true, bools.every(b => b === true))
+}
+
+function immutable_map_has_key_false(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let bools = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    bools[i] = maps[i].has((i + 1) + "");
+  }
+  tr.runs.push(get_time() - start);
+  assert.equal(true, bools.every(b => b === false))
+}
+
 /* RULES BENCHMARKS */
 /*--------------------------------------------------------------------*/
 
@@ -642,6 +695,11 @@ async function run_benchmarks() {
         bench_sync("map_merge", PLAIN_SPREAD, pojo_merge_by_spread, sz, it, LOW_TIMEOUT)
         bench_sync("map_merge", IMMUTABLEJS, immutable_map_merge, sz, it, LOW_TIMEOUT)
         bench_sync("map_merge", IMMER_POJO, immer_pojo_merge, sz, it, LOW_TIMEOUT)
+        bench_sync("map_has_key_true", PLAIN, pojo_has_key_true, sz, it, LOW_TIMEOUT)
+        bench_sync("map_has_key_true", IMMUTABLEJS, immutable_map_has_key_true, sz, it, LOW_TIMEOUT)
+        bench_sync("map_has_key_false", PLAIN, pojo_has_key_false, sz, it, LOW_TIMEOUT)
+        bench_sync("map_has_key_false", IMMUTABLEJS, immutable_map_has_key_false, sz, it, LOW_TIMEOUT)
+
       }
     }
   }
