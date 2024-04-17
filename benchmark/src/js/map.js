@@ -4,24 +4,6 @@ import { Map as ImMap } from "immutable";
 import { strict as assert } from "node:assert";
 import { get_time } from "./common.js";
 
-export function pojo_create(tr, sz, n) {
-  let start = get_time();
-  let objs = [];
-  for (let i = 0; i < n; i++) {
-    objs.push({ i: i });
-  }
-  tr.runs.push(get_time() - start);
-}
-
-export function immutable_map_create(tr, sz, n) {
-  let start = get_time();
-  let maps = [];
-  for (let i = 0; i < n; i++) {
-    maps.push(ImMap({ i: i }));
-  }
-  tr.runs.push(get_time() - start);
-}
-
 export function setup_arr_of_pojos(sz, n, offset = 0) {
   let pojos = [];
   let i_off, k;
@@ -54,6 +36,24 @@ export function setup_arr_of_immutable_maps(sz, n, offset = 0) {
 
 export function force_copy(m) {
   return m.set(-1, -1).delete(-1);
+}
+
+export function pojo_create(tr, sz, n) {
+  let start = get_time();
+  let objs = [];
+  for (let i = 0; i < n; i++) {
+    objs.push({ i: i });
+  }
+  tr.runs.push(get_time() - start);
+}
+
+export function immutable_map_create(tr, sz, n) {
+  let start = get_time();
+  let maps = [];
+  for (let i = 0; i < n; i++) {
+    maps.push(ImMap({ i: i }));
+  }
+  tr.runs.push(get_time() - start);
 }
 
 export function pojo_add_entry_by_mutation(tr, sz, n) {

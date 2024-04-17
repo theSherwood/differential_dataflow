@@ -839,6 +839,9 @@ proc init_array*(new_data: seq[ImValue]): ImArray =
   buildImArray(new_hash, new_data)
   return new_array
 
+proc size*(a: ImArray): int =
+  return a.payload.data.len.int
+
 ## TODO
 ## - ImValue indices
 ## - Negative indices
@@ -901,14 +904,34 @@ proc set*(a: ImArray, i: int, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
+proc add*(a: ImArray, v: ImValue): ImArray =
+  let derefed = a.payload
+  # hash the previous version's hash with the new value and the old value
+  let new_hash = calc_hash(derefed.hash, v.hash)
+  var new_data = derefed.data
+  new_data.add(v)
+  buildImArray(new_hash, new_data)
+  return new_array
+template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
+
+proc pop*(a: ImArray): (ImValue, ImArray) =
+  case a.size:
+    of 0: return (Nil.v, a)
+    of 1: return (a.payload.data[0], empty_array)
+    else:
+      let derefed = a.payload
+      var new_data = derefed.data
+      var popped = new_data.pop
+      # hash the previous version's hash with the new value and the old value
+      let new_hash = calc_hash(derefed.hash, popped.hash)
+      buildImArray(new_hash, new_data)
+      return (popped, new_array)
+
 proc merge*(a1, a2: ImArray): ImArray =
   let new_a = a1.payload.data & a2.payload.data
   return init_array(new_a)
 template concat*(a1, a2: ImArray): ImArray = a1.merge(a2)
 template `&`*(a1, a2: ImArray): ImArray = a1.merge(a2)
-
-proc size*(a: ImArray): int =
-  return a.payload.data.len.int
 
 proc `<`*(v1, v2: ImArray): bool =
   let l = min(v1.size, v2.size)
@@ -1203,6 +1226,28 @@ proc set*(coll, k, v: ImValue): ImValue =
   raise newException(TypeException, &"Cannot set into {$coll} of type {coll.type_label} with key {$k} of type {k.type_label} and value {$v} of type {v.type_label}")
 template set*(coll: ImValue, key, val: typed): ImValue = set(coll, key.v, val.v)
 
+proc add*(coll, v: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr.add(v).v
+    of MASK_SIG_SET: return coll.as_set.add(v).v
+    # of MASK_SIG_MAP: return coll.as_map.set(k, v).v
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot add onto {$coll} of type {coll.type_label} with value {$v} of type {v.type_label}")
+template add*(coll: ImValue, val: typed): ImValue = add(coll, val.v)
+
+proc push*(coll, v: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr.push(v).v
+    of MASK_SIG_SET: return coll.as_set.add(v).v
+    # of MASK_SIG_MAP: return coll.as_map.set(k, v).v
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot push onto {$coll} of type {coll.type_label} with value {$v} of type {v.type_label}")
+template push*(coll: ImValue, val: typed): ImValue = push(coll, val.v)
+
 proc del*(coll, k: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
   case coll_sig:
@@ -1213,6 +1258,18 @@ proc del*(coll, k: ImValue): ImValue =
     else: discard
   raise newException(TypeException, &"Cannot del from {$coll} of type {coll.type_label} with key {$k} of type {k.type_label}")
 template del*(coll: ImValue, key: typed): ImValue = coll.del(key.v)
+
+proc pop*(coll: ImValue): (ImValue, ImValue) =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: 
+      var (popped, arr) = coll.as_arr.pop()
+      return (popped, arr.v)
+    # of MASK_SIG_SET: return coll.as_set.add(v).v
+    # of MASK_SIG_MAP: return coll.as_map.set(k, v).v
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot call pop on {$coll} of type {coll.type_label}")
 
 proc size*(coll: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)

@@ -1,5 +1,14 @@
 import fs from "node:fs";
-import { immutable_arr_create, plain_arr_create } from "./src/js/arr.js";
+import {
+  immutable_arr_create,
+  immutable_arr_pop,
+  immutable_arr_push,
+  plain_arr_create,
+  plain_arr_pop_by_mutation,
+  plain_arr_pop_by_spread,
+  plain_arr_push_by_mutation,
+  plain_arr_push_by_spread,
+} from "./src/js/arr.js";
 import {
   LOW_TIMEOUT,
   OUTPUT_PATH,
@@ -93,7 +102,14 @@ async function run_benchmarks() {
       for (let sz of [1, 10, 100, 1000]) {
         if (it > 10 && sz > 10) continue;
         /* array */
-        {}
+        {
+          bench_sync("arr_push", PLAIN_MUTATION, plain_arr_push_by_mutation, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_push", PLAIN_SPREAD, plain_arr_push_by_spread, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_push", IMMUTABLEJS, immutable_arr_push, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_pop", PLAIN_MUTATION, plain_arr_pop_by_mutation, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_pop", PLAIN_SPREAD, plain_arr_pop_by_spread, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_pop", IMMUTABLEJS, immutable_arr_pop, sz, it, LOW_TIMEOUT);
+        }
         /* map */
         {
           bench_sync("map_add_entry", PLAIN_MUTATION, pojo_add_entry_by_mutation, sz, it, LOW_TIMEOUT);
