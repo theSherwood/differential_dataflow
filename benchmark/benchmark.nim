@@ -164,6 +164,15 @@ proc map_overwrite_entry(tr: TaskResult, sz, n: int) =
     maps[i] = maps[i].set(i, i + 1)
   tr.add(get_time() - Start)
 
+proc map_del_entry(tr: TaskResult, sz, n: int) =
+  # setup
+  var maps = setup_seq_of_maps(sz, n)
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    maps[i] = maps[i].del(i)
+  tr.add(get_time() - Start)
+
 # RULES BENCHMARKS #
 # ---------------------------------------------------------------------
 
@@ -185,6 +194,7 @@ proc run_benchmarks() =
         bench("map_add_entry", "immutable", map_add_entry, sz, it)
         bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, sz, it)
         bench("map_overwrite_entry", "immutable", map_overwrite_entry, sz, it)
+        bench("map_del_entry", "immutable", map_del_entry, sz, it)
 
   # rules benchmarks
   block:

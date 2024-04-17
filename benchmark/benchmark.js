@@ -389,6 +389,53 @@ function immer_pojo_overwrite_entry(tr, sz, n) {
   tr.runs.push(get_time() - start);
 }
 
+function pojo_del_entry_by_mutation(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    delete objs[i][i];
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function pojo_del_entry_by_spread(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    objs[i] = { ...objs[i] };
+    delete objs[i][i];
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_del_entry(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    maps[i] = maps[i].delete(i);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immer_pojo_del_entry(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_pojos(sz, n);
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    maps[i] = produce(maps[i], (m) => {
+      delete m[i];
+    });
+  }
+  tr.runs.push(get_time() - start);
+}
+
 /* RULES BENCHMARKS */
 /*--------------------------------------------------------------------*/
 
@@ -533,6 +580,10 @@ async function run_benchmarks() {
         bench_sync("map_overwrite_entry", PLAIN_SPREAD, pojo_overwrite_entry_by_spread, sz, it, LOW_TIMEOUT);
         bench_sync("map_overwrite_entry", IMMUTABLEJS, immutable_map_overwrite_entry, sz, it, LOW_TIMEOUT);
         bench_sync("map_overwrite_entry", IMMER_POJO, immer_pojo_overwrite_entry, sz, it, LOW_TIMEOUT);
+        bench_sync("map_del_entry", PLAIN_MUTATION, pojo_del_entry_by_mutation, sz, it, LOW_TIMEOUT)
+        bench_sync("map_del_entry", PLAIN_SPREAD, pojo_del_entry_by_spread, sz, it, LOW_TIMEOUT)
+        bench_sync("map_del_entry", IMMUTABLEJS, immutable_map_del_entry, sz, it, LOW_TIMEOUT)
+        bench_sync("map_del_entry", IMMER_POJO, immer_pojo_del_entry, sz, it, LOW_TIMEOUT)
       }
     }
   }

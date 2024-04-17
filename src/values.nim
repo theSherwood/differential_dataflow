@@ -1198,6 +1198,17 @@ proc set*(coll, k, v: ImValue): ImValue =
   raise newException(TypeException, &"Cannot set into {$coll} of type {coll.type_label} with key {$k} of type {k.type_label} and value {$v} of type {v.type_label}")
 template set*(coll: ImValue, key, val: typed): ImValue = set(coll, key.v, val.v)
 
+proc del*(coll, k: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    # of MASK_SIG_ARR: return coll.as_arr.set(k, v).v
+    of MASK_SIG_MAP: return coll.as_map.del(k).v
+    of MASK_SIG_SET: return coll.as_set.del(k).v
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot del from {$coll} of type {coll.type_label} with key {$k} of type {k.type_label}")
+template del*(coll: ImValue, key: typed): ImValue = coll.del(key.v)
+
 proc size*(coll: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
   case coll_sig:
