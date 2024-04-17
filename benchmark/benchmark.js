@@ -619,6 +619,84 @@ function immutable_map_get_non_existing(tr, sz, n) {
   );
 }
 
+function pojo_iter_keys(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    iters.push(Object.keys(objs[i]));
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function pojo_iter_values(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    iters.push(Object.values(objs[i]));
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function pojo_iter_entries(tr, sz, n) {
+  /* setup */
+  let objs = setup_arr_of_pojos(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    iters.push(Object.entries(objs[i]));
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_iter_keys(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    let vals = [];
+    for (let v of maps[i].keys()) vals.push(v);
+    iters.push(vals);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_iter_values(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    let vals = [];
+    for (let v of maps[i].values()) vals.push(v);
+    iters.push(vals);
+  }
+  tr.runs.push(get_time() - start);
+}
+
+function immutable_map_iter_entries(tr, sz, n) {
+  /* setup */
+  let maps = setup_arr_of_immutable_maps(sz, n);
+  let iters = [];
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    let vals = [];
+    for (let v of maps[i].entries()) vals.push(v);
+    iters.push(vals);
+  }
+  tr.runs.push(get_time() - start);
+}
+
 /* RULES BENCHMARKS */
 /*--------------------------------------------------------------------*/
 
@@ -776,9 +854,15 @@ async function run_benchmarks() {
         bench_sync("map_has_key_false", PLAIN, pojo_has_key_false, sz, it, LOW_TIMEOUT)
         bench_sync("map_has_key_false", IMMUTABLEJS, immutable_map_has_key_false, sz, it, LOW_TIMEOUT)
         bench_sync("map_get_existing", PLAIN, pojo_get_existing, sz, it, LOW_TIMEOUT)
-        bench_sync("map_get_existing", PLAIN, immutable_map_get_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_get_existing", IMMUTABLEJS, immutable_map_get_existing, sz, it, LOW_TIMEOUT)
         bench_sync("map_get_non_existing", PLAIN, pojo_get_non_existing, sz, it, LOW_TIMEOUT)
-        bench_sync("map_get_non_existing", PLAIN, immutable_map_get_non_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_get_non_existing", IMMUTABLEJS, immutable_map_get_non_existing, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_keys", PLAIN, pojo_iter_keys, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_keys", IMMUTABLEJS, immutable_map_iter_keys, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_values", PLAIN, pojo_iter_values, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_values", IMMUTABLEJS, immutable_map_iter_values, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_entries", PLAIN, pojo_iter_entries, sz, it, LOW_TIMEOUT)
+        bench_sync("map_iter_entries", IMMUTABLEJS, immutable_map_iter_entries, sz, it, LOW_TIMEOUT)
       }
     }
   }

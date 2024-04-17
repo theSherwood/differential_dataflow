@@ -7,6 +7,7 @@
 ##   - Eg.
 ##     - proc inner_contains(v1, v2: ImValue): bool
 ##     - proc outer_contains(v1, v2: ImValue): ImValue
+## -[ ] find a way to not have to reimplement iterators (eg, for ImMap as well as ImValue)
 
 import std/[tables, sets, bitops, strutils, strformat, macros]
 import hashes
@@ -1246,6 +1247,55 @@ proc contains*(coll, k: ImValue): bool =
   raise newException(TypeException, &"Cannot check whether {$coll} of type {coll.type_label} contains {$k} of type {k.type_label}")
 template contains*(coll: ImValue, key: typed): bool = coll.contains(key.v)
 template has*(coll: ImValue, key: typed): bool = coll.contains(key.v)
+
+iterator keys*(coll: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    # of MASK_SIG_ARR: return coll.as_arr.keys
+    of MASK_SIG_MAP:
+      for v in coll.as_map.payload.data.keys:
+        yield v
+    # of MASK_SIG_SET: return coll.as_set.keys
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else:
+      raise newException(TypeException, &"Cannot iterate the keys of {$coll} of type {coll.type_label}")
+iterator values*(coll: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR:
+      for v in coll.as_arr.payload.data.items:
+        yield v
+    of MASK_SIG_MAP:
+      for v in coll.as_map.payload.data.values:
+        yield v
+    # of MASK_SIG_SET: return coll.as_set.values
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else:
+      raise newException(TypeException, &"Cannot iterate the values of {$coll} of type {coll.type_label}")
+iterator items*(coll: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR:
+      for v in coll.as_arr.payload.data.items:
+        yield v
+    of MASK_SIG_MAP:
+      for v in coll.as_map.payload.data.values:
+        yield v
+    # of MASK_SIG_SET: return coll.as_set.values
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else:
+      raise newException(TypeException, &"Cannot iterate the values of {$coll} of type {coll.type_label}")
+iterator pairs*(coll: ImValue): (ImValue, ImValue) =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    # of MASK_SIG_ARR: return coll.as_arr.pairs
+    of MASK_SIG_MAP:
+      for v in coll.as_map.payload.data.pairs:
+        yield v
+    # of MASK_SIG_SET: return coll.as_set.pairs
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else:
+      raise newException(TypeException, &"Cannot iterate the pairs of {$coll} of type {coll.type_label}")
 
 ##
 ## nil < boolean < number < string < set < array < map
