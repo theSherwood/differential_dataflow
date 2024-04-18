@@ -3,6 +3,7 @@ import {
   immutable_arr_create,
   immutable_arr_get_existing,
   immutable_arr_get_non_existing,
+  immutable_arr_iter,
   immutable_arr_pop,
   immutable_arr_push,
   immutable_arr_set,
@@ -10,6 +11,7 @@ import {
   plain_arr_create,
   plain_arr_get_existing,
   plain_arr_get_non_existing,
+  plain_arr_iter,
   plain_arr_pop_by_mutation,
   plain_arr_pop_by_spread,
   plain_arr_push_by_mutation,
@@ -98,6 +100,9 @@ const IMMUTABLEJS = "_immutable.js"; /* add a leading _ so it sorts first; we co
 async function run_benchmarks() {
   await warmup();
   bench_sync("sanity_check", "--", sanity_check, 0, 5000000);
+  bench_sync("sanity_check", "--", sanity_check, 0, 50000);
+  bench_sync("sanity_check", "--", sanity_check, 0, 500);
+
   /* value benchmarks */
   {
     /* prettier-ignore */
@@ -109,7 +114,9 @@ async function run_benchmarks() {
       bench_sync("map_create", PLAIN, pojo_create, 0, it, LOW_TIMEOUT);
       bench_sync("map_create", IMMUTABLEJS, immutable_map_create, 0, it, LOW_TIMEOUT);
       for (let sz of [1, 10, 100, 1000]) {
-        if (it > 10 && sz > 10) continue;
+        if (it < 100 && sz < 100) continue;
+        if (it > 100 && sz >= 100) continue;
+        if (it >= 100 && sz > 100) continue;
         /* array */
         {
           bench_sync("arr_push", PLAIN_MUTATION, plain_arr_push_by_mutation, sz, it, LOW_TIMEOUT);
@@ -127,6 +134,8 @@ async function run_benchmarks() {
           bench_sync("arr_set", PLAIN_MUTATION, plain_arr_set_by_mutation, sz, it, LOW_TIMEOUT);
           bench_sync("arr_set", PLAIN_SPREAD, plain_arr_set_by_spread, sz, it, LOW_TIMEOUT);
           bench_sync("arr_set", IMMUTABLEJS, immutable_arr_set, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_iter", PLAIN, plain_arr_iter, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_iter", IMMUTABLEJS, immutable_arr_iter, sz, it, LOW_TIMEOUT);
         }
         /* map */
         {

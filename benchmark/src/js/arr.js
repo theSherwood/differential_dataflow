@@ -215,3 +215,33 @@ export function immutable_arr_set(tr, sz, n) {
   }
   tr.runs.push(get_time() - start);
 }
+
+export function plain_arr_iter(tr, sz, n) {
+  /* setup */
+  let arrs = setup_arr_of_arrs(sz, n);
+  let iters = []
+  let vals = []
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals = []
+    for (let v of arrs[i]) vals.push(v)
+    iters.push(vals)
+  }
+  tr.runs.push(get_time() - start);
+}
+
+export function immutable_arr_iter(tr, sz, n) {
+  /* setup */
+  let arrs = setup_arr_of_immutable_arrs(sz, n);
+  let iters = []
+  let vals = []
+  /* test */
+  let start = get_time();
+  for (let i = 0; i < n; i++) {
+    vals = []
+    for (let v of arrs[i].values()) vals.push(v)
+    iters.push(vals)
+  }
+  tr.runs.push(get_time() - start);
+}

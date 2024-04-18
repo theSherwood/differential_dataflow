@@ -88,7 +88,7 @@ proc bench*(
   while timeout.float64 > (End - Start):
     fn(tr, size, iterations)
     End = get_time()
-  echo &"done {sys} {tr.key}"
+  echo &"done {tr.key}"
 template bench*(
   key, desc: string,
   fn: proc(tr: TaskResult, size, iterations: int): void,

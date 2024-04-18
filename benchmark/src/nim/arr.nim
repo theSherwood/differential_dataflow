@@ -74,3 +74,16 @@ proc arr_set*(tr: TaskResult, sz, n: int) =
   for i in 0..<n:
     arrs[i] = arrs[i].set((arrs[i].size.as_f64 / 2.0).int, -1.0)
   tr.add(get_time() - Start)
+
+proc arr_iter*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  var iters: seq[seq[ImValue]] = @[]
+  var vals: seq[ImValue]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    vals = @[]
+    for v in arrs[i].values: vals.add(v)
+    iters.add(vals)
+  tr.add(get_time() - Start)

@@ -3,17 +3,24 @@
 import ./src/nim/[common, map, arr]
 
 proc sanity_check(tr: TaskResult, sz, n: int) =
-  let Start = get_time()
   var s = 0.0
+  let Start = get_time()
   for i in 0..<n:
     s += i.float64
     if tr.runs.len > 1000000: echo s
     if tr.runs.len > 10000000: echo s
   tr.add(get_time() - Start)
 
+proc output_results() =
+  write_row("\"key\",\"sys\",\"desc\",\"runs\",\"minimum\",\"maximum\",\"mean\",\"median\"")
+  for tr in csv_rows:
+    tr.to_row.write_row
+
 proc run_benchmarks() =
   warmup()
   bench("sanity_check", "--", sanity_check, 0, 5000000)
+  bench("sanity_check", "--", sanity_check, 0, 50000)
+  bench("sanity_check", "--", sanity_check, 0, 500)
 
   # value benchmarks
   block:
@@ -21,7 +28,9 @@ proc run_benchmarks() =
       bench("arr_create", "immutable", arr_create, 0, it)
       bench("map_create", "immutable", map_create, 0, it)
       for sz in [1, 10, 100, 1000]:
-        if it > 10 and sz > 10: continue
+        if it < 100 and sz < 100: continue
+        if it > 100 and sz >= 100: continue
+        if it >= 100 and sz > 100: continue
         block arr:
           bench("arr_push", "immutable", arr_push, sz, it)
           bench("arr_pop", "immutable", arr_pop, sz, it)
@@ -29,6 +38,7 @@ proc run_benchmarks() =
           bench("arr_get_existing", "immutable", arr_get_existing, sz, it)
           bench("arr_get_non_existing", "immutable", arr_get_non_existing, sz, it)
           bench("arr_set", "immutable", arr_set, sz, it)
+          bench("arr_iter", "immutable", arr_iter, sz, it)
         block map:
           bench("map_add_entry", "immutable", map_add_entry, sz, it)
           bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, sz, it)
@@ -49,10 +59,5 @@ proc run_benchmarks() =
   block:
     discard
 
-  # output results
-  block:
-    write_row("\"key\",\"sys\",\"desc\",\"runs\",\"minimum\",\"maximum\",\"mean\",\"median\"")
-    for tr in csv_rows:
-      tr.to_row.write_row
-
 run_benchmarks()
+output_results()

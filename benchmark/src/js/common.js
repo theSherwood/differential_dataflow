@@ -16,7 +16,7 @@ export const RUN_NOOLS = false;
 export let csv_rows = [];
 
 export function get_time() {
-  return performance.now() * 1000;
+  return Math.round(performance.now() * 1000);
 }
 
 export let form = (f) => f.toFixed(2);
@@ -58,7 +58,7 @@ export function bench_sync(key, desc, fn, sz, iterations, timeout = TIMEOUT) {
     fn(tr, sz, iterations);
     end = get_time();
   } while (timeout > end - start);
-  console.log(`done js ${tr.key}`);
+  console.log(`done ${tr.key}`);
 }
 
 export async function bench_async(key, desc, fn, sz, iterations, timeout = TIMEOUT) {

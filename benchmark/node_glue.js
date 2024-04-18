@@ -45,7 +45,7 @@ function get_env_imports() {
   const env_imports = {
     memory,
     // functions
-    get_time: () => performance.now() * 1000,
+    get_time: () => Math.round(performance.now() * 1000),
     write_row_string: (str_addr, len) => {
       let text = nim_str_to_js_str(str_addr, len, ctx);
       csv_rows.push(text);
