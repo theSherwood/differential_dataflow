@@ -105,10 +105,14 @@ build_wasm() {
 positional_args=("$@")
 
 if [ $BENCHMARK -eq 1 ]; then
+  
+  run_native=0
+  run_wasm=0
+  run_js=0
 
   if [ $RUN -eq 1 ]; then
     # delete previous partial reports
-    (node --experimental-default-type=module benchmark/cleanup.js)
+    node --experimental-default-type=module benchmark/cleanup.js
   fi
 
   # default to benchmarking native, wasm, and js
@@ -116,25 +120,24 @@ if [ $BENCHMARK -eq 1 ]; then
     positional_args=("native" "wasm" "js")
   fi
 
+  # Build in parallel
   for arg in "${positional_args[@]}"
   do
     case "$arg" in
       native)
-        if [ $native_built -eq 0 ]; then build_native; fi
-        if [ $RUN -eq 1 ] && [ $native_built -eq 1 ]; then
-          ("./dist/${NAME}")
+        if [ $native_built -eq 0 ]; then
+          build_native &
         fi
+        run_native=1
         ;;
       wasm)
-        if [ $wasm_built -eq 0 ]; then build_wasm; fi
-        if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
-          (node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm")
+        if [ $wasm_built -eq 0 ]; then 
+          build_wasm &
         fi
+        run_wasm=1
         ;;
       js)
-        if [ $RUN -eq 1 ]; then
-          (node --experimental-default-type=module benchmark/benchmark.js)
-        fi
+        run_js=1
         ;;
       *)
         echo "Unrecognized arg: ${arg}"
@@ -143,50 +146,59 @@ if [ $BENCHMARK -eq 1 ]; then
     esac
   done
 
+  # Wait for the builds to complete
+  wait
+
   if [ $RUN -eq 1 ]; then
+    # Run the benchmarks in parallel
+    if [ $run_native -eq 1 ]; then
+      "./dist/${NAME}" &
+    fi
+    if [ $run_wasm -eq 1 ]; then
+      node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm" &
+    fi
+    if [ $run_js -eq 1 ]; then
+      node --experimental-default-type=module benchmark/benchmark.js &
+    fi
+    # Wait for the benchmarks to run
+    wait
     # Create a report from the individual results
-    (node --experimental-default-type=module benchmark/report.js)
+    node --experimental-default-type=module benchmark/report.js
     exit 0
   fi
 
 else
 
-  # default to benchmarking native, wasm, and js
-  # if [ ${#positional_args[@]} -eq 0 ]; then
-  #   positional_args=("native" "node" "browser")
-  # fi
+  run_native=0
+  run_node=0
+  run_browser=0
 
+  default to benchmarking native, wasm, and js
+  if [ ${#positional_args[@]} -eq 0 ]; then
+    positional_args=("native" "node")
+  fi
+
+  # Build in parallel
   for arg in "${positional_args[@]}"
   do
     case "$arg" in
       native)
-        if [ $native_built -eq 0 ]; then build_native; fi
-        if [ $RUN -eq 1 ] && [ $native_built -eq 1 ]; then
-          echo "============================================="
-          echo "Running native"
-          echo "============================================="
-          ("./dist/${NAME}")
+        if [ $native_built -eq 0 ]; then
+          build_native &
         fi
+        run_native=1
         ;;
       node)
-        if [ $wasm_built -eq 0 ]; then build_wasm; fi
-        if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
-          echo "============================================="
-          echo "Running wasm in node"
-          echo "============================================="
-          (node --experimental-default-type=module src/node_glue.js "./dist/${NAME}.wasm")
+        if [ $wasm_built -eq 0 ]; then
+          build_wasm &
         fi
+        run_node=1
         ;;
       browser)
-        if [ $wasm_built -eq 0 ]; then build_wasm; fi
-        if [ $RUN -eq 1 ] && [ $wasm_built -eq 1 ]; then
-          echo "============================================="
-          echo "Running wasm in browser"
-          echo "============================================="
-          # pass the wasm path to the webpage
-          export VITE_WASM_PATH="./dist/${NAME}.wasm"
-          (npm run start)
+        if [ $wasm_built -eq 0 ]; then
+          build_wasm &
         fi
+        run_browser=1
         ;;
       *)
         echo "Unrecognized arg: ${arg}"
@@ -194,5 +206,27 @@ else
         ;;
     esac
   done
+
+  # Wait for the builds to complete
+  wait
+
+  if [ $RUN -eq 1 ]; then
+    if [ $run_native -eq 1 ]; then
+      echo "== Running native ==========================="
+      "./dist/${NAME}"
+    fi
+    if [ $run_node -eq 1 ]; then
+      echo "== Running wasm in node ====================="
+      node --experimental-default-type=module src/node_glue.js "./dist/${NAME}.wasm"
+    fi
+    if [ $run_browser -eq 1 ]; then
+      echo "== Running wasm in browser =================="
+      # pass the wasm path to the webpage
+      export VITE_WASM_PATH="./dist/${NAME}.wasm"
+      npm run start
+    fi
+    exit 0
+  fi
+
 
 fi

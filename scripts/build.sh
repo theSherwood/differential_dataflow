@@ -115,16 +115,13 @@ c_files() {
 # if WASM
 if [ $WASM -eq 1 ]; then
 
-  echo "============================================="
-  echo "Compiling \"${FILE}\" to C"
-  echo "============================================="
+  echo "== Compiling Nim \"${FILE}\" to C to Wasm ==="
 
   # Clean previous compilation results
-  (rm -Rf ${PATH_TO_C_ASSETS})
-  (rm -Rf "./dist/${NAME}.wasm")
+  rm -Rf ${PATH_TO_C_ASSETS}
+  rm -Rf "./dist/${NAME}.wasm"
 
   (
-
     # Compile Nim to C
     ${NIM} \
     -c \
@@ -145,14 +142,12 @@ if [ $WASM -eq 1 ]; then
     --d: noSignalHandler \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
-
-    # Link nimbase.h
-    ln -sf ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
   )
 
-  echo "============================================="
-  echo "Compiling C with Emscripten"
-  echo "============================================="
+  # Link nimbase.h
+  ln -sf ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
+
+  echo "== Compiling C to Wasm with Emscripten ======"
 
   (
     # -s MALLOC=emmalloc-verbose \
@@ -174,26 +169,22 @@ if [ $WASM -eq 1 ]; then
     --no-entry \
     -o "dist/${NAME}.wasm" \
     $(c_files)
-
-    # Create output folder
-    mkdir -p dist
-    # Move artifacts
-    # mv my-module.{js,wasm} dist
   )
 
-  echo "============================================="
-  echo "Compiling done"
-  echo "============================================="
+  # Create output folder
+  mkdir -p dist
+  # Move artifacts
+  # mv my-module.{js,wasm} dist
+
+  echo "== Compiling to Wasm done ==================="
 
 else # NATIVE (not WASM)
 
-  echo "============================================="
-  echo "Compiling \"${FILE}\" to C"
-  echo "============================================="
+  echo "== Compiling Nim \"${FILE}\" to C ==========="
 
   # Clean previous compilation results
-  (rm -Rf ${PATH_TO_C_ASSETS})
-  (rm -Rf "./dist/${NAME}")
+  rm -Rf ${PATH_TO_C_ASSETS}
+  rm -Rf "./dist/${NAME}"
 
   (
     # --os: any \
@@ -212,14 +203,12 @@ else # NATIVE (not WASM)
     --d: release \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
-
-    # Link nimbase.h
-    ln -sf ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
   )
 
-  echo "============================================="
-  echo "Compiling C"
-  echo "============================================="
+  # Link nimbase.h
+  ln -sf ${NIMBASE} ${PATH_TO_C_ASSETS}/nimbase.h
+
+  echo "== Compiling C =============================="
 
   (
     # Compile C
@@ -234,8 +223,6 @@ else # NATIVE (not WASM)
     # mv my-module.{js,wasm} dist
   )
 
-  echo "============================================="
-  echo "Compiling done"
-  echo "============================================="
+  echo "== Compiling C done ========================="
 
 fi
