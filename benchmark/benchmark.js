@@ -5,6 +5,7 @@ import {
   immutable_arr_get_non_existing,
   immutable_arr_pop,
   immutable_arr_push,
+  immutable_arr_set,
   immutable_arr_slice,
   plain_arr_create,
   plain_arr_get_existing,
@@ -13,6 +14,8 @@ import {
   plain_arr_pop_by_spread,
   plain_arr_push_by_mutation,
   plain_arr_push_by_spread,
+  plain_arr_set_by_mutation,
+  plain_arr_set_by_spread,
   plain_arr_slice,
 } from "./src/js/arr.js";
 import {
@@ -121,6 +124,9 @@ async function run_benchmarks() {
           bench_sync("arr_get_existing", IMMUTABLEJS, immutable_arr_get_existing, sz, it, LOW_TIMEOUT);
           bench_sync("arr_get_non_existing", PLAIN, plain_arr_get_non_existing, sz, it, LOW_TIMEOUT);
           bench_sync("arr_get_non_existing", IMMUTABLEJS, immutable_arr_get_non_existing, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_set", PLAIN_MUTATION, plain_arr_set_by_mutation, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_set", PLAIN_SPREAD, plain_arr_set_by_spread, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_set", IMMUTABLEJS, immutable_arr_set, sz, it, LOW_TIMEOUT);
         }
         /* map */
         {

@@ -45,7 +45,7 @@ proc arr_slice*(tr: TaskResult, sz, n: int) =
   # test
   let Start = get_time()
   for i in 0..<n:
-    arrs[i] = arrs[i].slice(i, arrs[i].size.as_f64 / 2.0)
+    arrs[i] = arrs[i].slice(i, (arrs[i].size.as_f64 / 2.0).int)
   tr.add(get_time() - Start)
 
 proc arr_get_existing*(tr: TaskResult, sz, n: int) =
@@ -54,7 +54,7 @@ proc arr_get_existing*(tr: TaskResult, sz, n: int) =
   # test
   let Start = get_time()
   for i in 0..<n:
-    arrs[i] = arrs[i].get(arrs[i].size.as_f64 / 2.0)
+    arrs[i] = arrs[i].get((arrs[i].size.as_f64 / 2.0).int)
   tr.add(get_time() - Start)
 
 proc arr_get_non_existing*(tr: TaskResult, sz, n: int) =
@@ -63,5 +63,14 @@ proc arr_get_non_existing*(tr: TaskResult, sz, n: int) =
   # test
   let Start = get_time()
   for i in 0..<n:
-    arrs[i] = arrs[i].get(arrs[i].size.as_f64 * 2.0)
+    arrs[i] = arrs[i].get((arrs[i].size.as_f64 * 2.0).int)
+  tr.add(get_time() - Start)
+
+proc arr_set*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    arrs[i] = arrs[i].set((arrs[i].size.as_f64 / 2.0).int, -1.0)
   tr.add(get_time() - Start)

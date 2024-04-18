@@ -1229,6 +1229,15 @@ proc `<=`*(a, b: ImValue): bool =
     else: discard
   raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
 
+proc `[]`*(coll: ImValue, k: int): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr[k]
+    of MASK_SIG_MAP: return coll.as_map[k.v]
+    # of MASK_SIG_SET: return coll.as_set[k]
+    # of MASK_SIG_STR: return coll.as_map[k]
+    else: discard
+  raise newException(TypeException, &"Cannot index into {$coll} of type {coll.type_label} with {$(k.v)} of type {(k.v).type_label}")
 proc `[]`*(coll, k: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
   case coll_sig:
@@ -1239,6 +1248,7 @@ proc `[]`*(coll, k: ImValue): ImValue =
     else: discard
   raise newException(TypeException, &"Cannot index into {$coll} of type {coll.type_label} with {$k} of type {k.type_label}")
 template `[]`*(coll: ImValue, k: typed): ImValue = coll[k.v]
+template get*(coll: ImValue, k: int): ImValue = coll[k]
 template get*(coll: ImValue, k: typed): ImValue = coll[k.v]
 
 proc slice*(coll, i1, i2: ImValue): ImValue =
