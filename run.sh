@@ -60,6 +60,27 @@ if [ $TEST -eq 1 ] && [ $BENCHMARK -eq 1 ]; then
   exit 1
 fi
 
+# Function to prepend a string to each line of input
+with_prefix() {
+    prefix="$1"
+    while IFS= read -r line; do
+        echo "$prefix $line"
+    done
+}
+
+# Pad a string with spaces to the right
+pad_right() {
+    local string="$1"
+    local length="$2"
+    printf "%-${length}s" "$string"
+}
+
+PREFIX_NATIVE=$(pad_right "NATIVE" 10)
+PREFIX_WASM=$(pad_right "WASM" 10)
+PREFIX_JS=$(pad_right "JS" 10)
+PREFIX_NODE=$(pad_right "NODE" 10)
+PREFIX_BROWSER=$(pad_right "BROWSER" 10)
+
 FILE=""
 NAME=""
 if [ $TEST -eq 1 ]; then
@@ -126,13 +147,13 @@ if [ $BENCHMARK -eq 1 ]; then
     case "$arg" in
       native)
         if [ $native_built -eq 0 ]; then
-          build_native &
+          build_native | with_prefix "$PREFIX_NATIVE" &
         fi
         run_native=1
         ;;
       wasm)
         if [ $wasm_built -eq 0 ]; then 
-          build_wasm &
+          build_wasm | with_prefix "$PREFIX_WASM" &
         fi
         run_wasm=1
         ;;
@@ -152,13 +173,13 @@ if [ $BENCHMARK -eq 1 ]; then
   if [ $RUN -eq 1 ]; then
     # Run the benchmarks in parallel
     if [ $run_native -eq 1 ]; then
-      "./dist/${NAME}" &
+      "./dist/${NAME}" | with_prefix "$PREFIX_NATIVE" &
     fi
     if [ $run_wasm -eq 1 ]; then
-      node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm" &
+      node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm" | with_prefix "$PREFIX_WASM" &
     fi
     if [ $run_js -eq 1 ]; then
-      node --experimental-default-type=module benchmark/benchmark.js &
+      node --experimental-default-type=module benchmark/benchmark.js | with_prefix "$PREFIX_JS" &
     fi
     # Wait for the benchmarks to run
     wait
@@ -184,19 +205,19 @@ else
     case "$arg" in
       native)
         if [ $native_built -eq 0 ]; then
-          build_native &
+          build_native | with_prefix "$PREFIX_NATIVE" &
         fi
         run_native=1
         ;;
       node)
         if [ $wasm_built -eq 0 ]; then
-          build_wasm &
+          build_wasm | with_prefix "$PREFIX_WASM" &
         fi
         run_node=1
         ;;
       browser)
         if [ $wasm_built -eq 0 ]; then
-          build_wasm &
+          build_wasm | with_prefix "$PREFIX_WASM" &
         fi
         run_browser=1
         ;;
