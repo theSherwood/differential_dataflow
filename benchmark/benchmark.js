@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import {
   immutable_arr_create,
+  immutable_arr_get_existing,
+  immutable_arr_get_non_existing,
   immutable_arr_pop,
   immutable_arr_push,
   immutable_arr_slice,
   plain_arr_create,
+  plain_arr_get_existing,
+  plain_arr_get_non_existing,
   plain_arr_pop_by_mutation,
   plain_arr_pop_by_spread,
   plain_arr_push_by_mutation,
@@ -113,6 +117,10 @@ async function run_benchmarks() {
           bench_sync("arr_pop", IMMUTABLEJS, immutable_arr_pop, sz, it, LOW_TIMEOUT);
           bench_sync("arr_slice", PLAIN, plain_arr_slice, sz, it, LOW_TIMEOUT);
           bench_sync("arr_slice", IMMUTABLEJS, immutable_arr_slice, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_get_existing", PLAIN, plain_arr_get_existing, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_get_existing", IMMUTABLEJS, immutable_arr_get_existing, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_get_non_existing", PLAIN, plain_arr_get_non_existing, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_get_non_existing", IMMUTABLEJS, immutable_arr_get_non_existing, sz, it, LOW_TIMEOUT);
         }
         /* map */
         {

@@ -26,6 +26,8 @@ proc run_benchmarks() =
           bench("arr_push", "immutable", arr_push, sz, it)
           bench("arr_pop", "immutable", arr_pop, sz, it)
           bench("arr_slice", "immutable", arr_slice, sz, it)
+          bench("arr_get_existing", "immutable", arr_get_existing, sz, it)
+          bench("arr_get_non_existing", "immutable", arr_get_non_existing, sz, it)
         block map:
           bench("map_add_entry", "immutable", map_add_entry, sz, it)
           bench("map_add_entry_multiple", "immutable", map_add_entry_multiple, sz, it)

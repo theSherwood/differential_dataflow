@@ -47,3 +47,21 @@ proc arr_slice*(tr: TaskResult, sz, n: int) =
   for i in 0..<n:
     arrs[i] = arrs[i].slice(i, arrs[i].size.as_f64 / 2.0)
   tr.add(get_time() - Start)
+
+proc arr_get_existing*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    arrs[i] = arrs[i].get(arrs[i].size.as_f64 / 2.0)
+  tr.add(get_time() - Start)
+
+proc arr_get_non_existing*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    arrs[i] = arrs[i].get(arrs[i].size.as_f64 * 2.0)
+  tr.add(get_time() - Start)
