@@ -1,4 +1,5 @@
 # import std/[math, algorithm, strutils, strformat, sequtils, tables]
+import std/[sequtils]
 import ../../../src/[values]
 import ./common
 
@@ -87,3 +88,31 @@ proc arr_iter*(tr: TaskResult, sz, n: int) =
     for v in arrs[i].values: vals.add(v)
     iters.add(vals)
   tr.add(get_time() - Start)
+
+
+proc arr_equal_true*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  var copies = setup_seq_of_arrs(sz, n)
+  var bools: seq[bool]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add(arrs[i] == copies[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b)
+
+proc arr_equal_false*(tr: TaskResult, sz, n: int) =
+  # setup
+  var arrs = setup_seq_of_arrs(sz, n)
+  var arrs2 = setup_seq_of_arrs(sz, n, 3)
+  var bools: seq[bool]
+  # test
+  let Start = get_time()
+  for i in 0..<n:
+    bools.add(arrs[i] == arrs2[i])
+  tr.add(get_time() - Start)
+  doAssert bools.all(proc (b: bool): bool = b.not)
+
+
+

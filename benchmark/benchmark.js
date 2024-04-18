@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import {
   immutable_arr_create,
+  immutable_arr_equal_false,
+  immutable_arr_equal_true,
   immutable_arr_get_existing,
   immutable_arr_get_non_existing,
   immutable_arr_iter,
@@ -9,6 +11,8 @@ import {
   immutable_arr_set,
   immutable_arr_slice,
   plain_arr_create,
+  plain_arr_equal_false,
+  plain_arr_equal_true,
   plain_arr_get_existing,
   plain_arr_get_non_existing,
   plain_arr_iter,
@@ -136,6 +140,10 @@ async function run_benchmarks() {
           bench_sync("arr_set", IMMUTABLEJS, immutable_arr_set, sz, it, LOW_TIMEOUT);
           bench_sync("arr_iter", PLAIN, plain_arr_iter, sz, it, LOW_TIMEOUT);
           bench_sync("arr_iter", IMMUTABLEJS, immutable_arr_iter, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_equal_true", PLAIN, plain_arr_equal_true, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_equal_true", IMMUTABLEJS, immutable_arr_equal_true, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_equal_false", PLAIN, plain_arr_equal_false, sz, it, LOW_TIMEOUT);
+          bench_sync("arr_equal_false", IMMUTABLEJS, immutable_arr_equal_false, sz, it, LOW_TIMEOUT);
         }
         /* map */
         {
