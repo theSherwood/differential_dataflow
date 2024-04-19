@@ -89,7 +89,6 @@ proc arr_iter*(tr: TaskResult, sz, n: int) =
     iters.add(vals)
   tr.add(get_time() - Start)
 
-
 proc arr_equal_true*(tr: TaskResult, sz, n: int) =
   # setup
   var arrs = setup_seq_of_arrs(sz, n)
@@ -113,6 +112,3 @@ proc arr_equal_false*(tr: TaskResult, sz, n: int) =
     bools.add(arrs[i] == arrs2[i])
   tr.add(get_time() - Start)
   doAssert bools.all(proc (b: bool): bool = b.not)
-
-
-
