@@ -1,10 +1,15 @@
+/**
+ * TODO
+ * -[ ] support wasm64
+ */
+
 import { WASI, File, OpenFile, ConsoleStdout } from "@bjorn3/browser_wasi_shim";
 import { instantiate_wasm, run_nim_main } from "../src/setup_wasm.js";
 import fs from "node:fs";
 
 const VERBOSE = 0;
 const LITTLE_ENDIAN = true;
-const OUTPUT_PATH = "./benchmark/results_wasm.csv";
+const OUTPUT_PATH = "./benchmark/results_wasm32.csv";
 const WASM_PATH = process.argv[2];
 
 let csv_rows = [];

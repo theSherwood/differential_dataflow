@@ -1,6 +1,6 @@
 # import std/[math, algorithm, strutils, strformat, sequtils, tables]
 # import ../src/[values]
-import ./src/nim/[common, map, arr]
+import ./src/nim/[common, map, arr, rules]
 import ./src/nim/parazoa/arr as p_arr
 import ./src/nim/parazoa/map as p_map
 
@@ -22,6 +22,7 @@ proc output_results() =
 
 const IMMUTABLE = "immutable"
 const PARAZOA = "parazoa"
+const IMPERATIVE = "imperative"
 
 proc run_benchmarks() =
   warmup()
@@ -95,7 +96,7 @@ proc run_benchmarks() =
 
   # rules benchmarks
   block:
-    discard
+    bench("send_more_money", IMPERATIVE, send_more_money_imperative, 0, 1)
 
 run_benchmarks()
 output_results()

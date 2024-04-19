@@ -11,7 +11,7 @@ export const WARMUP = 100_000; // microseconds
 // for use when we want it.
 export const TIMEOUT = 100_000;
 export const LOW_TIMEOUT = 2;
-export const RUN_NOOLS = false;
+export const RUN_NOOLS = true;
 
 export let csv_rows = [];
 

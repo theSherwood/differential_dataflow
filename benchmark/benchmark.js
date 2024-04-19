@@ -80,7 +80,12 @@ import {
   pojo_overwrite_entry,
   pojo_overwrite_entry_by_spread,
 } from "./src/js/map.js";
-import { manners_nools, send_more_money_nools, waltz_db_nools } from "./src/js/nools.js";
+import {
+  manners_nools,
+  send_more_money_imperative,
+  send_more_money_nools,
+  waltz_db_nools,
+} from "./src/js/nools.js";
 
 function sanity_check(tr, _sz, n) {
   let start = get_time();
@@ -195,6 +200,7 @@ async function run_benchmarks() {
   }
   /* rules benchmarks */
   {
+    bench_sync("send_more_money", "imperative", send_more_money_imperative, 0, 1);
     /* nools */
     if (RUN_NOOLS) {
       await Promise.all([
