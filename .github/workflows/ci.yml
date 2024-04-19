@@ -140,7 +140,7 @@ jobs:
           # find nimbase
           export NIMBASE=$(find /opt/hostedtoolcache/nimskull -name nimbase.h | head -n 1)
           echo "$NIMBASE"
-          ./run.sh -tr node
+          ./run.sh -tr node32
         env:
           EMSCRIPTEN: emcc
           NIM: nim

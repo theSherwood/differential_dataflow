@@ -9,7 +9,10 @@ when defined(wasm):
   proc write_row_string(p: ptr, len: int): void {.importc.}
   proc write_row*(row: string): void =
     write_row_string(row[0].addr, row.len)
-  const sys* = "wasm"
+  when defined(wasm32):
+    const sys* = "wasm32"
+  when defined(wasm64):
+    const sys* = "wasm64"
 else:
   from std/times import cpuTime
   # We have to multiply our seconds by 1_000_000 to get microseconds

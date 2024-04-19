@@ -39,7 +39,7 @@ wach ./run.sh -tur native
 OR
 
 ```sh
-wach -o "src/**" "./run.sh -tur node"
+wach -o "src/**" "./run.sh -tur node32"
 ```
 
 ### Test Wasm in Browser
@@ -47,7 +47,7 @@ wach -o "src/**" "./run.sh -tur node"
 Compile wasm:
 
 ```sh
-wach -o "src/**" "./run.sh -tu browser"
+wach -o "src/**" "./run.sh -tu browser32"
 ```
 
 Start the server:
@@ -61,7 +61,7 @@ Go to http://localhost:3000/
 OR
 
 ```sh
-./run.sh -tur browser
+./run.sh -tur browser32
 ```
 
 ## Benchmark

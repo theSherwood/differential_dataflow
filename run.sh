@@ -2,11 +2,11 @@
 
 __help_string="
 Usage:
-  $(basename $0) -tru native node browser  # runs tests natively, in node (wasm), in browser (wasm)
-  $(basename $0) -t native                 # builds tests for native
-  $(basename $0) -bru                      # runs benchmarks native, wasm, and js
-  $(basename $0) -bru native js            # runs benchmarks native and js
-  $(basename $0) -bru native wasm          # runs benchmarks native and wasm
+  $(basename $0) -tru native node64 browser32  # runs tests natively, in node (wasm64), in browser (wasm32)
+  $(basename $0) -t native                     # builds tests for native
+  $(basename $0) -bru                          # runs benchmarks native, wasm32, wasm64, and js
+  $(basename $0) -bru native js                # runs benchmarks native and js
+  $(basename $0) -bru native wasm32            # runs benchmarks native and wasm32
 
 Options:
   -? -h --help         Print this usage information.
@@ -76,10 +76,13 @@ pad_right() {
 }
 
 PREFIX_NATIVE=$(pad_right "NATIVE" 10)
-PREFIX_WASM=$(pad_right "WASM" 10)
+PREFIX_WASM32=$(pad_right "WASM32" 10)
+PREFIX_WASM64=$(pad_right "WASM64" 10)
+PREFIX_NODE32=$(pad_right "NODE32" 10)
+PREFIX_NODE64=$(pad_right "NODE64" 10)
+PREFIX_BROWSER32=$(pad_right "BROWSER32" 10)
+PREFIX_BROWSER64=$(pad_right "BROWSER64" 10)
 PREFIX_JS=$(pad_right "JS" 10)
-PREFIX_NODE=$(pad_right "NODE" 10)
-PREFIX_BROWSER=$(pad_right "BROWSER" 10)
 
 FILE=""
 NAME=""
@@ -92,7 +95,8 @@ elif [ $BENCHMARK -eq 1 ]; then
 fi
 
 native_built=0
-wasm_built=0
+wasm32_built=0
+wasm64_built=0
 
 build_native() {
   if [ $TEST -eq 1 ]; then
@@ -101,23 +105,34 @@ build_native() {
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
     if [ $OPTIMIZE -eq 1 ]; then opt_str+="o"; fi
     if [[ opt_str = "-" ]]; then opt_str=""; fi
-    (./scripts/build.sh -f "${FILE}" -n "${NAME}" "${opt_str}")
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t native "${opt_str}")
   elif [ $BENCHMARK -eq 1 ]; then
     native_built=1
     opt_str="-o"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
-    (./scripts/build.sh -f "${FILE}" -n "${NAME}" "${opt_str}")
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t native "${opt_str}")
   else
     echo "TODO"
   fi
 }
 
-build_wasm() {
+build_wasm32() {
   if [ $TEST -eq 1 ] || [ $BENCHMARK -eq 1 ]; then
-    wasm_built=1
-    opt_str="-wo"
+    wasm32_built=1
+    opt_str="-o"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
-    (./scripts/build.sh -f "${FILE}" -n "${NAME}" "${opt_str}")
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t wasm32 "${opt_str}")
+  else
+    echo "TODO"
+  fi
+}
+
+build_wasm64() {
+  if [ $TEST -eq 1 ] || [ $BENCHMARK -eq 1 ]; then
+    wasm64_built=1
+    opt_str="-o"
+    if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t wasm64 "${opt_str}")
   else
     echo "TODO"
   fi
@@ -128,7 +143,8 @@ positional_args=("$@")
 if [ $BENCHMARK -eq 1 ]; then
   
   run_native=0
-  run_wasm=0
+  run_wasm32=0
+  run_wasm64=0
   run_js=0
 
   if [ $RUN -eq 1 ]; then
@@ -138,7 +154,7 @@ if [ $BENCHMARK -eq 1 ]; then
 
   # default to benchmarking native, wasm, and js
   if [ ${#positional_args[@]} -eq 0 ]; then
-    positional_args=("native" "wasm" "js")
+    positional_args=("native" "wasm32" "js")
   fi
 
   # Build in parallel
@@ -151,17 +167,24 @@ if [ $BENCHMARK -eq 1 ]; then
         fi
         run_native=1
         ;;
-      wasm)
-        if [ $wasm_built -eq 0 ]; then 
-          build_wasm | with_prefix "$PREFIX_WASM" &
+      wasm32)
+        if [ $wasm32_built -eq 0 ]; then 
+          build_wasm32 | with_prefix "$PREFIX_WASM32" &
         fi
-        run_wasm=1
+        run_wasm32=1
+        ;;
+      wasm64)
+        if [ $wasm64_built -eq 0 ]; then 
+          build_wasm64 | with_prefix "$PREFIX_WASM64" &
+        fi
+        run_wasm64=1
         ;;
       js)
         run_js=1
         ;;
       *)
         echo "Unrecognized arg: ${arg}"
+        echo "When option -b is passed 'native', 'wasm32', 'wasm64', and 'js' are supported"
         exit 1
         ;;
     esac
@@ -173,10 +196,20 @@ if [ $BENCHMARK -eq 1 ]; then
   if [ $RUN -eq 1 ]; then
     # Run the benchmarks in parallel
     if [ $run_native -eq 1 ]; then
-      "./dist/${NAME}" | with_prefix "$PREFIX_NATIVE" &
+      "./dist/${NAME}_native" | with_prefix "$PREFIX_NATIVE" &
     fi
-    if [ $run_wasm -eq 1 ]; then
-      node --experimental-default-type=module benchmark/node_glue.js "./dist/${NAME}.wasm" | with_prefix "$PREFIX_WASM" &
+    if [ $run_wasm32 -eq 1 ]; then
+      node \
+      --experimental-default-type=module \
+      benchmark/node_glue.js \
+      "./dist/${NAME}_wasm32.wasm" | with_prefix "$PREFIX_WASM32" &
+    fi
+    if [ $run_wasm64 -eq 1 ]; then
+      node \
+      --experimental-default-type=module \
+      --experimental-wasm-memory64 \
+      benchmark/node_glue.js \
+      "./dist/${NAME}_wasm64.wasm" | with_prefix "$PREFIX_WASM64" &
     fi
     if [ $run_js -eq 1 ]; then
       node --experimental-default-type=module benchmark/benchmark.js | with_prefix "$PREFIX_JS" &
@@ -191,12 +224,14 @@ if [ $BENCHMARK -eq 1 ]; then
 else
 
   run_native=0
-  run_node=0
-  run_browser=0
+  run_node32=0
+  run_node64=0
+  run_browser32=0
+  run_browser64=0
 
-  default to benchmarking native, wasm, and js
+  # default to benchmarking native, wasm, and js
   if [ ${#positional_args[@]} -eq 0 ]; then
-    positional_args=("native" "node")
+    positional_args=("native" "node32")
   fi
 
   # Build in parallel
@@ -209,20 +244,33 @@ else
         fi
         run_native=1
         ;;
-      node)
-        if [ $wasm_built -eq 0 ]; then
-          build_wasm | with_prefix "$PREFIX_WASM" &
+      node32)
+        if [ $wasm32_built -eq 0 ]; then
+          build_wasm32 | with_prefix "$PREFIX_WASM32" &
         fi
-        run_node=1
+        run_node32=1
         ;;
-      browser)
-        if [ $wasm_built -eq 0 ]; then
-          build_wasm | with_prefix "$PREFIX_WASM" &
+      browser32)
+        if [ $wasm32_built -eq 0 ]; then
+          build_wasm32 | with_prefix "$PREFIX_WASM32" &
         fi
-        run_browser=1
+        run_browser32=1
+        ;;
+      node64)
+        if [ $wasm64_built -eq 0 ]; then
+          build_wasm64 | with_prefix "$PREFIX_WASM64" &
+        fi
+        run_node64=1
+        ;;
+      browser64)
+        if [ $wasm64_built -eq 0 ]; then
+          build_wasm64 | with_prefix "$PREFIX_WASM64" &
+        fi
+        run_browser64=1
         ;;
       *)
         echo "Unrecognized arg: ${arg}"
+        echo "'native', 'node32', 'node64', 'browser32', and 'browser64' are supported"
         exit 1
         ;;
     esac
@@ -234,20 +282,29 @@ else
   if [ $RUN -eq 1 ]; then
     if [ $run_native -eq 1 ]; then
       echo "== Running native ==========================="
-      "./dist/${NAME}"
+      "./dist/${NAME}_native"
     fi
-    if [ $run_node -eq 1 ]; then
-      echo "== Running wasm in node ====================="
-      node --experimental-default-type=module src/node_glue.js "./dist/${NAME}.wasm"
+    if [ $run_node32 -eq 1 ]; then
+      echo "== Running wasm32 in node ==================="
+      node --experimental-default-type=module src/node_glue.js "./dist/${NAME}_wasm32.wasm"
     fi
-    if [ $run_browser -eq 1 ]; then
-      echo "== Running wasm in browser =================="
+    if [ $run_browser32 -eq 1 ]; then
+      echo "== Running wasm32 in browser ================"
       # pass the wasm path to the webpage
-      export VITE_WASM_PATH="./dist/${NAME}.wasm"
+      export VITE_WASM_PATH="./dist/${NAME}_wasm32.wasm"
+      npm run start
+    fi
+    if [ $run_node64 -eq 1 ]; then
+      echo "== Running wasm64 in node ==================="
+      node --experimental-default-type=module src/node_glue.js "./dist/${NAME}_wasm64.wasm"
+    fi
+    if [ $run_browser64 -eq 1 ]; then
+      echo "== Running wasm64 in browser ================"
+      # pass the wasm path to the webpage
+      export VITE_WASM_PATH="./dist/${NAME}_wasm64.wasm"
       npm run start
     fi
     exit 0
   fi
-
 
 fi
