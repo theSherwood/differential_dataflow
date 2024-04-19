@@ -1,7 +1,7 @@
 # import std/[math, algorithm, strutils, strformat, sequtils, tables]
 import std/[sequtils]
-import parazoa
-import ./../common
+import ./parazoa
+import ../common
 
 proc setup_seq_of_parazoa_arrs*(sz, it, offset: int): seq[Vec[int]] =
   var i_off, k: int

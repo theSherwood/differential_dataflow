@@ -2,6 +2,7 @@
 # import ../src/[values]
 import ./src/nim/[common, map, arr]
 import ./src/nim/parazoa/arr as p_arr
+import ./src/nim/parazoa/map as p_map
 
 const RUN_PARAZOA = true
 
@@ -35,6 +36,7 @@ proc run_benchmarks() =
       bench("map_create", IMMUTABLE, map_create, 0, it)
       if RUN_PARAZOA:
         bench("arr_create", PARAZOA, parazoa_arr_create, 0, it)
+        bench("map_create", PARAZOA, parazoa_map_create, 0, it)
       for sz in [1, 10, 100, 1000]:
         if it < 100 and sz < 100: continue
         if it > 100 and sz >= 100: continue
@@ -75,6 +77,21 @@ proc run_benchmarks() =
             bench("arr_iter", PARAZOA, parazoa_arr_iter, sz, it)
             bench("arr_equal_true", PARAZOA, parazoa_arr_equal_true, sz, it)
             bench("arr_equal_false", PARAZOA, parazoa_arr_equal_false, sz, it)
+          block map:
+            bench("map_add_entry", PARAZOA, parazoa_map_add_entry, sz, it)
+            bench("map_add_entry_multiple", PARAZOA, parazoa_map_add_entry_multiple, sz, it)
+            bench("map_overwrite_entry", PARAZOA, parazoa_map_overwrite_entry, sz, it)
+            bench("map_del_entry", PARAZOA, parazoa_map_del_entry, sz, it)
+            bench("map_merge", PARAZOA, parazoa_map_merge, sz, it)
+            bench("map_has_key_true", PARAZOA, parazoa_map_has_key_true, sz, it)
+            bench("map_has_key_false", PARAZOA, parazoa_map_has_key_false, sz, it)
+            bench("map_get_existing", PARAZOA, parazoa_map_get_existing, sz, it)
+            bench("map_get_non_existing", PARAZOA, parazoa_map_get_non_existing, sz, it)
+            bench("map_iter_keys", PARAZOA, parazoa_map_iter_keys, sz, it)
+            bench("map_iter_values", PARAZOA, parazoa_map_iter_values, sz, it)
+            bench("map_iter_entries", PARAZOA, parazoa_map_iter_entries, sz, it)
+            bench("map_equal_true", PARAZOA, parazoa_map_equal_true, sz, it)
+            bench("map_equal_false", PARAZOA, parazoa_map_equal_false, sz, it)
 
   # rules benchmarks
   block:
