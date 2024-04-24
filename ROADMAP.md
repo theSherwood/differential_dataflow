@@ -14,7 +14,8 @@
 - [ ] finish differential dataflow
   - [ ] iteration
     - [ ] test with game of life
-  - [ ] genericity
+  - [!] genericity
+    - [This turns out to be a real problem. We might need concepts to be able to do this. Which sucks]
   - [ ] streams?
   - [ ] sources and sinks (views) similar to materialite
     - https://github.com/vlcn-io/materialite
