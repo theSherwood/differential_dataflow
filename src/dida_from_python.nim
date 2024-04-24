@@ -713,6 +713,14 @@ proc flat_map*(b: Builder, fn: FlatMapFn): Builder =
   build_unary(b, tFlatMap)
   n.flat_map_fn = fn
 
+proc reduce*(b: Builder, fn: ReduceFn, initial: Value): Builder =
+  build_unary(b, tReduce)
+  n.init_value = initial
+  n.reduce_fn = fn
+
+proc `distinct`*(b: Builder): Builder =
+  build_unary(b, tDistinct)
+
 proc on_row*(b: Builder, fn: OnRowFn): Builder =
   build_unary(b, tOnRow)
   n.on_row = fn
@@ -724,6 +732,9 @@ proc on_collection*(b: Builder, fn: OnCollectionFn): Builder =
 proc accumulate_results*(b: Builder): Builder =
   build_unary(b, tAccumulateResults)
   n.results = @[]
+
+proc iterate*(b: Builder): Builder =
+  discard
 
 # Pretty Print #
 # ---------------------------------------------------------------------
@@ -884,6 +895,16 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             let new_coll = m.collection.flat_map(n.flat_map_fn)
+            if new_coll.size > 0: n.send(m.version, new_coll)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
+    of tDistinct:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_coll = Collection(rows: m.collection.rows.distinct_inner())
             if new_coll.size > 0: n.send(m.version, new_coll)
           of tFrontier:
             frontier_change = true

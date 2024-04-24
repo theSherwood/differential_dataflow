@@ -12,10 +12,16 @@
     - [ ] str
   - [ ] interning
 - [ ] finish differential dataflow
-  - [ ] iteration
-    - [ ] test with game of life
+  - [ ] operators
+    - [ ] distinct
+    - [ ] reduce
+    - [ ] max
+    - [ ] min
+    - [ ] count
+    - [ ] iterate
+      - [ ] test with game of life
   - [!] genericity
-    - [This turns out to be a real problem. We might need concepts to be able to do this. Which sucks]
+    - [This turns out to be a real problem. We might need concepts to be able to do this. Which sucks.]
   - [ ] streams?
   - [ ] sources and sinks (views) similar to materialite
     - https://github.com/vlcn-io/materialite

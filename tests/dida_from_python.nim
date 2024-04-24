@@ -345,6 +345,46 @@ proc main* =
       g.step
       check r.node.results == correct_data
 
+    test "distinct":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1), (V [0, 2], 3), (V [2, 5], 3), (V [0, 1], 5)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5), (V [0, 3], 1)].COL),
+          ([2].VER, [(V [2, 3], 1), (V [0, 4], 1), (V [2, 3], 9)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1), (V [0, 2], 1), (V [2, 5], 1)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 1), (V [0, 3], 1)].COL),
+          ([2].VER, [(V [2, 3], 1), (V [0, 4], 1)].COL),
+        ]
+        input = init_builder()
+        r = input.distinct.accumulate_results
+        g = input.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[3].VER].FTR)
+      g.step
+      check r.node.results == correct_data
+
+    test "distinct with consolidate":
+      var
+        initial_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1), (V [0, 2], 3), (V [2, 5], 3), (V [0, 1], 5)].COL),
+          ([0].VER, [(V [0, 1], 1), (V [8, 9], 5), (V [0, 3], 1)].COL),
+          ([2].VER, [(V [2, 3], 1), (V [0, 4], 1), (V [2, 3], 9)].COL),
+        ]
+        correct_data: seq[(Version, Collection)] = @[
+          ([0].VER, [(V [0, 1], 1), (V [0, 2], 1), (V [2, 5], 1), (V [8, 9], 1), (V [0, 3], 1)].COL),
+          ([2].VER, [(V [2, 3], 1), (V [0, 4], 1)].COL),
+        ]
+        input = init_builder()
+        r = input.consolidate.distinct.accumulate_results
+        g = input.graph
+      for (v, c) in initial_data: g.send(v, c)
+      g.send([[3].VER].FTR)
+      g.step
+      check r.node.results == correct_data
+
+
       #[
       # Rete-like approaches
       var
