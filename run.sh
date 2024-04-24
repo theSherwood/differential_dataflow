@@ -14,17 +14,19 @@ Options:
   -u --user_settings   Use user_settings.sh to setup variables.
   -t --test            Test. Accepts positional args [native node browser].
   -b --bench           Benchmark Accepts positional args [native wasm js].
+  -o --optimize        (This is done by default for wasm targets).
 "
 
 RUN=0
 TEST=0
+OPTIMIZE=0
 BENCHMARK=0
 USER_SETTINGS=0
 
 # A POSIX variable
 OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
-while getopts "h?rtbu" opt; do
+while getopts "h?rtobu" opt; do
   case "$opt" in
     h|\?)
       echo "$__help_string"
@@ -32,6 +34,7 @@ while getopts "h?rtbu" opt; do
       ;;
     r) RUN=1 ;;
     t) TEST=1 ;;
+    o) OPTIMIZE=1 ;;
     b) BENCHMARK=1 ;;
     u) USER_SETTINGS=1 ;;
     -)
@@ -43,6 +46,7 @@ while getopts "h?rtbu" opt; do
         run           ) RUN=1 ;;
         test          ) TEST=1 ;;
         bench         ) BENCHMARK=1 ;;
+        optimize      ) OPTIMIZE=1 ;;
         user_settings ) USER_SETTINGS=1 ;;
         *)
           echo "Invalid option: --$OPTARG"
