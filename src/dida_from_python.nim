@@ -9,18 +9,21 @@ type
   Value* = ImValue
   Entry* = Value
 
-  Row* = (Entry, int)
+  Row*[T] = (T, int)
   
-  Collection* = object
-    rows*: seq[Row]
+  Collection*[T] = object
+    rows*: seq[Row[T]]
 
-  MapFn* = proc (e: Entry): Entry {.closure.}
-  FilterFn* = proc (e: Entry): bool {.closure.}
-  FlatMapFn* = proc (e: Entry): ImArray {.closure.}
-  ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
-  CollIterateFn* = proc (c: Collection): Collection {.closure.}
+  FilterFn*[T] = proc (x: T): bool {.closure.}
+  MapFn*[In, Out] = proc (x: In): Out {.closure.}
+  FlatMapFn*[In, OutIterable] = proc (x: In): OutIterable {.closure.}
+  ReduceFn*[In, Out] = proc (rows: seq[Row[In]]): seq[Row[Out]] {.closure.}
+  CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
 
-func size*(c: Collection): int = return c.rows.len
+func size*[T](c: Collection[T]): int = return c.rows.len
+
+template entry*[T](r: Row[T]): T = r[0]
+template multiplicity*[T](r: Row[T]): int = r[1]
 
 proc key*(e: Entry): Value =
   doAssert e.is_array
@@ -28,119 +31,117 @@ proc key*(e: Entry): Value =
 proc value*(e: Entry): Value =
   doAssert e.is_array
   return e.as_arr[1]
-template entry*(r: Row): Entry = r[0]
-template key*(r: Row): Value = r.entry.key
-template value*(r: Row): Value = r.entry.value
-template multiplicity*(r: Row): int = r[1]
+template key*(r: Row[Value]): Value = r.entry.key
+template value*(r: Row[Value]): Value = r.entry.value
 
-template `[]`*(c: Collection, i: int): untyped = c.rows[i]
-template `[]=`*(c: Collection, i: int, r: Row) = c.rows[i] = r
-template add*(c: Collection, r: Row) = c.rows.add(r)
+template `[]`*[T](c: Collection[T], i: int): untyped = c.rows[i]
+template `[]=`*[T](c: Collection[T], i: int, r: Row[T]) = c.rows[i] = r
+template add*[T](c: Collection[T], r: Row[T]) = c.rows.add(r)
 
-iterator items*(c: Collection): Row =
+iterator items*[T](c: Collection[T]): Row[T] =
   for r in c.rows:
     yield r
 
 ## This is quite an expensive operation. It would be good to find a faster way
 ## to compute this.
 ## Using an xor-based hash for entries could help a lot.
-func `==`*(c1, c2: Collection): bool =
+func `==`*[T](c1, c2: Collection[T]): bool =
   var
-    t1 = initTable[Entry, int]()
-    t2 = initTable[Entry, int]()
+    t1 = initTable[T, int]()
+    t2 = initTable[T, int]()
   for (e, m) in c1:
     t1[e] = m + t1.getOrDefault(e, 0)
   for (e, m) in c2:
     t2[e] = m + t2.getOrDefault(e, 0)
   return t1 == t2
 
-func map*(c: Collection, f: MapFn): Collection =
+func filter*[T](c: Collection[T], f: FilterFn[T]): Collection[T] =
+  for r in c:
+    if f(r.entry): result.add(r)
+
+func map*[T, U](c: Collection[T], f: MapFn[T, U]): Collection[U] =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (f(c[i].entry), c[i].multiplicity)
 
-func filter*(c: Collection, f: FilterFn): Collection =
-  for r in c:
-    if f(r.entry): result.add(r)
-
-func flat_map*(c: Collection, f: FlatMapFn): Collection =
+func flat_map*[T, U, V](c: Collection[T], f: FlatMapFn[T, U]): Collection[V] =
   for r in c:
     for e in f(r.entry):
       result.add((e, r.multiplicity))
 
-func negate*(c: Collection): Collection =
+func negate*[T](c: Collection[T]): Collection[T] =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (c[i].entry, 0 - c[i].multiplicity)
 
-func concat*(c1, c2: Collection): Collection =
+func concat*[T](c1, c2: Collection[T]): Collection[T] =
   for r in c1: result.add(r)
   for r in c2: result.add(r)
 
-proc mut_concat(c1: var Collection, c2: Collection) =
+proc mut_concat[T](c1: var Collection[T], c2: Collection[T]) =
   for r in c2: c1.add(r)
 
-func consolidate*(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+func consolidate*[T](rows: seq[Row[T]]): seq[Row[T]] =
+  var t = initTable[T, int]()
   for (e, m) in rows:
     t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
-func consolidate*(c: Collection): Collection =
-  var t = initTable[Entry, int]()
+func consolidate*[T](c: Collection[T]): Collection[T] =
+  var t = initTable[T, int]()
   for (e, m) in c:
     t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
-proc print*(c: Collection, label: string): Collection =
+proc print*[T](c: Collection[T], label: string): Collection[T] =
   echo label, ": ", c
   return c
 
-proc to_row_table_by_key(t: var Table[Value, seq[Row]], c: Collection) =
+proc to_row_table_by_key[T](t: var Table[T, seq[Row[T]]], c: Collection[T]) =
   for r in c:
     if t.hasKey(r.key):
       t[r.key].add(r)
     else:
       t[r.key] = @[r]
 
-proc join*(c1, c2: Collection): Collection =
-  let empty_seq = newSeq[Row]()
-  var t = initTable[Value, seq[Row]]()
+proc join*(c1, c2: Collection[Value]): Collection[Value] =
+  let empty_seq = newSeq[Row[Value]]()
+  var t = initTable[Value, seq[Row[Value]]]()
   t.to_row_table_by_key(c1)
   for r in c2:
     for r2 in t.getOrDefault(r.key, empty_seq):
       result.add((V [r.key, [r2.value, r.value]], r.multiplicity * r2.multiplicity))
 
 ## Keys must not be changed by the reduce fn
-proc reduce*(c: Collection, f: ReduceFn): Collection =
-  var t = initTable[Value, seq[Row]]()
+proc reduce*[T, U](c: Collection[T], f: ReduceFn[T, U]): Collection[U] =
+  var t = initTable[T, seq[Row[T]]]()
   t.to_row_table_by_key(c)
   for r in t.values:
     for r2 in f(r):
       result.add(r2)
 
-proc count_inner(rows: seq[Row]): seq[Row] =
+proc count_inner(rows: seq[Row[Value]]): seq[Row[Value]] =
   let k = rows[0].key
   var cnt = 0
   for r in rows: cnt += r.multiplicity
   return @[(V [k, cnt.float64], 1)]
 
-proc count*(c: Collection): Collection =
+proc count*(c: Collection[Value]): Collection[Value] =
   return c.reduce(count_inner)
 
-proc sum_inner(rows: seq[Row]): seq[Row] =
+proc sum_inner(rows: seq[Row[Value]]): seq[Row[Value]] =
   let k = rows[0].key
   var cnt = 0.float64
   for r in rows: cnt += r.value.as_f64 * r.multiplicity.float64
   return @[(V [k, cnt], 1)]
 
-proc sum*(c: Collection): Collection =
+proc sum*(c: Collection[Value]): Collection[Value] =
   return c.reduce(sum_inner)
 
-proc distinct_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+proc distinct_inner[T](rows: seq[Row[T]]): seq[Row[T]] =
+  var t = initTable[T, int]()
   for r in rows:
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
   result = @[]
@@ -150,11 +151,11 @@ proc distinct_inner(rows: seq[Row]): seq[Row] =
       result.add((e, 1))
 
 ## Reduce a collection to a set
-proc `distinct`*(c: Collection): Collection =
+proc `distinct`*[T](c: Collection[T]): Collection[T] =
   return c.reduce(distinct_inner)
 
-proc min_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+proc min_inner(rows: seq[Row[Value]]): seq[Row[Value]] =
+  var t = initTable[Value, int]()
   var k = rows[0].key
   for r in rows:
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
@@ -174,14 +175,14 @@ proc min_inner(rows: seq[Row]): seq[Row] =
   else:
     return @[]
 
-proc min*(c: Collection): Collection =
+proc min*(c: Collection[Value]): Collection[Value] =
   try:
     return c.reduce(min_inner)
   except TypeException as e:
     raise newException(TypeException, "Incomparable types")
 
-proc max_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+proc max_inner(rows: seq[Row[Value]]): seq[Row[Value]] =
+  var t = initTable[Value, int]()
   var k = rows[0].key
   for r in rows:
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
@@ -201,20 +202,20 @@ proc max_inner(rows: seq[Row]): seq[Row] =
   else:
     return @[]
 
-proc max*(c: Collection): Collection =
+proc max*(c: Collection[Value]): Collection[Value] =
   try:
     return c.reduce(max_inner)
   except TypeException as e:
     raise newException(TypeException, "Incomparable types")
 
-proc iterate*(c: Collection, f: CollIterateFn): Collection =
+proc iterate*[T](c: Collection[T], f: CollIterateFn[T]): Collection[T] =
   var curr = c
   while true:
     result = f(curr)
     if curr == result: break
     curr = result
 
-proc init_collection*(rows: openArray[Row]): Collection =
+proc init_collection*[T](rows: openArray[Row[T]]): Collection[T] =
   for r in rows:
     result.add(r)
 
@@ -385,32 +386,32 @@ proc step*(f: Frontier, delta: int): Frontier =
 # ---------------------------------------------------------------------
 
 type
-  Index* = ref object
+  Index*[T] = ref object
     compaction_frontier*: Frontier
     # Might be better as a tuple tree
-    key_to_versions*: Table[Value, seq[Version]] 
-    key_version_to_rows*: Table[(Value, Version), seq[Row]]
+    key_to_versions*: Table[T, seq[Version]] 
+    key_version_to_rows*: Table[(T, Version), seq[Row[T]]]
 
-proc is_empty(i: Index): bool =
+proc is_empty[T](i: Index[T]): bool =
   return i.key_to_versions.len == 0
 
-proc validate(i: Index, v: Version) =
+proc validate[T](i: Index[T], v: Version) =
   if i.compaction_frontier.isNil: return
   doAssert i.compaction_frontier.le(v)
-proc validate(i: Index, f: Frontier) =
+proc validate[T](i: Index[T], f: Frontier) =
   if i.compaction_frontier.isNil: return
   doAssert i.compaction_frontier.le(f)
 
-proc reconstruct_at(i: Index, key: Value, v: Version): seq[Row] =
+proc reconstruct_at[T](i: Index[T], key: T, v: Version): seq[Row[T]] =
   i.validate(v)
   for vers in i.key_to_versions.getOrDefault(key):
     if vers.le(v):
       result.add(i.key_version_to_rows.getOrDefault((key, vers)))
 
-proc versions(i: Index, key: Value): seq[Version] =
+proc versions[T](i: Index[T], key: T): seq[Version] =
   return i.key_to_versions.getOrDefault(key)
 
-proc add(i: var Index, key: Value, version: Version, row: Row) =
+proc add[T](i: var Index[T], key: T, version: Version, row: Row[T]) =
   if key in i.key_to_versions:
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
@@ -422,7 +423,7 @@ proc add(i: var Index, key: Value, version: Version, row: Row) =
   else:
     i.key_to_versions[key] = @[version]
     i.key_version_to_rows[(key, version)] = @[row]
-proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
+proc add[T](i: var Index[T], key: T, version: Version, rows: seq[Row[T]]) =
   if key in i.key_to_versions:
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
@@ -435,7 +436,7 @@ proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
     i.key_to_versions[key] = @[version]
     i.key_version_to_rows[(key, version)] = rows
 
-proc mut_concat(i1: var Index, i2: Index) =
+proc mut_concat[T](i1: var Index[T], i2: Index[T]) =
   if i2.is_empty: return
   for (kv, rows) in i2.key_version_to_rows.pairs:
     let (key, version) = kv
@@ -451,11 +452,11 @@ proc mut_concat(i1: var Index, i2: Index) =
       i1.key_to_versions[key] = @[version]
       i1.key_version_to_rows[kv] = rows
 
-proc product_join(i1, i2: Index): seq[(Version, Collection)] =
+proc product_join(i1, i2: Index[Value]): seq[(Version, Collection[Value])] =
   if i1.is_empty or i2.is_empty: return
   var join_version: Version
-  var version_to_rows: Table[Version, seq[Row]]
-  var rows, rows1, rows2: seq[Row]
+  var version_to_rows: Table[Version, seq[Row[Value]]]
+  var rows, rows1, rows2: seq[Row[Value]]
   for (key, versions) in i1.key_to_versions.pairs:
     if key notin i2.key_to_versions: continue
     let versions2 = i2.key_to_versions[key]
@@ -473,9 +474,9 @@ proc product_join(i1, i2: Index): seq[(Version, Collection)] =
             rows.add((V [r1.entry, r2.entry], r1.multiplicity * r2.multiplicity))
         version_to_rows[join_version] = rows
   for (v, rows) in version_to_rows.pairs:
-    if rows.len > 0: result.add((v, Collection(rows: rows)))
+    if rows.len > 0: result.add((v, Collection[Value](rows: rows)))
 
-proc compact(i: var Index, compaction_frontier: Frontier) =
+proc compact[T](i: var Index[T], compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
   var to_consolidate: seq[Version] = @[]
   for (key, versions) in i.key_to_versions.pairs:
@@ -494,26 +495,26 @@ proc compact(i: var Index, compaction_frontier: Frontier) =
 # ---------------------------------------------------------------------
 
 type
-  OnRowFn* = proc (r: Row): void
-  OnCollectionFn* = proc (v: Version, c: Collection): void
+  OnRowFn*[T] = proc (r: Row[T]): void
+  OnCollectionFn*[T] = proc (v: Version, c: Collection[T]): void
 
   MessageTag* = enum
     tData
     tFrontier
   
-  Message* = object
+  Message*[T] = object
     case tag*: MessageTag:
       of tData:
         version*: Version
-        collection*: Collection
+        collection*: Collection[T]
       of tFrontier:
         frontier*: Frontier
 
-  Edge* = ref object
+  Edge*[In, Out] = ref object
     id*: Hash
-    input*: Node
-    output*: Node
-    queue*: seq[Message]
+    input*: Node[In]
+    output*: Node[Out]
+    queue*: seq[Message[In]]
   
   NodeTag* = enum
     tPassThrough
@@ -547,34 +548,34 @@ type
     tVersionIncrement
     tVersionPop
 
-  Node* = ref object
+  Node*[In, Out] = ref object
     id*: int
-    inputs*: seq[Edge]
-    outputs*: seq[Edge]
+    inputs*: seq[Edge[UNKOWN, In]]
+    outputs*: seq[Edge[Out, UNKNOWN2]]
     input_frontiers*: seq[Frontier]
     output_frontier*: Frontier
     case tag*: NodeTag:
       of tPrint:
         label*: string
       of tConsolidate:
-        collections*: Table[Version, Collection]
+        collections*: Table[Version, Collection[In]]
       of tProduct:
-        indexes*: (Index, Index)
+        indexes*: (Index[In], Index[In])
       of tMap:
-        map_fn*: MapFn
+        map_fn*: MapFn[In, Out]
       of tFilter:
-        filter_fn*: FilterFn
+        filter_fn*: FilterFn[In]
       of tFlatMap:
-        flat_map_fn*: FlatMapFn
+        flat_map_fn*: FlatMapFn[In, UNKNOWN3]
       of tReduce:
-        init_value*: Value
-        reduce_fn*: ReduceFn
+        init_value*: Out
+        reduce_fn*: ReduceFn[In, Out]
       of tOnRow:
-        on_row*: OnRowFn
+        on_row*: OnRowFn[In]
       of tOnCollection:
-        on_collection*: OnCollectionFn
+        on_collection*: OnCollectionFn[In]
       of tAccumulateResults:
-        results*: seq[(Version, Collection)]
+        results*: seq[(Version, Collection[In])]
       else:
         discard
   
