@@ -290,6 +290,19 @@ proc step*(v: Version, delta: int): Version =
   timestamps[^1] += 1
   return to_version(timestamps)
 
+proc sort(vs: var seq[Version]) =
+  vs.sort(
+    proc (a, b: Version): int =
+      let
+        aa = a.timestamps
+        bb = b.timestamps
+        l = min(aa.len, bb.len)
+      for i in 0..<l:
+        if aa[i] < bb[i]: return -1
+        if aa[i] > bb[i]: return 1
+      return aa.len - bb.len
+  )
+
 iterator items*(f: Frontier): Version =
   for v in f.versions:
     yield v
@@ -324,18 +337,7 @@ proc meet*(f1, f2: Frontier): Frontier =
   new_f.update_hash
   return new_f
 
-proc sort(f: Frontier) =
-  f.versions.sort(
-    proc (a, b: Version): int =
-      let
-        aa = a.timestamps
-        bb = b.timestamps
-        l = min(aa.len, bb.len)
-      for i in 0..<l:
-        if aa[i] < bb[i]: return -1
-        if aa[i] > bb[i]: return 1
-      return aa.len - bb.len
-  )
+template sort(f: Frontier) = f.versions.sort()
 
 proc `==`*(f1, f2: Frontier): bool =
   result = false
@@ -415,6 +417,7 @@ proc add(i: var Index, key: Value, version: Version, row: Row) =
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
       s.add(version)
+      i.key_to_versions[key] = s
     if (key, version) in i.key_version_to_rows:
       i.key_version_to_rows[(key, version)].add(row)
     else:
@@ -427,6 +430,7 @@ proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
       s.add(version)
+      i.key_to_versions[key] = s
     if (key, version) in i.key_version_to_rows:
       i.key_version_to_rows[(key, version)].add(rows)
     else:
@@ -494,6 +498,7 @@ proc compact(i: var Index, compaction_frontier: Frontier) =
 # ---------------------------------------------------------------------
 
 type
+  BuilderIterateFn* = proc (b: Builder): Builder
   OnRowFn* = proc (r: Row): void
   OnCollectionFn* = proc (v: Version, c: Collection): void
 
@@ -518,6 +523,9 @@ type
   NodeTag* = enum
     tPassThrough
     tIterate
+    tIngress
+    tEgress
+    tFeedback
     tInput
     tOutput
     tIndex
@@ -567,8 +575,14 @@ type
       of tFlatMap:
         flat_map_fn*: FlatMapFn
       of tReduce:
-        init_value*: Value
+        index*: Index
+        index_out*: Index
+        keys_todo*: Table[Version, HashSet[Value]]
         reduce_fn*: ReduceFn
+      of tFeedback:
+        step_size*: int
+        in_flight_data*: Table[Version, HashSet[Version]]
+        empty_versions*: Table[Version, HashSet[Version]]
       of tOnRow:
         on_row*: OnRowFn
       of tOnCollection:
@@ -584,7 +598,7 @@ type
     edges*: HashSet[Edge]
   
   Builder* = object
-    frontier*: Frontier
+    frontier_stack*: seq[Frontier]
     graph*: Graph
     node*: Node
 
@@ -657,7 +671,7 @@ proc pending_data*(n: Node): bool =
 proc init_builder*(g: Graph, f: Frontier): Builder =
   var b = Builder()
   b.graph = g
-  b.frontier = f
+  b.frontier_stack = @[f]
   b.node = g.top_node
   return b
 template init_builder*(f: Frontier): Builder =
@@ -668,17 +682,34 @@ template init_builder*(): Builder =
   let f = init_frontier([init_version()])
   init_builder(init_graph(init_node(tPassThrough, f)), f)
 
+template frontier*(b: Builder): Frontier = b.frontier_stack[^1]
+
+proc start_scope(b: Builder): Builder =
+  result.frontier_stack = b.frontier_stack
+  result.frontier_stack.add(result.frontier.extend)
+  result.graph = b.graph
+  result.node = b.node
+proc end_scope(b: Builder): Builder =
+  result.frontier_stack = b.frontier_stack
+  discard result.frontier_stack.pop()
+  result.graph = b.graph
+  result.node = b.node
+
 template build_unary(b: Builder, t: NodeTag) {.dirty.} =
   var n = init_node(t, b.frontier)
   connect(b.graph, b.node, n)
+  result.frontier_stack = b.frontier_stack
   result.graph = b.graph
   result.node = n
+proc build_unary_proc(b: Builder, t: NodeTag): Builder =
+  build_unary(b, t)
 
 template build_binary(b: Builder, t: NodeTag, other: Node) {.dirty.} =
   var n = init_node(t, b.frontier)
   doAssert b.node != nil
   connect(b.graph, b.node, n)
   connect(b.graph, other, n)
+  result.frontier_stack = b.frontier_stack
   result.graph = b.graph
   result.node = n
 
@@ -713,13 +744,38 @@ proc flat_map*(b: Builder, fn: FlatMapFn): Builder =
   build_unary(b, tFlatMap)
   n.flat_map_fn = fn
 
-proc reduce*(b: Builder, fn: ReduceFn, initial: Value): Builder =
+proc reduce*(b: Builder, fn: ReduceFn): Builder =
   build_unary(b, tReduce)
-  n.init_value = initial
+  n.index = Index()
+  n.index_out = Index()
   n.reduce_fn = fn
 
 proc `distinct`*(b: Builder): Builder =
-  build_unary(b, tDistinct)
+  return b.reduce(distinct_inner)
+
+proc ingress(b: Builder): Builder =
+  build_unary(b, tIngress)
+
+proc egress(b: Builder): Builder =
+  build_unary(b, tEgress)
+
+proc feedback(b: Builder, step: int): Builder =
+  build_unary(b, tFeedback)
+  n.step_size = step
+
+proc iterate*(b: Builder, fn: BuilderIterateFn): Builder =
+  var scope = b.start_scope
+  var ingress_b = scope.ingress
+  # we only connect one stream to our concat node for now
+  var concat_b = build_unary_proc(ingress_b, tConcat)
+  var output = fn(concat_b)
+  var feedback_b = output.feedback(1)
+  # now we connect the other stream to our concat node
+  connect(feedback_b.graph, feedback_b.node, concat_b.node)
+  return output.egress.end_scope
+
+proc count*(b: Builder): Builder =
+  build_unary(b, tCount)
 
 proc on_row*(b: Builder, fn: OnRowFn): Builder =
   build_unary(b, tOnRow)
@@ -741,19 +797,25 @@ proc iterate*(b: Builder): Builder =
 
 proc `$`*(t: NodeTag): string =
   result = case t:
-    of tInput:        "Input"
-    of tPassThrough:  "PassThrough"
-    of tPrint:        "Print"
-    of tNegate:       "Negate"
-    of tConcat:       "Concat"
-    of tProduct:      "Product"
-    of tJoinColumns:  "JoinColumns"
-    of tJoin:         "Join"
-    of tMap:          "Map"
-    of tFilter:       "Filter"
-    of tOnRow:        "OnRow"
-    of tOnCollection: "OnCollection"
-    else:             "TODO"
+    of tInput:              "Input"
+    of tPassThrough:        "PassThrough"
+    of tPrint:              "Print"
+    of tNegate:             "Negate"
+    of tConcat:             "Concat"
+    of tProduct:            "Product"
+    of tJoinColumns:        "JoinColumns"
+    of tJoin:               "Join"
+    of tMap:                "Map"
+    of tFilter:             "Filter"
+    of tOnRow:              "OnRow"
+    of tOnCollection:       "OnCollection"
+    of tIngress:            "Ingress"
+    of tEgress:             "Egress"
+    of tReduce:             "Reduce"
+    of tConsolidate:        "Consolidate"
+    of tDistinct:           "Distinct"
+    of tAccumulateResults:  "AccumulateResults"
+    else:                   "TODO"
 
 proc string_from_pprint_seq(s: seq[(int, string)]): string =
   for (count, str) in s:
@@ -828,11 +890,15 @@ proc send*(g: Graph, m: Message) = g.top_node.send(m)
 # Step #
 # ---------------------------------------------------------------------
 
-proc handle_frontier_message(n: Node, m: Message, idx: int) =
-  doAssert n.input_frontiers[idx].le(m.frontier)
-  n.input_frontiers[idx] = m.frontier
+proc handle_frontier_message(n: Node, f: Frontier, idx: int) =
+  doAssert n.input_frontiers[idx].le(f)
+  n.input_frontiers[idx] = f
+template handle_frontier_message(n: Node, m: Message, idx: int) =
+  handle_frontier_message(n, m.frontier, idx)
+template handle_frontier_message_unary(n: Node, f: Frontier) =
+  handle_frontier_message(n, f, 0)
 template handle_frontier_message_unary(n: Node, m: Message) =
-  handle_frontier_message(n, m, 0)
+  handle_frontier_message(n, m.frontier, 0)
 
 proc output_frontier_message(n: Node) =
   var input_frontier: Frontier
@@ -900,6 +966,50 @@ proc step(n: Node) =
             frontier_change = true
             n.handle_frontier_message_unary(m)
       n.inputs[0].clear
+    of tIngress:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_version = m.version.extend
+            n.send(new_version, m.collection)
+            n.send(new_version.step(1), m.collection.negate)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m.frontier)
+      n.inputs[0].clear
+      if frontier_change:
+        var input_f_ext = n.input_frontiers[0].extend
+        doAssert n.output_frontier.le(input_f_ext)
+        if n.output_frontier.lt(input_f_ext):
+          n.output_frontier = input_f_ext
+          n.send(input_f_ext)
+      frontier_change = false
+    of tEgress:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_version = m.version.truncate
+            n.send(new_version, m.collection)
+          of tFrontier:
+            frontier_change = true
+            let new_frontier = m.frontier.truncate
+            n.handle_frontier_message_unary(new_frontier)
+      n.inputs[0].clear
+    of tFeedback:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_version = m.version.step(n.step_size)
+            n.send(new_version, m.collection)
+            let truncated = new_version.truncate
+            if truncated notin n.in_flight_data:
+              n.in_flight_data[truncated] = toHashSet([new_version])
+            if truncated notin n.empty_versions:
+              n.empty_versions[truncated] = initHashSet[Version]()
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
     of tDistinct:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -910,6 +1020,55 @@ proc step(n: Node) =
             frontier_change = true
             n.handle_frontier_message_unary(m)
       n.inputs[0].clear
+    of tReduce:
+      proc subtract_values(fst, snd: seq[Row]): seq[Row] =
+        var res: Table[Value, int]
+        for (e, m) in fst:
+          res[e] = res.getOrDefault(e, 0) + m
+        for (e, m) in snd:
+          res[e] = res.getOrDefault(e, 0) - m
+        for (e, m) in res.pairs:
+          if m != 0: result.add((e, m))
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            for r in m.collection:
+              n.index.add(r.key, m.version, r)
+              if m.version in n.keys_todo:
+                n.keys_todo[m.version].incl(r.key)
+              else:
+                n.keys_todo[m.version] = toHashSet([r.key])
+              for v2 in n.index.key_to_versions[r.key]:
+                let v3 = m.version.join(v2)
+                if v3 in n.keys_todo:
+                  n.keys_todo[v3].incl(r.key)
+                else:
+                  n.keys_todo[v3] = toHashSet([r.key])
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
+      let input_frontier = n.input_frontiers[0]
+      var finished_versions: seq[Version] = @[]
+      for version in n.keys_todo.keys:
+        if not(input_frontier.le(version)): finished_versions.add(version)
+      finished_versions.sort()
+      for version in finished_versions:
+        let keys = n.keys_todo[version]
+        n.keys_todo.del(version)
+        var res: seq[Row] = @[]
+        for key in keys:
+          var curr = n.index.reconstruct_at(key, version)
+          var curr_out = n.index_out.reconstruct_at(key, version)
+          var Out = n.reduce_fn(curr)
+          var delta = subtract_values(Out, curr_out)
+          for r in delta:
+            res.add(r)
+            n.index_out.add(key, version, r)
+        if res.len > 0:
+          n.send(version, Collection(rows: res))
+      n.inputs[0].clear
+    of tCount:
+      discard
     of tConcat:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -1003,6 +1162,6 @@ proc step(n: Node) =
       discard
   if frontier_change: n.output_frontier_message
 proc step*(g: Graph) =
-  for n in g.nodes: n.step
+  for n in g.nodes: n.step()
 
 
