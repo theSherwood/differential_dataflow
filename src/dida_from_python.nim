@@ -310,8 +310,8 @@ iterator items*(f: Frontier): Version =
 proc add(f: Frontier, v: Version) =
   var new_versions: seq[Version] = @[]
   for v2 in f:
-    if v.le(v2): return
-    if not(v2.le(v)):
+    if v2.le(v): return
+    if not(v.le(v2)):
       new_versions.add(v2)
   new_versions.add(v)
   f.versions = new_versions
@@ -345,6 +345,11 @@ proc `==`*(f1, f2: Frontier): bool =
     f1.sort
     f2.sort
     result = f1.versions == f2.versions
+
+proc `$`*(v: Version): string =
+  return "v" & v.timestamps.map(proc (t: int): string = $t).join(".")
+proc `$`*(f: Frontier): string =
+  return "F(" & f.versions.map(proc (v: Version): string = $v).join(" ") & ")" 
 
 proc le*(f: Frontier, v: Version): bool =
   for v2 in f:
@@ -519,6 +524,7 @@ type
     input*: Node
     output*: Node
     queue*: seq[Message]
+    frontier*: Frontier
   
   NodeTag* = enum
     tPassThrough
@@ -867,10 +873,18 @@ proc pprint*(g: Graph): string =
 # ---------------------------------------------------------------------
 
 template send*(e: Edge, v: Version, c: Collection) =
+  doAssert e.frontier.isNil or e.frontier.le(v)
   e.queue.add(Message(tag: tData, version: v, collection: c))
 template send*(e: Edge, f: Frontier) =
+  doAssert e.frontier.isNil or e.frontier.le(f)
+  e.frontier = f
   e.queue.add(Message(tag: tFrontier, frontier: f))
 template send*(e: Edge, m: Message) =
+  if m.tag == tData:
+    doAssert e.frontier.isNil or e.frontier.le(m.version)
+  else:
+    doAssert e.frontier.isNil or e.frontier.le(m.frontier)
+    e.frontier = m.frontier
   e.queue.add(m)
 
 template send(n: Node, v: Version, c: Collection) {.dirty.} =
@@ -906,7 +920,9 @@ proc output_frontier_message(n: Node) =
   if l == 1:
     input_frontier = n.input_frontiers[0]
   elif l == 2:
+    # echo "2 input f: ", n.input_frontiers[0], " ", n.input_frontiers[1]
     input_frontier = n.input_frontiers[0].meet(n.input_frontiers[1])
+  # echo n.tag, " out: ", n.output_frontier, " ", input_frontier
   doAssert n.output_frontier.le(input_frontier)
   if n.output_frontier.lt(input_frontier):
     n.output_frontier = input_frontier
@@ -1009,6 +1025,36 @@ proc step(n: Node) =
           of tFrontier:
             frontier_change = true
             n.handle_frontier_message_unary(m)
+      let incremented_input_frontier = n.input_frontiers[0].step(n.step_size)
+      var versions = incremented_input_frontier.versions
+      var candidate_versions: seq[Version] = @[]
+      var rejected: seq[Version] = @[]
+      for v in versions:
+        var truncated = v.truncate
+        if truncated in n.in_flight_data and n.in_flight_data[truncated].len != 0:
+          candidate_versions.add(v)
+          for x in n.in_flight_data[truncated]:
+            if x.lt(v): n.in_flight_data[truncated].excl(x)
+        else:
+          if truncated in n.in_flight_data:
+            n.in_flight_data[truncated].incl(v)
+          else:
+            n.in_flight_data[truncated] = toHashSet([v])
+          if truncated notin n.empty_versions or n.empty_versions[truncated].len <= 3:
+            candidate_versions.add(v)
+          else:
+            n.in_flight_data.del(truncated)
+            n.empty_versions.del(truncated)
+            rejected.add(v)
+      for v in rejected:
+        for truncated in n.in_flight_data.keys:
+          candidate_versions.add(v.join(truncated.extend))
+      let candidate_frontier = init_frontier(candidate_versions)
+      doAssert n.output_frontier.le(candidate_frontier)
+      if n.output_frontier.lt(candidate_frontier):
+        n.output_frontier = candidate_frontier
+        n.send(candidate_frontier)
+      frontier_change = false
       n.inputs[0].clear
     of tDistinct:
       for m in n.inputs[0].queue:

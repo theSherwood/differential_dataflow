@@ -185,6 +185,9 @@ proc main* =
       check FTR([v0_0]) != (FTR([v1_0]))
       check FTR([v2_0, v1_1]) == (FTR([v1_1, v2_0]))
 
+      check [v1_0].FTR.meet([v0_0].FTR) == [v0_0].FTR
+      check [v0_0].FTR.meet([v1_0].FTR) == [v0_0].FTR
+
   suite "dida":
     test "simple on_row and on_collection":
       var
@@ -371,6 +374,7 @@ proc main* =
         return b
           .map((x) => V(x.as_f64 * 2.0))
           .concat(b)
+          # .print("concat")
           .filter((x) => x.as_f64 < 50.0)
           .map((x) => V([x, Nil]))
           # .print("map 1")
@@ -385,6 +389,10 @@ proc main* =
         g = b.graph
       g.send([0].VER, [(V 1, 1)].COL)
       g.send([[1].VER].FTR)
+      g.step
+      g.step
+      g.step
+      g.step
       g.step
       g.step
       g.step
