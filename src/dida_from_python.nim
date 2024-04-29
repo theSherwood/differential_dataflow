@@ -506,6 +506,7 @@ type
   BuilderIterateFn* = proc (b: Builder): Builder
   OnRowFn* = proc (r: Row): void
   OnCollectionFn* = proc (v: Version, c: Collection): void
+  OnMessageFn* = proc (m: Message): void
 
   MessageTag* = enum
     tData
@@ -547,6 +548,7 @@ type
     tPrint
     tNegate
     tConsolidate
+    tSink
     # binary
     tProduct
     tConcat
@@ -571,6 +573,8 @@ type
     case tag*: NodeTag:
       of tPrint:
         label*: string
+      of tSink:
+        sink_fn*: OnMessageFn
       of tConsolidate:
         collections*: Table[Version, Collection]
       of tProduct:
@@ -818,6 +822,55 @@ proc accumulate_messages*(b: Builder): Builder =
   build_unary(b, tAccumulateMessages)
   n.messages = @[]
 
+# Sinks #
+# ---------------------------------------------------------------------
+
+type
+  CompletableMultisetValue = ref object
+    done*: bool
+    table*: Table[Value, int]
+
+  VersionedMultiset* = ref object
+    data*: Table[Version, CompletableMultisetValue]
+  CumulativeVersionedMultiset* = ref object
+    data*: Table[Version, CompletableMultisetValue]
+
+proc init_versioned_multiset*(): VersionedMultiset =
+  return VersionedMultiset()
+
+proc sink*(b: Builder, s: VersionedMultiset): Builder = 
+  build_unary(b, tSink)
+  n.sink_fn = proc (m: Message): void =
+    case m.tag:
+      of tData:
+        var v: CompletableMultisetValue
+        if m.version in s.data:
+          v = s.data[m.version]
+          doAssert not(v.done)
+        else:
+          v = CompletableMultisetValue()
+          v.done = false
+          s.data[m.version] = v
+        for r in m.collection:
+          let multiplicity = r.multiplicity + v.table.getOrDefault(r.entry, 0)
+          if multiplicity == 0:
+            v.table.del(r.entry)
+          else:
+            v.table[r.entry] = multiplicity
+      of tFrontier:
+        for version, v in s.data.mpairs:
+          if not(m.frontier.le(version)):
+            v.done = true
+
+proc to_collection*(s: VersionedMultiset, v: Version): Collection =
+  if v in s.data:
+    var rows: seq[Row] = @[]
+    for entry, multiplicity in s.data[v].table.pairs:
+      rows.add((entry, multiplicity))
+    return init_collection(rows)
+  else:
+    return init_collection([])
+
 # Pretty Print #
 # ---------------------------------------------------------------------
 
@@ -965,6 +1018,16 @@ proc step(n: Node) =
             n.send(m)
           of tFrontier:
             echo &"{n.label}: [frontier] {m.frontier}"
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
+      n.inputs[0].clear
+    of tSink:
+      for m in n.inputs[0].queue:
+        n.sink_fn(m)
+        case m.tag:
+          of tData:
+            n.send(m)
+          of tFrontier:
             frontier_change = true
             n.handle_frontier_message(m, 0)
       n.inputs[0].clear
@@ -1258,5 +1321,3 @@ proc step(n: Node) =
   if frontier_change: n.output_frontier_message
 proc step*(g: Graph) =
   for n in g.nodes: n.step()
-
-

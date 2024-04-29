@@ -381,7 +381,8 @@ proc main* =
           .map((x) => x[0])
           .consolidate()
       var
-        b = init_builder().iterate(geometric_series)
+        vmultiset = init_versioned_multiset()
+        b = init_builder().iterate(geometric_series).sink(vmultiset)
         m = b.accumulate_messages
         r = m.accumulate_results
         g = m.graph
@@ -390,7 +391,6 @@ proc main* =
         v2 = [2].VER
         v3 = [3].VER
         fallback = 30
-
 
       g.send(v0, [(V 1, 1)].COL)
       g.send([v1].FTR)
@@ -410,6 +410,7 @@ proc main* =
           to_message([v1].FTR),
         ]
       check m.node.messages == v1_results
+      check vmultiset.to_collection(v0) == [(V 1, 1), (V 2, 1), (V 4, 1), (V 8, 1), (V 16, 1), (V 32, 1)].COL
 
       g.send(v1, [(V 16, 1), (V 3, 1)].COL)
       g.send([v2].FTR)
@@ -429,6 +430,7 @@ proc main* =
           to_message([v2].FTR),
         ])
       check m.node.messages == v2_results
+      check vmultiset.to_collection(v1) == [(V 3, 1), (V 6, 1), (V 12, 1), (V 24, 1), (V 48, 1)].COL
 
       g.send(v2, [(V 3, -1)].COL)
       g.send([v3].FTR)
@@ -447,6 +449,7 @@ proc main* =
           to_message([v3].FTR),
         ])
       check m.node.messages == v3_results
+      check vmultiset.to_collection(v2) == [(V 3, -1), (V 6, -1), (V 12, -1), (V 24, -1), (V 48, -1)].COL
 
       echo "done"
       # g.step
