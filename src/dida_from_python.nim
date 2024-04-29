@@ -281,7 +281,7 @@ proc extend*(v: Version): Version =
   return to_version(timestamps)
 
 proc truncate*(v: Version): Version =
-  var timestamps = toSeq(v.timestamps[0..^1])
+  var timestamps = toSeq(v.timestamps[0..^2])
   return to_version(timestamps)
 
 proc step*(v: Version, delta: int): Version =
@@ -556,6 +556,7 @@ type
     tOnRow
     tOnCollection
     tAccumulateResults
+    tAccumulateMessages
     # version manipulation - used in iteration
     tVersionPush
     tVersionIncrement
@@ -595,6 +596,8 @@ type
         on_collection*: OnCollectionFn
       of tAccumulateResults:
         results*: seq[(Version, Collection)]
+      of tAccumulateMessages:
+        messages*: seq[Message]
       else:
         discard
   
@@ -670,6 +673,22 @@ proc pending_data*(n: Node): bool =
   for e in n.inputs:
     if not(e.is_empty): return true
   return false
+
+proc probe_frontier_less_than*(n: Node, f: Frontier): bool =
+  return n.output_frontier.lt(f)
+
+proc `==`*(m1, m2: Message): bool =
+  if m1.tag != m2.tag: return false
+  case m1.tag:
+    of tData:
+      return m1.version == m2.version and m1.collection == m2.collection
+    of tFrontier:
+      return m1.frontier == m2.frontier
+
+template to_message*(v: Version, c: Collection): Message =
+  Message(tag: tData, version: v, collection: c)
+template to_message*(f: Frontier): Message =
+  Message(tag: tFrontier, frontier: f)
 
 # Builder #
 # ---------------------------------------------------------------------
@@ -778,7 +797,7 @@ proc iterate*(b: Builder, fn: BuilderIterateFn): Builder =
   var feedback_b = output.feedback(1)
   # now we connect the other stream to our concat node
   connect(feedback_b.graph, feedback_b.node, concat_b.node)
-  return output.egress.end_scope
+  return output.end_scope.egress
 
 proc count*(b: Builder): Builder =
   build_unary(b, tCount)
@@ -795,8 +814,9 @@ proc accumulate_results*(b: Builder): Builder =
   build_unary(b, tAccumulateResults)
   n.results = @[]
 
-proc iterate*(b: Builder): Builder =
-  discard
+proc accumulate_messages*(b: Builder): Builder =
+  build_unary(b, tAccumulateMessages)
+  n.messages = @[]
 
 # Pretty Print #
 # ---------------------------------------------------------------------
@@ -821,6 +841,8 @@ proc `$`*(t: NodeTag): string =
     of tConsolidate:        "Consolidate"
     of tDistinct:           "Distinct"
     of tAccumulateResults:  "AccumulateResults"
+    of tAccumulateMessages: "AccumulateMessages"
+    of tFeedback:           "Feedback"
     else:                   "TODO"
 
 proc string_from_pprint_seq(s: seq[(int, string)]): string =
@@ -920,9 +942,7 @@ proc output_frontier_message(n: Node) =
   if l == 1:
     input_frontier = n.input_frontiers[0]
   elif l == 2:
-    # echo "2 input f: ", n.input_frontiers[0], " ", n.input_frontiers[1]
     input_frontier = n.input_frontiers[0].meet(n.input_frontiers[1])
-  # echo n.tag, " out: ", n.output_frontier, " ", input_frontier
   doAssert n.output_frontier.le(input_frontier)
   if n.output_frontier.lt(input_frontier):
     n.output_frontier = input_frontier
@@ -940,9 +960,13 @@ proc step(n: Node) =
     of tPrint:
       for m in n.inputs[0].queue:
         case m.tag:
-          of tData:     echo &"{n.label}: D {m.version.pprint} {m.collection.rows}"
-          of tFrontier: echo &"{n.label}: F {m.frontier.pprint}"
-        n.send(m)
+          of tData:
+            echo &"{n.label}: [data] {m.version} {m.collection.rows}"
+            n.send(m)
+          of tFrontier:
+            echo &"{n.label}: [frontier] {m.frontier}"
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
       n.inputs[0].clear
     of tNegate:
       for m in n.inputs[0].queue:
@@ -1001,6 +1025,7 @@ proc step(n: Node) =
           n.send(input_f_ext)
       frontier_change = false
     of tEgress:
+      var input_frontier: Frontier
       for m in n.inputs[0].queue:
         case m.tag:
           of tData:
@@ -1009,7 +1034,16 @@ proc step(n: Node) =
           of tFrontier:
             frontier_change = true
             let new_frontier = m.frontier.truncate
-            n.handle_frontier_message_unary(new_frontier)
+            let truncated_input_frontier = n.input_frontiers[0].truncate
+            doAssert truncated_input_frontier.le(new_frontier)
+            n.input_frontiers[0] = m.frontier
+            input_frontier = new_frontier
+      if frontier_change:
+        doAssert n.output_frontier.le(input_frontier)
+        if n.output_frontier.lt(input_frontier):
+          n.output_frontier = input_frontier
+          n.send(input_frontier)
+      frontier_change = false
       n.inputs[0].clear
     of tFeedback:
       for m in n.inputs[0].queue:
@@ -1018,7 +1052,9 @@ proc step(n: Node) =
             let new_version = m.version.step(n.step_size)
             n.send(new_version, m.collection)
             let truncated = new_version.truncate
-            if truncated notin n.in_flight_data:
+            if truncated in n.in_flight_data:
+              n.in_flight_data[truncated].incl(new_version)
+            else:
               n.in_flight_data[truncated] = toHashSet([new_version])
             if truncated notin n.empty_versions:
               n.empty_versions[truncated] = initHashSet[Version]()
@@ -1033,13 +1069,16 @@ proc step(n: Node) =
         var truncated = v.truncate
         if truncated in n.in_flight_data and n.in_flight_data[truncated].len != 0:
           candidate_versions.add(v)
+          var to_excl: seq[Version] = @[]
           for x in n.in_flight_data[truncated]:
-            if x.lt(v): n.in_flight_data[truncated].excl(x)
+            if x.lt(v): to_excl.add(x)
+          for x in to_excl:
+            n.in_flight_data[truncated].excl(x)
         else:
-          if truncated in n.in_flight_data:
-            n.in_flight_data[truncated].incl(v)
+          if truncated in n.empty_versions:
+            n.empty_versions[truncated].incl(v)
           else:
-            n.in_flight_data[truncated] = toHashSet([v])
+            n.empty_versions[truncated] = toHashSet([v])
           if truncated notin n.empty_versions or n.empty_versions[truncated].len <= 3:
             candidate_versions.add(v)
           else:
@@ -1199,6 +1238,16 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             n.results.add((m.version, m.collection))
+            n.send(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
+      n.inputs[0].clear
+    of tAccumulateMessages:
+      for m in n.inputs[0].queue:
+        n.messages.add(m)
+        case m.tag:
+          of tData:
             n.send(m)
           of tFrontier:
             frontier_change = true

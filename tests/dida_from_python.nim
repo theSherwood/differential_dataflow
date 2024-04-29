@@ -187,6 +187,7 @@ proc main* =
 
       check [v1_0].FTR.meet([v0_0].FTR) == [v0_0].FTR
       check [v0_0].FTR.meet([v1_0].FTR) == [v0_0].FTR
+      check [v1_0, v0_1].FTR.truncate == [[0].VER].FTR
 
   suite "dida":
     test "simple on_row and on_collection":
@@ -374,28 +375,89 @@ proc main* =
         return b
           .map((x) => V(x.as_f64 * 2.0))
           .concat(b)
-          # .print("concat")
           .filter((x) => x.as_f64 < 50.0)
           .map((x) => V([x, Nil]))
-          # .print("map 1")
           .distinct()
-          # .print("distinct")
           .map((x) => x[0])
-          # .print("map 2")
           .consolidate()
-          # .print("consolidate")
       var
-        b = init_builder().iterate(geometric_series).print("iterate")
-        g = b.graph
-      g.send([0].VER, [(V 1, 1)].COL)
-      g.send([[1].VER].FTR)
-      g.step
-      g.step
-      g.step
-      g.step
-      g.step
-      g.step
-      g.step
+        b = init_builder().iterate(geometric_series)
+        m = b.accumulate_messages
+        r = m.accumulate_results
+        g = m.graph
+        v0 = [0].VER
+        v1 = [1].VER
+        v2 = [2].VER
+        v3 = [3].VER
+        fallback = 30
+
+
+      g.send(v0, [(V 1, 1)].COL)
+      g.send([v1].FTR)
+      fallback = 30
+      while m.node.probe_frontier_less_than([v1].FTR):
+        g.step
+        block:
+          doAssert fallback > 0
+          fallback -= 1
+      var
+        v1_results = @[
+          to_message(v0, [(V 1, 1), (V 2, 1)].COL),
+          to_message(v0, [(V 4, 1)].COL),
+          to_message(v0, [(V 8, 1)].COL),
+          to_message(v0, [(V 16, 1)].COL),
+          to_message(v0, [(V 32, 1)].COL),
+          to_message([v1].FTR),
+        ]
+      check m.node.messages == v1_results
+
+      g.send(v1, [(V 16, 1), (V 3, 1)].COL)
+      g.send([v2].FTR)
+      fallback = 30
+      while m.node.probe_frontier_less_than([v2].FTR):
+        g.step
+        block:
+          doAssert fallback > 0
+          fallback -= 1
+      var
+        v2_results = v1_results.concat(@[
+          to_message(v1, [(V 3, 1), (V 6, 1), (V 16, 1), (V 32, 1)].COL),
+          to_message(v1, [(V 12, 1)].COL),
+          to_message(v1, [(V 24, 1)].COL),
+          to_message(v1, [(V 16, -1), (V 48, 1)].COL),
+          to_message(v1, [(V 32, -1)].COL),
+          to_message([v2].FTR),
+        ])
+      check m.node.messages == v2_results
+
+      g.send(v2, [(V 3, -1)].COL)
+      g.send([v3].FTR)
+      fallback = 30
+      while m.node.probe_frontier_less_than([v3].FTR):
+        g.step
+        block:
+          doAssert fallback > 0
+          fallback -= 1
+      var
+        v3_results = v2_results.concat(@[
+          to_message(v2, [(V 3, -1), (V 6, -1)].COL),
+          to_message(v2, [(V 12, -1)].COL),
+          to_message(v2, [(V 24, -1)].COL),
+          to_message(v2, [(V 48, -1)].COL),
+          to_message([v3].FTR),
+        ])
+      check m.node.messages == v3_results
+
+      echo "done"
+      # g.step
+      # g.step
+      # g.step
+      # g.step
+      # g.step
+      # g.step
+      # g.step
+      # g.step
+      # g.step
 
 
       # for i in 0..<5:
