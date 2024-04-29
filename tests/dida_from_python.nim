@@ -370,7 +370,7 @@ proc main* =
       check r.node.results == correct_data
       check d.node.output_frontier == [[3].VER].FTR
 
-    test "geometric_series":
+    test "geometric series":
       proc geometric_series(b: Builder): Builder =
         return b
           .map((x) => V(x.as_f64 * 2.0))
@@ -450,21 +450,87 @@ proc main* =
         ])
       check m.node.messages == v3_results
       check vmultiset.to_collection(v2) == [(V 3, -1), (V 6, -1), (V 12, -1), (V 24, -1), (V 48, -1)].COL
-
-      echo "done"
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-      # g.step
-
-
-      # for i in 0..<5:
-      #   g.step
+    
+    test "game of life":
+      proc game_of_life(b: Builder): Builder =
+        var
+          maybe_life_cells_flat_map_fn = proc (e: Value): ImArray =
+            var
+              x = e[0]
+              x_0 = x.as_f64
+              x_m_1 = (x_0 - 1.0).v
+              x_p_1 = (x_0 + 1.0).v
+              y = e[1]
+              y_0 = y.as_f64
+              y_m_1 = (y_0 - 1.0).v
+              y_p_1 = (y_0 + 1.0).v
+            return Arr [
+              [x_m_1, y_m_1],
+              [x_m_1, y    ],
+              [x_m_1, y_p_1],
+              [x,     y_m_1],
+              [x,     y_p_1],
+              [x_p_1, y_m_1],
+              [x_p_1, y    ],
+              [x_p_1, y_p_1],
+            ]
+          maybe_life_cells = b.flat_map(maybe_life_cells_flat_map_fn)
+            # .print("maybe")
+            .map((e) => V([e, Nil])).count()
+            # .print("count")
+          live_with_3_neighbors = maybe_life_cells
+            .filter((e) => e[1] == 3)
+            .map((e) => e[0])
+          live_with_2_neighbors = maybe_life_cells
+            .filter((e) => e[1] == 2)
+            .semijoin(b)
+            .map((e) => e[0])
+          live_next_round = live_with_2_neighbors
+            .concat(live_with_3_neighbors)
+            .distinct()
+            # .print("live_next_round")
+        return live_next_round
+      const 
+        W = 20
+        H = 10
+      var
+        board_window: array[H, array[W, bool]]
+        reset_board_window = proc () =
+          for y in 0..<H:
+            for x in 0..<W:
+              board_window[y][x] = false
+        print_board_window = proc () =
+          for y in board_window:
+            var s = ""
+            for x in y:
+              if x: s.add("#")
+              else: s.add("_")
+            echo s
+        on_message_fn = proc (m: Message) =
+          case m.tag:
+            of tData:
+              reset_board_window()
+              for r in m.collection:
+                echo r.key, " ", r.value, " ", r.key.as_f64.int, " ", r.value.as_f64.int
+                board_window[r.value.as_f64.int][r.key.as_f64.int] = true
+              print_board_window()
+            of tFrontier:
+              reset_board_window()
+        v0 = [0].VER
+        v1 = [1].VER
+        fallback = 3
+        b = init_builder()
+          .iterate(game_of_life)
+          # .print("game_of_life")
+          .on_message(on_message_fn)
+        g = b.graph
+      g.send(v0, [(V [2, 2], 1), (V [2, 3], 1), (V [2, 4], 1), (V [3, 2], 1)].COL)
+      g.send([v1].FTR)
+      while b.node.probe_frontier_less_than([v1].FTR):
+        g.step
+        block:
+          doAssert fallback > 0
+          fallback -= 1
 
 
       #[

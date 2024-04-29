@@ -484,6 +484,29 @@ proc product_join(i1, i2: Index): seq[(Version, Collection)] =
   for (v, rows) in version_to_rows.pairs:
     if rows.len > 0: result.add((v, Collection(rows: rows)))
 
+proc semijoin(i1, i2: Index): seq[(Version, Collection)] =
+  if i1.is_empty or i2.is_empty: return
+  var join_version: Version
+  var version_to_rows: Table[Version, seq[Row]]
+  var rows, rows1, rows2: seq[Row]
+  for (key, versions) in i1.key_to_versions.pairs:
+    if key notin i2.key_to_versions: continue
+    let versions2 = i2.key_to_versions[key]
+    for v1 in versions:
+      rows1 = i1.key_version_to_rows.getOrDefault((key, v1))
+      for v2 in versions2:
+        rows2 = i2.key_version_to_rows.getOrDefault((key, v2))
+        join_version = v1.join(v2)
+        if join_version in version_to_rows:
+          rows = version_to_rows[join_version]
+        else:
+          rows = @[]
+        for r1 in rows1:
+          rows.add((r1.entry, r1.multiplicity))
+        version_to_rows[join_version] = rows
+  for (v, rows) in version_to_rows.pairs:
+    if rows.len > 0: result.add((v, Collection(rows: rows)))
+
 proc compact(i: var Index, compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
   var to_consolidate: seq[Version] = @[]
@@ -554,9 +577,11 @@ type
     tConcat
     tJoinColumns
     tJoin
+    tSemijoin
     # freeform - useful for debugging and tests
     tOnRow
     tOnCollection
+    tOnMessage
     tAccumulateResults
     tAccumulateMessages
     # version manipulation - used in iteration
@@ -577,7 +602,7 @@ type
         sink_fn*: OnMessageFn
       of tConsolidate:
         collections*: Table[Version, Collection]
-      of tProduct:
+      of tSemijoin, tProduct:
         indexes*: (Index, Index)
       of tMap:
         map_fn*: MapFn
@@ -598,6 +623,8 @@ type
         on_row*: OnRowFn
       of tOnCollection:
         on_collection*: OnCollectionFn
+      of tOnMessage:
+        on_message*: OnMessageFn
       of tAccumulateResults:
         results*: seq[(Version, Collection)]
       of tAccumulateMessages:
@@ -758,6 +785,11 @@ proc product*(b: Builder, other: Node): Builder =
   n.indexes = (Index(), Index())
 template product*(b1, b2: Builder): Builder = b1.product(b2.node)
 
+proc semijoin*(b: Builder, other: Node): Builder =
+  build_binary(b, tSemijoin, other)
+  n.indexes = (Index(), Index())
+template semijoin*(b1, b2: Builder): Builder = b1.semijoin(b2.node)
+
 proc consolidate*(b: Builder): Builder =
   build_unary(b, tConsolidate)
 
@@ -804,7 +836,8 @@ proc iterate*(b: Builder, fn: BuilderIterateFn): Builder =
   return output.end_scope.egress
 
 proc count*(b: Builder): Builder =
-  build_unary(b, tCount)
+  return b.reduce(count_inner)
+  # build_unary(b, tCount)
 
 proc on_row*(b: Builder, fn: OnRowFn): Builder =
   build_unary(b, tOnRow)
@@ -813,6 +846,10 @@ proc on_row*(b: Builder, fn: OnRowFn): Builder =
 proc on_collection*(b: Builder, fn: OnCollectionFn): Builder =
   build_unary(b, tOnCollection)
   n.on_collection = fn
+
+proc on_message*(b: Builder, fn: OnMessageFn): Builder =
+  build_unary(b, tOnMessage)
+  n.on_message = fn
 
 proc accumulate_results*(b: Builder): Builder =
   build_unary(b, tAccumulateResults)
@@ -832,11 +869,30 @@ type
 
   VersionedMultiset* = ref object
     data*: Table[Version, CompletableMultisetValue]
+  ## TODO - figure out how to accumulate a multiset as of some version
+  ## This turns out to be trickier than I would have thought on account of
+  ## the multidimensional nature of differential dataflow timestamps.
+  ## The problem happens when we add data at a new version. We need to
+  ## accumulate all the multisets from previous values but without double
+  ## counting. If v1 < v2 < v3, and we create v3, we need to add the multiset
+  ## from v2 but NOT v1. As the quantity of versions increases, all these
+  ## version comparisons explode without some means of indexing versions.
   CumulativeVersionedMultiset* = ref object
     data*: Table[Version, CompletableMultisetValue]
 
+proc mut_concat(cmv1, cmv2: CompletableMultisetValue) = 
+  for value, multiplicity in cmv2.table.pairs:
+    let m = multiplicity + cmv1.table.getOrDefault(value, 0)
+    if m == 0:
+      cmv1.table.del(value)
+    else:
+      cmv1.table[value] = m
+
 proc init_versioned_multiset*(): VersionedMultiset =
   return VersionedMultiset()
+
+proc init_cumulative_versioned_multiset*(): CumulativeVersionedMultiset =
+  return CumulativeVersionedMultiset()
 
 proc sink*(b: Builder, s: VersionedMultiset): Builder = 
   build_unary(b, tSink)
@@ -862,6 +918,33 @@ proc sink*(b: Builder, s: VersionedMultiset): Builder =
           if not(m.frontier.le(version)):
             v.done = true
 
+# proc sink*(b: Builder, s: CumulativeVersionedMultiset): Builder = 
+#   build_unary(b, tSink)
+#   n.sink_fn = proc (m: Message): void =
+#     case m.tag:
+#       of tData:
+#         if m.version notin s.data:
+#           var new_v = CompletableMultisetValue()
+#           new_v.done = false
+#           for version, v in s.data.mpairs:
+#             echo "m.version: ", m.version, " ", version
+#             if version.lt(m.version):
+#               new_v.mut_concat(v)
+#           s.data[m.version] = new_v
+#         for version, v in s.data.mpairs:
+#           if m.version.le(version):
+#             doAssert not(v.done)
+#             for r in m.collection:
+#               let multiplicity = r.multiplicity + v.table.getOrDefault(r.entry, 0)
+#               if multiplicity == 0:
+#                 v.table.del(r.entry)
+#               else:
+#                 v.table[r.entry] = multiplicity
+#       of tFrontier:
+#         for version, v in s.data.mpairs:
+#           if not(m.frontier.le(version)):
+#             v.done = true
+
 proc to_collection*(s: VersionedMultiset, v: Version): Collection =
   if v in s.data:
     var rows: seq[Row] = @[]
@@ -870,6 +953,15 @@ proc to_collection*(s: VersionedMultiset, v: Version): Collection =
     return init_collection(rows)
   else:
     return init_collection([])
+
+# proc to_collection*(s: CumulativeVersionedMultiset, v: Version): Collection =
+#   if v in s.data:
+#     var rows: seq[Row] = @[]
+#     for entry, multiplicity in s.data[v].table.pairs:
+#       rows.add((entry, multiplicity))
+#     return init_collection(rows)
+#   else:
+#     return init_collection([])
 
 # Pretty Print #
 # ---------------------------------------------------------------------
@@ -882,15 +974,18 @@ proc `$`*(t: NodeTag): string =
     of tNegate:             "Negate"
     of tConcat:             "Concat"
     of tProduct:            "Product"
+    of tSemijoin:           "Semijoin"
     of tJoinColumns:        "JoinColumns"
     of tJoin:               "Join"
     of tMap:                "Map"
     of tFilter:             "Filter"
     of tOnRow:              "OnRow"
     of tOnCollection:       "OnCollection"
+    of tOnMessage:          "OnMessage"
     of tIngress:            "Ingress"
     of tEgress:             "Egress"
     of tReduce:             "Reduce"
+    of tCount:              "Count"
     of tConsolidate:        "Consolidate"
     of tDistinct:           "Distinct"
     of tAccumulateResults:  "AccumulateResults"
@@ -1158,16 +1253,6 @@ proc step(n: Node) =
         n.send(candidate_frontier)
       frontier_change = false
       n.inputs[0].clear
-    of tDistinct:
-      for m in n.inputs[0].queue:
-        case m.tag:
-          of tData:
-            let new_coll = Collection(rows: m.collection.rows.distinct_inner())
-            if new_coll.size > 0: n.send(m.version, new_coll)
-          of tFrontier:
-            frontier_change = true
-            n.handle_frontier_message_unary(m)
-      n.inputs[0].clear
     of tReduce:
       proc subtract_values(fst, snd: seq[Row]): seq[Row] =
         var res: Table[Value, int]
@@ -1215,8 +1300,6 @@ proc step(n: Node) =
         if res.len > 0:
           n.send(version, Collection(rows: res))
       n.inputs[0].clear
-    of tCount:
-      discard
     of tConcat:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -1247,6 +1330,27 @@ proc step(n: Node) =
       for (v, c) in deltas[0].product_join(n.indexes[1]): n.send(v, c)
       n.indexes[0].mut_concat(deltas[0])
       for (v, c) in n.indexes[0].product_join(deltas[1]): n.send(v, c)
+      n.indexes[1].mut_concat(deltas[1])
+      if frontier_change:
+        n.output_frontier_message
+        n.indexes[0].compact(n.output_frontier)
+        n.indexes[1].compact(n.output_frontier)
+      frontier_change = false
+    of tSemijoin:
+      var deltas = [Index(), Index()]
+      for idx in 0..<2:
+        for m in n.inputs[idx].queue:
+          case m.tag:
+            of tData:
+              for row in m.collection:
+                deltas[idx].add(Nil.v, m.version, row)
+            of tFrontier:
+              frontier_change = true
+              n.handle_frontier_message(m, idx)
+        n.inputs[idx].clear
+      for (v, c) in deltas[0].semijoin(n.indexes[1]): n.send(v, c)
+      n.indexes[0].mut_concat(deltas[0])
+      for (v, c) in n.indexes[0].semijoin(deltas[1]): n.send(v, c)
       n.indexes[1].mut_concat(deltas[1])
       if frontier_change:
         n.output_frontier_message
@@ -1291,6 +1395,16 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             n.on_collection(m.version, m.collection)
+            n.send(m)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message(m, 0)
+      n.inputs[0].clear
+    of tOnMessage:
+      for m in n.inputs[0].queue:
+        n.on_message(m)
+        case m.tag:
+          of tData:
             n.send(m)
           of tFrontier:
             frontier_change = true
