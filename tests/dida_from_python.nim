@@ -161,6 +161,8 @@ proc main* =
       check v0_0.le(v0_1)
       check v0_0.le(v1_1)
 
+      check v0_0.join(v0_1) == v0_1
+
       check not(v1_0.lt(v1_0))
       check v1_0.le(v1_0)
       check not(v1_0.le(v0_1))
@@ -454,7 +456,7 @@ proc main* =
     test "game of life":
       proc game_of_life(b: Builder): Builder =
         var
-          maybe_life_cells_flat_map_fn = proc (e: Value): ImArray =
+          maybe_live_cells_flat_map_fn = proc (e: Value): ImArray =
             var
               x = e[0]
               x_0 = x.as_f64
@@ -474,25 +476,23 @@ proc main* =
               [x_p_1, y    ],
               [x_p_1, y_p_1],
             ]
-          maybe_life_cells = b.flat_map(maybe_life_cells_flat_map_fn)
-            # .print("maybe")
+          maybe_live_cells = b.flat_map(maybe_live_cells_flat_map_fn)
             .map((e) => V([e, Nil])).count()
-            # .print("count")
-          live_with_3_neighbors = maybe_life_cells
+          live_with_3_neighbors = maybe_live_cells
             .filter((e) => e[1] == 3)
             .map((e) => e[0])
-          live_with_2_neighbors = maybe_life_cells
+          live_with_2_neighbors = maybe_live_cells
             .filter((e) => e[1] == 2)
-            .semijoin(b)
+            # .semijoin(b)
+            .join(b.map(proc (e: Value): Value = V([e, Nil])))
             .map((e) => e[0])
           live_next_round = live_with_2_neighbors
             .concat(live_with_3_neighbors)
             .distinct()
-            # .print("live_next_round")
         return live_next_round
       const 
-        W = 20
-        H = 10
+        W = 6
+        H = 6
       var
         board_window: array[H, array[W, bool]]
         reset_board_window = proc () =
@@ -506,31 +506,47 @@ proc main* =
               if x: s.add("#")
               else: s.add("_")
             echo s
+        set_collection_in_board_window = proc (c: Collection) =
+          for r in c:
+            if r.multiplicity > 0:
+              board_window[r.value.as_f64.int][r.key.as_f64.int] = true
+            else:
+              board_window[r.value.as_f64.int][r.key.as_f64.int] = false
         on_message_fn = proc (m: Message) =
           case m.tag:
             of tData:
-              reset_board_window()
               for r in m.collection:
-                echo r.key, " ", r.value, " ", r.key.as_f64.int, " ", r.value.as_f64.int
-                board_window[r.value.as_f64.int][r.key.as_f64.int] = true
+                if r.multiplicity > 0:
+                  board_window[r.value.as_f64.int][r.key.as_f64.int] = true
+                else:
+                  board_window[r.value.as_f64.int][r.key.as_f64.int] = false
               print_board_window()
             of tFrontier:
               reset_board_window()
+        vmultiset = init_versioned_multiset()
+        initial_data = [(V [2, 2], 1), (V [2, 3], 1), (V [2, 4], 1), (V [3, 2], 1)].COL
         v0 = [0].VER
         v1 = [1].VER
-        fallback = 3
-        b = init_builder()
-          .iterate(game_of_life)
+        fallback = 20
+        b = init_builder().iterate(game_of_life).sink(vmultiset)
+          # for debugging
           # .print("game_of_life")
-          .on_message(on_message_fn)
+          # .on_message(on_message_fn)
         g = b.graph
-      g.send(v0, [(V [2, 2], 1), (V [2, 3], 1), (V [2, 4], 1), (V [3, 2], 1)].COL)
+      g.send(v0, initial_data)
       g.send([v1].FTR)
       while b.node.probe_frontier_less_than([v1].FTR):
         g.step
         block:
           doAssert fallback > 0
           fallback -= 1
+      check vmultiset.to_collection(v0) == [
+        (V [2, 1], 1),
+        (V [1, 2], 1), (V [3, 2], 1),
+        (V [1, 3], 1), (V [3, 3], 1),
+        (V [2, 4], 1),
+      ].COL
+      
 
 
       #[

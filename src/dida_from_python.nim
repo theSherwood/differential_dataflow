@@ -444,6 +444,14 @@ proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
     i.key_to_versions[key] = @[version]
     i.key_version_to_rows[(key, version)] = rows
 
+proc pop(i: var Index, key: Value, version: Version, rows: var seq[Row]) =
+  var versions = i.key_to_versions[key]
+  let idx = versions.find(version)
+  if idx == -1: return
+  versions.delete(idx)
+  i.key_to_versions[key] = versions
+  discard i.key_version_to_rows.pop((key, version), rows)
+
 proc mut_concat(i1: var Index, i2: Index) =
   if i2.is_empty: return
   for (kv, rows) in i2.key_version_to_rows.pairs:
@@ -452,6 +460,7 @@ proc mut_concat(i1: var Index, i2: Index) =
       var s = i1.key_to_versions[key]
       if s.find(version) == -1:
         s.add(version)
+        i1.key_to_versions[key] = s
       if kv in i1.key_version_to_rows:
         i1.key_version_to_rows[kv].add(rows)
       else:
@@ -460,7 +469,7 @@ proc mut_concat(i1: var Index, i2: Index) =
       i1.key_to_versions[key] = @[version]
       i1.key_version_to_rows[kv] = rows
 
-proc product_join(i1, i2: Index): seq[(Version, Collection)] =
+proc join_inner(i1, i2: Index, fn: proc (r1, r2: Row): Row): seq[(Version, Collection)] =
   if i1.is_empty or i2.is_empty: return
   var join_version: Version
   var version_to_rows: Table[Version, seq[Row]]
@@ -479,46 +488,55 @@ proc product_join(i1, i2: Index): seq[(Version, Collection)] =
           rows = @[]
         for r1 in rows1:
           for r2 in rows2:
-            rows.add((V [r1.entry, r2.entry], r1.multiplicity * r2.multiplicity))
+            rows.add(fn(r1, r2))
         version_to_rows[join_version] = rows
   for (v, rows) in version_to_rows.pairs:
     if rows.len > 0: result.add((v, Collection(rows: rows)))
 
+template product_join(i1, i2: Index): seq[(Version, Collection)] =
+  join_inner(i1, i2, (r1, r2) => (V([r1.entry, r2.entry]), r1.multiplicity * r2.multiplicity))
+template join(i1, i2: Index): seq[(Version, Collection)] =
+  join_inner(i1, i2, (r1, r2) => (V([r1.key, [r1.value, r2.value]]), r1.multiplicity * r2.multiplicity))
+
 proc semijoin(i1, i2: Index): seq[(Version, Collection)] =
-  if i1.is_empty or i2.is_empty: return
+  # if i1.is_empty or i2.is_empty: return
   var join_version: Version
   var version_to_rows: Table[Version, seq[Row]]
-  var rows, rows1, rows2: seq[Row]
+  var rows, rows1: seq[Row]
   for (key, versions) in i1.key_to_versions.pairs:
     if key notin i2.key_to_versions: continue
     let versions2 = i2.key_to_versions[key]
     for v1 in versions:
       rows1 = i1.key_version_to_rows.getOrDefault((key, v1))
       for v2 in versions2:
-        rows2 = i2.key_version_to_rows.getOrDefault((key, v2))
         join_version = v1.join(v2)
         if join_version in version_to_rows:
           rows = version_to_rows[join_version]
         else:
           rows = @[]
         for r1 in rows1:
-          rows.add((r1.entry, r1.multiplicity))
+          rows.add(r1)
         version_to_rows[join_version] = rows
   for (v, rows) in version_to_rows.pairs:
     if rows.len > 0: result.add((v, Collection(rows: rows)))
 
 proc compact(i: var Index, compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
-  var to_consolidate: seq[Version] = @[]
   for (key, versions) in i.key_to_versions.pairs:
+    var to_consolidate: seq[Version] = @[]
+    var to_compact: seq[Version]
     for version in versions:
-      if compaction_frontier.le(version):
-        let rows = i.key_version_to_rows.getOrDefault((key, version))
-        let new_version = version.advance_by(compaction_frontier)
-        i.add(key, version, rows)
-        to_consolidate.add(version)
+      if compaction_frontier.le(version).not:
+        to_compact.add(version)
+    for version in to_compact:
+      var rows: seq[Row] 
+      i.pop(key, version, rows)
+      let new_version = version.advance_by(compaction_frontier)
+      i.add(key, new_version, rows)
+      to_consolidate.add(new_version)
     for version in to_consolidate:
-      i.key_version_to_rows[(key, version)] = i.key_version_to_rows[(key, version)].consolidate
+      let consolidated = i.key_version_to_rows[(key, version)].consolidate
+      i.key_version_to_rows[(key, version)] = consolidated
   doAssert i.compaction_frontier.isNil or i.compaction_frontier.le(compaction_frontier)
   i.compaction_frontier = compaction_frontier
 
@@ -602,7 +620,7 @@ type
         sink_fn*: OnMessageFn
       of tConsolidate:
         collections*: Table[Version, Collection]
-      of tSemijoin, tProduct:
+      of tSemijoin, tJoin, tProduct:
         indexes*: (Index, Index)
       of tMap:
         map_fn*: MapFn
@@ -784,6 +802,11 @@ proc product*(b: Builder, other: Node): Builder =
   build_binary(b, tProduct, other)
   n.indexes = (Index(), Index())
 template product*(b1, b2: Builder): Builder = b1.product(b2.node)
+
+proc join*(b: Builder, other: Node): Builder =
+  build_binary(b, tJoin, other)
+  n.indexes = (Index(), Index())
+template join*(b1, b2: Builder): Builder = b1.join(b2.node)
 
 proc semijoin*(b: Builder, other: Node): Builder =
   build_binary(b, tSemijoin, other)
@@ -1336,6 +1359,29 @@ proc step(n: Node) =
         n.indexes[0].compact(n.output_frontier)
         n.indexes[1].compact(n.output_frontier)
       frontier_change = false
+    of tJoin:
+      var deltas = [Index(), Index()]
+      for idx in 0..<2:
+        for m in n.inputs[idx].queue:
+          case m.tag:
+            of tData:
+              for row in m.collection:
+                deltas[idx].add(row.key, m.version, row)
+            of tFrontier:
+              frontier_change = true
+              n.handle_frontier_message(m, idx)
+        n.inputs[idx].clear
+      for (v, c) in deltas[0].join(n.indexes[1]):
+        n.send(v, c)
+      n.indexes[0].mut_concat(deltas[0])
+      for (v, c) in n.indexes[0].join(deltas[1]):
+        n.send(v, c)
+      n.indexes[1].mut_concat(deltas[1])
+      if frontier_change:
+        n.output_frontier_message
+        n.indexes[0].compact(n.output_frontier)
+        n.indexes[1].compact(n.output_frontier)
+      frontier_change = false
     of tSemijoin:
       var deltas = [Index(), Index()]
       for idx in 0..<2:
@@ -1343,7 +1389,7 @@ proc step(n: Node) =
           case m.tag:
             of tData:
               for row in m.collection:
-                deltas[idx].add(Nil.v, m.version, row)
+                deltas[idx].add(row.key, m.version, row)
             of tFrontier:
               frontier_change = true
               n.handle_frontier_message(m, idx)
