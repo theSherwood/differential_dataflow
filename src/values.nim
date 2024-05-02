@@ -456,6 +456,8 @@ else:
   let True*  = cast[ImBool]((MASK_SIG_TRUE))
   let False* = cast[ImBool]((MASK_SIG_FALSE))
 
+template default*(v: ImValue): ImValue = Nil.v
+
 let Infinity*       = Inf
 let PosInfinity*    = Inf
 let NegInfinity*    = NegInf
@@ -523,6 +525,22 @@ template `<`*(a: float64, b: ImValue): bool = return a.v < b.v
 template `<`*(a: ImValue, b: float64): bool = return a.v < b.v
 template `<=`*(a: float64, b: ImValue): bool = return a.v <= b.v
 template `<=`*(a: ImValue, b: float64): bool = return a.v <= b.v
+
+# Automatic Conversions #
+# ---------------------------------------------------------------------
+
+converter toImValue(n: ImNil): ImValue = n.v
+converter toImValue(b: ImBool): ImValue = b.v
+converter toImValue(x: ImArray): ImValue = x.v
+converter toImValue(x: ImMap): ImValue = x.v
+converter toImValue(x: ImString): ImValue = x.v
+converter toImValue(x: ImSet): ImValue = x.v
+
+converter toImValue(f: float64): ImValue = f.v
+converter toImValue(i: int): ImValue = i.v
+
+converter toBool(b: ImBool): bool = b == True
+converter toBool(n: ImNil): bool = false
 
 # Debug String Conversion #
 # ---------------------------------------------------------------------
