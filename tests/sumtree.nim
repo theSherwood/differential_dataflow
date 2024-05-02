@@ -41,6 +41,11 @@ proc main* =
       check v1.get(5) == 15
       for (i, d) in v1.pairs():
         check d == v1.get(i)
+    test "set":
+      var v1 = init_vec[int]()
+        .push(10).push(11).push(12).push(13).push(14).push(15)
+        .set(0, 100).set(1, 101).set(2, 102).set(3, 103).set(4, 104).set(5, 105)
+      check toSeq(v1.pairs()) == @[(0, 100), (1, 101), (2, 102), (3, 103), (4, 104), (5, 105)]
     test "simple equality":
       var
         v1 = init_vec[int]()

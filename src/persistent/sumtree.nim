@@ -57,26 +57,74 @@ proc clone*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
     result.nodes_count = s.nodes_count
     result.nodes = s.nodes
 
+template find_leaf_node_at_index_template*(s, idx: untyped) {.dirty.} =
+  var
+    n = s
+    adj_idx = idx
+  block:
+    var candidate: SumTreeRef[D, S]
+    while n.kind == STInterior:
+      block inner:
+        for i in 0..<n.nodes_count:
+          candidate = n.nodes[i]
+          if adj_idx > candidate.size:
+            adj_idx = adj_idx - candidate.size
+          else:
+            n = candidate
+            break inner
+
+proc find_leaf_node_at_index*[D, S](s: SumTreeRef[D, S], idx: int): (SumTreeRef[D, S], int) =
+  find_leaf_node_at_index_template(s, idx)
+  return (n, adj_idx)
+
+template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
+  var stack: seq[(SumTreeRef[D, S], int)]
+  if s.kind == STLeaf:
+    stack.add((s, idx))
+  else:
+    var
+      n = s
+      adj_idx = idx
+      candidate: SumTreeRef[D, S]
+    while n.kind == STInterior:
+      block inner:
+        for i in 0..<n.nodes_count:
+          candidate = n.nodes[i]
+          if adj_idx > candidate.size:
+            adj_idx = adj_idx - candidate.size
+          else:
+            stack.add((n, i))
+            n = candidate
+            break inner
+
+proc get_stack_to_leaf_at_index*[D, S](s: SumTreeRef[D, S], idx: int): seq[(SumTreeRef[D, S], int)] =
+  get_stack_to_leaf_at_index_template(s, idx)
+  return stack
+
 proc get*[D, S](s: SumTreeRef[D, S], idx: int): D =
+  ## TODO - handle negative indices?
+  ## TODO - handle sparse arrays
   if idx < 0 or idx > s.size:
     raise newException(IndexError, "Index is out of bounds")
-  if s.kind == STLeaf:
-    return s.data[idx]
-  else:
-    var adj_idx = idx
-    var n = s
-    block outer:
-      while n.kind == STInterior:
-        var candidate: SumTreeRef[D, S]
-        block inner:
-          for i in 0..<n.nodes_count:
-            candidate = n.nodes[i]
-            if adj_idx > candidate.size:
-              adj_idx = adj_idx - candidate.size
-            else:
-              n = candidate
-              break inner
-    return n.data[adj_idx]
+  find_leaf_node_at_index_template(s, idx)
+  return n.data[adj_idx]
+
+proc set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
+  ## TODO - handle indices that don't yet exist.
+  ## TODO - handle sparse arrays
+  if idx < 0 or idx > s.size:
+    raise newException(IndexError, "Index is out of bounds")
+  get_stack_to_leaf_at_index_template(s, idx)
+  var (n, i) = stack.pop()
+  var n_clone = n.clone()
+  n_clone.data[i] = d
+  var child = n_clone
+  while stack.len > 0:
+    (n, i) = stack.pop()
+    n_clone = n.clone()
+    n_clone.nodes[i] = child
+    child = n_clone
+  return n_clone
 
 const
   VEC_BITS = 5
