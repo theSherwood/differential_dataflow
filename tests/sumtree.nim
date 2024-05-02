@@ -35,6 +35,12 @@ proc main* =
         v1 = init_vec[int]().push_front(10).push_front(11).push_front(12).push_front(13)
         s = toSeq(v1.items)
       check s == @[13, 12, 11, 10]
+    test "get":
+      var v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
+      check v1.get(0) == 10
+      check v1.get(5) == 15
+      for (i, d) in v1.pairs():
+        check d == v1.get(i)
     test "simple equality":
       var
         v1 = init_vec[int]()

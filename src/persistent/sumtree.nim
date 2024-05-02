@@ -67,7 +67,7 @@ proc get*[D, S](s: SumTreeRef[D, S], idx: int): D =
     var n = s
     block outer:
       while n.kind == STInterior:
-        var candidate: SumTree[D, S]
+        var candidate: SumTreeRef[D, S]
         block inner:
           for i in 0..<n.nodes_count:
             candidate = n.nodes[i]
