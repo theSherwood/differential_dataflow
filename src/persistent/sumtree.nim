@@ -40,8 +40,15 @@ type
 proc `$`*[D, S](s: SumTreeRef[D, S]): string =
   result.add(&"ST(\n")
   result.add(&"  size: {s.size}\n")
-  result.add(&"  summary: TODO\n")
+  # result.add(&"  summary: TODO\n")
   result.add(&"  kind: {s.kind}\n")
+  if s.kind == STLeaf:
+    discard
+    # result.add(&"  data_count: {s.data_count}")
+  else:
+    result.add(&"  nodes_count: {s.nodes_count}")
+    if s.nodes_count == 4:
+      result.add(&"  nodes: {s.nodes}")
   result.add(&")")
 
 proc clone*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
@@ -109,9 +116,10 @@ proc get*[D, S](s: SumTreeRef[D, S], idx: int): D =
   find_leaf_node_at_index_template(s, idx)
   return n.data[adj_idx]
 
-proc set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
+proc im_set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
   ## TODO - handle indices that don't yet exist.
   ## TODO - handle sparse arrays
+  ## TODO - update summaries
   if idx < 0 or idx > s.size:
     raise newException(IndexError, "Index is out of bounds")
   get_stack_to_leaf_at_index_template(s, idx)
@@ -161,13 +169,20 @@ proc reset*[D, S](s: SumTreeRef[D, S]) =
     s.data_count = 0
     s.data = array[BUFFER_WIDTH, D]
 
+proc compute_local_summary*[D, S](s: SumTreeRef[D, S]): S =
+  if s.kind == STInterior:
+    result = S.zero()
+    for i in 0..<s.nodes_count:
+      result = result + s.nodes[i].summary
+  else:
+    result = S.fromm(10, s.data_count)
+
 proc resummarize*[D, S](s: SumTreeRef[D, S]) =
   if s.kind == STInterior:
     s.summary = S.zero()
     for i in 0..<s.nodes_count:
       s.summary = s.summary + s.nodes[i].summary
   else:
-    var arr: array[5, D]
     s.summary = S.fromm(10, s.data_count)
 
 template mut_append_case_1*[D, S](s: SumTreeRef[D, S], d: D) =
@@ -195,6 +210,96 @@ proc mut_append_case_2*[D, S](s, child: SumTreeRef[D, S]) =
   s.summary = s.summary + child.summary
   if s.depth <= child.depth:
     s.depth = child.depth + 1
+
+template create_interior_dirty_template() {.dirty.} =
+  var interior = init_sumtree[D, S](STInterior)
+  interior.nodes = leaves
+  interior.nodes_count = leaves_count
+  interior.size = BUFFER_WIDTH * (leaves_count - 1)
+  interior.size += interior.nodes[leaves_count - 1].size
+  interior.resummarize()
+
+template add_leaf_dirty_template() {.dirty.} =
+  if leaves_count == BRANCH_WIDTH:
+    create_interior_dirty_template()
+    interiors.add(interior)
+    leaves[0] = n
+    leaves_count = 1
+  else:
+    leaves[leaves_count] = n
+    leaves_count += 1
+
+proc to_sumtree*[D, S](its: openArray[D]): SumTreeRef[D, S] =
+  if its.len == 0:
+    return init_sumtree[D, S](STLeaf)
+  var
+    i = 0
+    adj_size = its.len
+    n: SumTreeRef[D, S]
+    leaves_count = 0
+    leaves: array[BRANCH_WIDTH, SumTreeRef[D, S]]
+    interiors: seq[SumTreeRef[D, S]]
+  while adj_size > BUFFER_WIDTH:
+    adj_size -= BUFFER_WIDTH
+    n = init_sumtree[D, S](STLeaf)
+    for idx in 0..<BUFFER_WIDTH:
+      n.data[idx] = its[i + idx]
+    n.data_count = BUFFER_WIDTH
+    n.resummarize()
+    n.size = BUFFER_WIDTH
+    i += BUFFER_WIDTH
+    add_leaf_dirty_template()
+  if adj_size > 0:
+    n = init_sumtree[D, S](STLeaf)
+    for idx in 0..<adj_size:
+      n.data[idx] = its[i + idx]
+    n.data_count = adj_size
+    n.resummarize()
+    n.size = n.data_count
+    add_leaf_dirty_template()
+  if leaves_count > 0:
+    create_interior_dirty_template()
+    interiors.add(interior)
+  if interiors.len == 0:
+    case leaves_count:
+      of 0:
+        return init_sumtree[D, S](STLeaf)
+      of 1:
+        return leaves[0]
+      else:
+        create_interior_dirty_template()
+        return interior
+  while interiors.len > 0:
+    i = 0
+    adj_size = interiors.len
+    var
+      interior: SumTreeRef[D, S]
+      interiors2: seq[SumTreeRef[D, S]]
+    while adj_size > BRANCH_WIDTH:
+      adj_size -= BRANCH_WIDTH
+      n = init_sumtree[D, S](STInterior)
+      n.size = 0
+      for idx in 0..<BRANCH_WIDTH:
+        interior = interiors[i + idx]
+        n.nodes[idx] = interior
+        n.size += interior.size
+      n.nodes_count = BRANCH_WIDTH
+      n.resummarize()
+      i += BRANCH_WIDTH
+      interiors2.add(n)
+    if adj_size > 0:
+      n = init_sumtree[D, S](STInterior)
+      for idx in 0..<adj_size:
+        interior = interiors[i + idx]
+        n.nodes[idx] = interior
+        n.size += interior.size
+      n.nodes_count = adj_size
+      n.resummarize()
+      interiors2.add(n)
+    if interiors2.len == 1:
+      return interiors2[0]
+    else:
+      interiors = interiors2
 
 template mut_pop_case_1*[D, S](s: SumTreeRef[D, S]) =
   ## The node is a leaf
@@ -398,17 +503,56 @@ proc im_prepend*[D, S](s: SumTreeRef[D, S], d: D): SumTreeRef[D, S] =
     n = stack.pop()
   return new_child
 
-template iterate_pairs*[D, S](s: SumTreeRef[D, S]) {.dirty.} =
+iterator nodes_pre_order*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
+  # yield after we push onto the stack
   var
     n = s
     idx: Natural
-    total_idx: Natural = 0
     n_stack: seq[SumTreeRef[D, S]]
     idx_stack: seq[Natural]
   if s.kind == STLeaf:
-    for i in 0..<s.data_count:
-      yield (total_idx, s.data[i])
-      total_idx += 1
+    yield s
+  else:
+    n_stack.add(s)
+    yield n_stack[^1]
+    # We push an extra idx onto the stack because we are going to be fiddling
+    # with the top of the idx_stack after popping. This gives us a little 
+    # cushion when the n_stack is empty before the while loop ends.
+    idx_stack.add(0)
+    idx_stack.add(0)
+    while n_stack.len > 0:
+      n = n_stack[^1]
+      idx = idx_stack[^1]
+      if n.kind == STLeaf:
+        discard n_stack.pop()
+        discard idx_stack.pop()
+        idx_stack[^1] += 1
+      else:
+        if n.nodes_count == 0:
+          # The node is empty but is being used to indicate a sparse section in the arr
+          discard n_stack.pop()
+          discard idx_stack.pop()
+          idx_stack[^1] += 1
+        elif idx < n.nodes_count:
+          # We haven't reached the end of the node's children
+          n_stack.add(n.nodes[idx])
+          yield n_stack[^1]
+          idx_stack.add(0)
+        else:
+          # We reached the end of the node's children
+          discard n_stack.pop()
+          discard idx_stack.pop()
+          idx_stack[^1] += 1
+
+iterator nodes_post_order*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
+  # yield before we pop off the stack
+  var
+    n = s
+    idx: Natural
+    n_stack: seq[SumTreeRef[D, S]]
+    idx_stack: seq[Natural]
+  if s.kind == STLeaf:
+    yield s
   else:
     n_stack.add(s)
     # We push an extra idx onto the stack because we are going to be fiddling
@@ -420,20 +564,59 @@ template iterate_pairs*[D, S](s: SumTreeRef[D, S]) {.dirty.} =
       n = n_stack[^1]
       idx = idx_stack[^1]
       if n.kind == STLeaf:
-        for i in 0..<n.data_count:
-          yield (total_idx, n.data[i])
-          total_idx += 1
+        yield n
         discard n_stack.pop()
         discard idx_stack.pop()
         idx_stack[^1] += 1
       else:
         if n.nodes_count == 0:
           # The node is empty but is being used to indicate a sparse section in the arr
-          for i in 0..<n.size:
-            yield (total_idx, default(D))
-            total_idx += 1
+          yield n
+          discard n_stack.pop()
+          discard idx_stack.pop()
           idx_stack[^1] += 1
-        elif idx < n.nodes_count - 1:
+        elif idx < n.nodes_count:
+          # We haven't reached the end of the node's children
+          n_stack.add(n.nodes[idx])
+          idx_stack.add(0)
+        else:
+          # We reached the end of the node's children
+          yield n
+          discard n_stack.pop()
+          discard idx_stack.pop()
+          idx_stack[^1] += 1
+
+iterator leaves_and_sparse_nodes_in_order*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
+  var
+    n = s
+    idx: Natural
+    n_stack: seq[SumTreeRef[D, S]]
+    idx_stack: seq[Natural]
+  if s.kind == STLeaf:
+    yield s
+  else:
+    n_stack.add(s)
+    # We push an extra idx onto the stack because we are going to be fiddling
+    # with the top of the idx_stack after popping. This gives us a little 
+    # cushion when the n_stack is empty before the while loop ends.
+    idx_stack.add(0)
+    idx_stack.add(0)
+    while n_stack.len > 0:
+      n = n_stack[^1]
+      idx = idx_stack[^1]
+      if n.kind == STLeaf:
+        yield n
+        discard n_stack.pop()
+        discard idx_stack.pop()
+        idx_stack[^1] += 1
+      else:
+        if n.nodes_count == 0:
+          # The node is empty but is being used to indicate a sparse section in the arr
+          yield n
+          discard n_stack.pop()
+          discard idx_stack.pop()
+          idx_stack[^1] += 1
+        elif idx < n.nodes_count:
           # We haven't reached the end of the node's children
           n_stack.add(n.nodes[idx])
           idx_stack.add(0)
@@ -443,6 +626,19 @@ template iterate_pairs*[D, S](s: SumTreeRef[D, S]) {.dirty.} =
           discard idx_stack.pop()
           idx_stack[^1] += 1
 
+template iterate_pairs*[D, S](s: SumTreeRef[D, S]) {.dirty.} =
+  var total_idx = 0
+  for n in s.leaves_and_sparse_nodes_in_order:
+    if n.kind == STLeaf:
+      for i in 0..<n.data_count:
+        yield (total_idx, n.data[i])
+        total_idx += 1
+    else:
+      # sparse node
+      for i in 0..<n.size:
+        yield (total_idx, default(D))
+        total_idx += 1
+
 iterator pairs*[D, S](s: SumTreeRef[D, S]): (int, D) =
   iterate_pairs(s)
 iterator items*[D, S](s: SumTreeRef[D, S]): D =
@@ -451,6 +647,35 @@ iterator items*[D, S](s: SumTreeRef[D, S]): D =
 proc pairs_closure[D, S](s: SumTreeRef[D, S]): iterator(): (int, D) =
   return iterator(): (int, D) =
     iterate_pairs(s)
+
+proc compute_local_size[D, S](s: SumTreeRef[D, S]): int =
+  if s.kind == STLeaf:
+    return s.data_count
+  else:
+    var computed_size = 0
+    for i in 0..<s.nodes_count:
+      computed_size += s.nodes[i].size
+    return computed_size
+
+proc compute_local_depth[D, S](s: SumTreeRef[D, S]): uint8 =
+  if s.kind == STLeaf:
+    return 0
+  else:
+    var computed_depth: uint8 = 0
+    var n: SumTreeRef[D, S]
+    for i in 0..<s.nodes_count:
+      n = s.nodes[i]
+      if n.kind == STInterior:
+        computed_depth += n.depth
+    return computed_depth
+
+proc valid*[D, S](s: SumTreeRef[D, S]): bool =
+  for n in s.nodes_post_order:
+    if n.size != n.compute_local_size: return false
+    if n.summary != n.compute_local_summary: return false
+    if n.kind == STInterior:
+      if n.depth != n.compute_local_depth: return false
+  return true
 
 template len*[D, S](s: SumTreeRef[D, S]): Natural = s.size
 
@@ -467,9 +692,13 @@ proc `==`*[D](v1, v2: PVecRef[D]): bool =
     if fin: return true
   
 template init_vec*[T](): PVecRef[T] = init_sumtree[T, PVecSummary[T]](STLeaf)
+template to_vec*[T](items: openArray[T]): PVecRef[T] = to_sumtree[T, PVecSummary[T]](items)
 
 template append*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 template push*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 
 template prepend*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)
 template push_front*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)
+
+template set*[T](vec: PVecRef[T], idx: int, item: T): PVecRef[T] = vec.im_set(idx, item)
+
