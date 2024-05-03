@@ -6,7 +6,8 @@ import ../src/persistent/[sumtree]
 ## TODO
 ## 
 ## API
-## [ ] to_vec
+## [x] to_vec
+## [x] concat
 ## [ ] del
 ## [ ] slice
 ## [ ] take
@@ -105,5 +106,23 @@ proc main* =
       to_vec_test(100000)
       to_vec_test(1000000)
       # to_vec_test(10000000)
+    test "to_vec internals":
+      check [0].to_vec.depth_safe == 0
+      check [1, 2, 3, 4, 5, 6].to_vec.depth_safe == 0
+      check [0].to_vec.kind == STLeaf
+      check [1, 2, 3, 4, 5, 6].to_vec.kind == STLeaf
+      check toSeq(0..<100).to_vec.valid
+    test "concat":
+      proc concat_test(sz1, sz2: int) =
+        var
+          s1 = toSeq(0..<sz1)
+          s2 = toSeq(0..<sz2)
+          v1 = to_vec(s1)
+          v2 = to_vec(s2)
+        check toSeq(v1 & v2) == s1 & s2
+      var sizes = @[0, 1, 10, 100, 1000, 10000]
+      for sz1 in sizes:
+        for sz2 in sizes:
+          concat_test(sz1, sz2)
   
-  echo "ok"
+  echo "done"

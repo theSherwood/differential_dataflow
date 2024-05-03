@@ -46,9 +46,9 @@ proc `$`*[D, S](s: SumTreeRef[D, S]): string =
     discard
     # result.add(&"  data_count: {s.data_count}")
   else:
-    result.add(&"  nodes_count: {s.nodes_count}")
-    if s.nodes_count == 4:
-      result.add(&"  nodes: {s.nodes}")
+    result.add(&"  depth: {s.depth}\n")
+    result.add(&"  nodes_count: {s.nodes_count}\n")
+    # result.add(&"  nodes: {s.nodes}\n")
   result.add(&")")
 
 proc clone*[D, S](s: SumTreeRef[D, S]): SumTreeRef[D, S] =
@@ -84,6 +84,7 @@ proc find_leaf_node_at_index*[D, S](s: SumTreeRef[D, S], idx: int): (SumTreeRef[
   find_leaf_node_at_index_template(s, idx)
   return (n, adj_idx)
 
+# TODO - handle spare nodes
 template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
   var stack: seq[(SumTreeRef[D, S], int)]
   if s.kind == STLeaf:
@@ -103,6 +104,7 @@ template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
             stack.add((n, i))
             n = candidate
             break inner
+    stack.add((n, adj_idx))
 
 proc get_stack_to_leaf_at_index*[D, S](s: SumTreeRef[D, S], idx: int): seq[(SumTreeRef[D, S], int)] =
   get_stack_to_leaf_at_index_template(s, idx)
@@ -116,23 +118,30 @@ proc get*[D, S](s: SumTreeRef[D, S], idx: int): D =
   find_leaf_node_at_index_template(s, idx)
   return n.data[adj_idx]
 
+proc shadow*[D, S](stack: var seq[(SumTreeRef[D, S], int)], child: var SumTreeRef[D, S]): SumTreeRef[D, S] =
+  var 
+    ch = child
+    n_clone = child
+    n: SumTreeRef[D, S]
+    i: int
+  while stack.len > 0:
+    (n, i) = stack.pop()
+    n_clone = n.clone()
+    n_clone.summary = (n_clone.summary - n_clone.nodes[i].summary) + ch.summary
+    n_clone.nodes[i] = ch
+    ch = n_clone
+  return n_clone
+
 proc im_set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
   ## TODO - handle indices that don't yet exist.
   ## TODO - handle sparse arrays
-  ## TODO - update summaries
   if idx < 0 or idx > s.size:
     raise newException(IndexError, "Index is out of bounds")
   get_stack_to_leaf_at_index_template(s, idx)
   var (n, i) = stack.pop()
   var n_clone = n.clone()
   n_clone.data[i] = d
-  var child = n_clone
-  while stack.len > 0:
-    (n, i) = stack.pop()
-    n_clone = n.clone()
-    n_clone.nodes[i] = child
-    child = n_clone
-  return n_clone
+  return shadow[D, S](stack, n_clone)
 
 const
   VEC_BITS = 5
@@ -217,6 +226,7 @@ template create_interior_dirty_template() {.dirty.} =
   interior.nodes_count = leaves_count
   interior.size = BUFFER_WIDTH * (leaves_count - 1)
   interior.size += interior.nodes[leaves_count - 1].size
+  interior.depth = 1
   interior.resummarize()
 
 template add_leaf_dirty_template() {.dirty.} =
@@ -232,6 +242,14 @@ template add_leaf_dirty_template() {.dirty.} =
 proc to_sumtree*[D, S](its: openArray[D]): SumTreeRef[D, S] =
   if its.len == 0:
     return init_sumtree[D, S](STLeaf)
+  if its.len <= BUFFER_WIDTH:
+    var n = init_sumtree[D, S](STLeaf)
+    for idx in 0..<its.len:
+      n.data[idx] = its[idx]
+    n.data_count = its.len
+    n.size = its.len
+    n.resummarize()
+    return n
   var
     i = 0
     adj_size = its.len
@@ -269,6 +287,7 @@ proc to_sumtree*[D, S](its: openArray[D]): SumTreeRef[D, S] =
       else:
         create_interior_dirty_template()
         return interior
+  if interiors.len == 1: return interiors[0]
   while interiors.len > 0:
     i = 0
     adj_size = interiors.len
@@ -279,20 +298,26 @@ proc to_sumtree*[D, S](its: openArray[D]): SumTreeRef[D, S] =
       adj_size -= BRANCH_WIDTH
       n = init_sumtree[D, S](STInterior)
       n.size = 0
+      n.depth = 0
       for idx in 0..<BRANCH_WIDTH:
         interior = interiors[i + idx]
         n.nodes[idx] = interior
         n.size += interior.size
+        n.depth = max(n.depth, interior.depth)
+      n.depth += 1
       n.nodes_count = BRANCH_WIDTH
       n.resummarize()
       i += BRANCH_WIDTH
       interiors2.add(n)
     if adj_size > 0:
       n = init_sumtree[D, S](STInterior)
+      n.depth = 0
       for idx in 0..<adj_size:
         interior = interiors[i + idx]
         n.nodes[idx] = interior
         n.size += interior.size
+        n.depth = max(n.depth, interior.depth)
+      n.depth += 1
       n.nodes_count = adj_size
       n.resummarize()
       interiors2.add(n)
@@ -300,6 +325,138 @@ proc to_sumtree*[D, S](its: openArray[D]): SumTreeRef[D, S] =
       return interiors2[0]
     else:
       interiors = interiors2
+
+
+## Assumes that bounds checks have already been performed
+proc shift_nodes*[D, S](s: SumTreeRef[D, S]) =
+  for i in countdown(s.nodes_count, 1):
+    s.nodes[i] = s.nodes[i - 1]
+
+## Assumes that bounds checks have already been performed
+proc shift_data*[D, S](s: SumTreeRef[D, S]) =
+  for i in countdown(s.data_count, 1):
+    s.data[i] = s.data[i - 1]
+
+proc depth_safe*[D, S](s: SumTreeRef[D, S]): uint8 =
+  if s.kind == STLeaf:
+    return 0
+  return s.depth
+
+proc concat*[D, S](s1, s2: SumTreeRef[D, S]): SumTreeRef[D, S] =
+  if s2.size == 0: return s1
+  if s1.size == 0: return s2
+  # TODO - take depth into account to try not to be too imbalanced
+  var root: SumTreeRef[D, S]
+  let kinds = (s1.kind, s2.kind)
+  if kinds == (STLeaf, STLeaf):
+    if s1.data_count + s2.data_count <= BUFFER_WIDTH:
+      # pack the contents of both nodes into a new one
+      root = init_sumtree[D, S](STLeaf)
+      for i in 0..<s1.data_count:
+        root.data[i] = s1.data[i] 
+      for i in 0..<s2.data_count:
+        root.data[i + s1.data_count] = s2.data[i]
+      root.data_count = s1.data_count + s2.data_count
+    else:
+      # make the nodes children of a new one
+      root = init_sumtree[D, S](STInterior)
+      root.nodes[0] = s1
+      root.nodes[1] = s2
+      root.nodes_count = 2
+      root.depth = 1
+  elif kinds == (STLeaf, STInterior):
+    var
+      stack = s2.get_stack_to_leaf_at_index(0)
+      child: SumTreeRef[D, S] 
+      n_clone: SumTreeRef[D, S] 
+      (n, i) = stack.pop()
+    if s1.data_count + n.data_count <= BUFFER_WIDTH:
+      child = init_sumtree[D, S](STLeaf)
+      for i in 0..<s1.data_count:
+        child.data[i] = s1.data[i] 
+      for i in 0..<n.data_count:
+        child.data[i + s1.data_count] = n.data[i]
+      child.data_count = s1.data_count + n.data_count
+      return shadow(stack, child)
+    (n, i) = stack.pop()
+    while true:
+      if n.nodes_count < BRANCH_WIDTH:
+        n_clone = n.clone()
+        n_clone.shift_nodes
+        n_clone.nodes[0] = s1
+        n_clone.nodes_count += 1
+        return shadow(stack, n_clone)
+      elif stack.len == 0:
+        root = init_sumtree[D, S](STInterior)
+        root.nodes[0] = s1
+        root.nodes[1] = s2
+        root.nodes_count = 2
+        root.depth = max(s1.depth_safe, s2.depth_safe) + 1
+        break
+      else:
+        (n, i) = stack.pop()
+  elif kinds == (STInterior, STLeaf):
+    var
+      stack = s1.get_stack_to_leaf_at_index(s1.size - 1)
+      child: SumTreeRef[D, S] 
+      n_clone: SumTreeRef[D, S] 
+      (n, i) = stack.pop()
+    if n.data_count + s2.data_count <= BUFFER_WIDTH:
+      child = init_sumtree[D, S](STLeaf)
+      for i in 0..<n.data_count:
+        child.data[i] = n.data[i] 
+      for i in 0..<s2.data_count:
+        child.data[i + n.data_count] = s2.data[i]
+      child.data_count = n.data_count + s2.data_count
+      return shadow(stack, child)
+    (n, i) = stack.pop()
+    while true:
+      if n.nodes_count < BRANCH_WIDTH:
+        n_clone = n.clone()
+        n_clone.nodes[n_clone.nodes_count] = s2
+        n_clone.nodes_count += 1
+        return shadow(stack, n_clone)
+      elif stack.len == 0:
+        root = init_sumtree[D, S](STInterior)
+        root.nodes[0] = s1
+        root.nodes[1] = s2
+        root.nodes_count = 2
+        root.depth = max(s1.depth_safe, s2.depth_safe) + 1
+        break
+      else:
+        (n, i) = stack.pop()
+  elif kinds == (STInterior, STInterior):
+    root = init_sumtree[D, S](STInterior)
+    if s1.nodes_count + s2.nodes_count <= BRANCH_WIDTH:
+      # pack the contents of both nodes into this one
+      root = init_sumtree[D, S](STInterior)
+      var n: SumTreeRef[D, S]
+      for i in 0..<s1.nodes_count:
+        n = s1.nodes[i]
+        root.nodes[i] = n
+        root.depth = max(root.depth, n.depth_safe)
+      for i in 0..<s2.nodes_count:
+        n = s2.nodes[i]
+        root.nodes[i + s1.nodes_count] = n
+        root.depth = max(root.depth, n.depth_safe)
+      root.nodes_count = s1.nodes_count + s2.nodes_count
+      root.depth += 1
+    else:
+      # add the nodes as children of this one
+      root.nodes[0] = s1
+      root.nodes[1] = s2
+      root.nodes_count = 2
+      root.depth = max(s1.depth, s2.depth) + 1
+  root.summary = s1.summary + s2.summary
+  root.size = s1.size + s2.size
+  return root
+template `&`*[D, S](s1, s2: SumTreeRef[D, S]): SumTreeRef[D, S] = s1.concat(s2)
+
+## TODO - Mutates in place where safe to do so.
+proc normalize*[D, S](s: SumTreeRef[D, S]) =
+  if s.kind == STLeaf: return
+  # TODO - normalize based on counts and depth
+  discard
 
 template mut_pop_case_1*[D, S](s: SumTreeRef[D, S]) =
   ## The node is a leaf
@@ -362,8 +519,7 @@ proc mut_append*[D, S](s: SumTreeRef[D, S], d: D) =
 
 template mut_prepend_case_1*[D, S](s: SumTreeRef[D, S], d: D) =
   ## The node is a leaf and there's room in the data
-  for i in countdown(s.data_count, 1):
-    s.data[i] = s.data[i - 1]
+  s.shift_data
   s.data[0] = d
   s.data_count += 1
   s.size += 1
@@ -371,8 +527,7 @@ template mut_prepend_case_1*[D, S](s: SumTreeRef[D, S], d: D) =
 
 proc mut_prepend_case_2*[D, S](s, child: SumTreeRef[D, S]) =
   ## The node is an interior with room for a new child
-  for i in countdown(s.nodes_count, 1):
-    s.nodes[i] = s.nodes[i - 1]
+  s.shift_nodes
   s.nodes_count += 1
   s.size += 1
   s.summary = s.summary + child.summary
@@ -666,15 +821,17 @@ proc compute_local_depth[D, S](s: SumTreeRef[D, S]): uint8 =
     for i in 0..<s.nodes_count:
       n = s.nodes[i]
       if n.kind == STInterior:
-        computed_depth += n.depth
-    return computed_depth
+        computed_depth = max(computed_depth, n.depth)
+    return computed_depth + 1
 
 proc valid*[D, S](s: SumTreeRef[D, S]): bool =
   for n in s.nodes_post_order:
     if n.size != n.compute_local_size: return false
     if n.summary != n.compute_local_summary: return false
     if n.kind == STInterior:
+      if n.depth == 0: return false
       if n.depth != n.compute_local_depth: return false
+      if n.nodes_count == 1 and n.nodes[0].kind == STInterior: return false
   return true
 
 template len*[D, S](s: SumTreeRef[D, S]): Natural = s.size
