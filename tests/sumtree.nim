@@ -22,6 +22,7 @@ import ../src/persistent/[sumtree]
 ## 
 ## Impl
 ## [ ] get ImArray to use this
+## [ ] add hash to pvec summary
 ## [ ] use `distinct` so that we can have monomorphic impls come after sumtree
 ##   - look at impl of https://github.com/Nycto/RBTreeNim/blob/master/src/rbtree.nim
 ## [ ] parameterize branch size and buffer size
@@ -42,11 +43,15 @@ proc main* =
     test "clone":
       var v1 = init_vec[int]()
       var v2 = v1.clone()
+      check v1.valid
+      check v2.valid
       check v1 == v2
     test "simple append":
       var
         v1 = init_vec[int]()
         v2 = v1.push(0)
+      check v1.valid
+      check v2.valid
       check v1 != v2
       check v1.len == 0
       check v2.len == 1
@@ -54,24 +59,29 @@ proc main* =
       var
         v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
         s = toSeq(v1.pairs)
+      check v1.valid
       check s == @[(0, 10), (1, 11), (2, 12), (3, 13), (4, 14), (5, 15)]
     test "push and iterator items":
       var
         v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
         s = toSeq(v1.items)
+      check v1.valid
       check s == @[10, 11, 12, 13, 14, 15]
     test "push_front and iterator pairs":
       var
         v1 = init_vec[int]().push_front(10).push_front(11).push_front(12).push_front(13)
         s = toSeq(v1.pairs)
+      check v1.valid
       check s == @[(0, 13), (1, 12), (2, 11), (3, 10)]
     test "push_front and iterator items":
       var
         v1 = init_vec[int]().push_front(10).push_front(11).push_front(12).push_front(13)
         s = toSeq(v1.items)
+      check v1.valid
       check s == @[13, 12, 11, 10]
     test "get":
       var v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
+      check v1.valid
       check v1.get(0) == 10
       check v1.get(5) == 15
       for (i, d) in v1.pairs():
@@ -96,6 +106,7 @@ proc main* =
         var
           s = toSeq(0..<size)
           v = to_vec(s)
+        check v.valid
         check toSeq(v) == s
       to_vec_test(0)
       to_vec_test(1)
@@ -119,10 +130,22 @@ proc main* =
           s2 = toSeq(0..<sz2)
           v1 = to_vec(s1)
           v2 = to_vec(s2)
+        check v1.valid
+        check v2.valid
         check toSeq(v1 & v2) == s1 & s2
       var sizes = @[0, 1, 10, 100, 1000, 10000]
       for sz1 in sizes:
         for sz2 in sizes:
           concat_test(sz1, sz2)
+    test "vec hashes":
+      var
+        v1 = [1, 2, 3, 4, 5, 6].to_vec
+        v2 = [1, 2, 3, 4, 5, 6].to_vec
+        v3 = [6, 5, 4, 3, 2, 1].to_vec
+      check v1.valid
+      check v2.valid
+      check v3.valid
+      check v1 == v2
+      check v1 != v3
   
   echo "done"

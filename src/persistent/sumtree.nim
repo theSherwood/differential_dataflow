@@ -1,4 +1,5 @@
 import std/[strformat, sequtils]
+import hashes
 
 func copyRef[T](node: T): T =
   new result
@@ -17,7 +18,7 @@ type
     x + y is T
     x - y is T
     T.zero is T
-    T.fromm(b: Natural, i: Natural) is T
+    T.from_buf(buf: openArray[Data], i: Natural) is T
   STBuffer[Data] = array[BUFFER_WIDTH, Data]
   STBufferRef[Data] = ref STBuffer[Data]
   STNodeKind* = enum
@@ -141,6 +142,7 @@ proc im_set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
   var (n, i) = stack.pop()
   var n_clone = n.clone()
   n_clone.data[i] = d
+  n_clone.summary = S.from_buf(n_clone.data, n_clone.data_count)
   return shadow[D, S](stack, n_clone)
 
 const
@@ -149,18 +151,23 @@ const
 
 type
   PVecSummary[T] = object
+    hash*: Hash
     size*: uint
 
 proc `+`*[T](s1, s2: PVecSummary[T]): PVecSummary[T] =
   result.size = s1.size + s2.size
+  result.hash = s1.hash xor s2.hash
 proc `-`*[T](s1, s2: PVecSummary[T]): PVecSummary[T] =
   result.size = s1.size - s2.size
+  result.hash = s1.hash xor s2.hash
 proc zero*[T](t: typedesc[PVecSummary[T]]): PVecSummary[T] =
   result.size = 0
-proc fromm*[T](t: typedesc[PVecSummary[T]], data_buf: Natural, l: Natural): PVecSummary[T] =
+  result.hash = 0
+proc from_buf*[T](t: typedesc[PVecSummary[T]], buf: openArray[T], l: Natural): PVecSummary[T] =
   result.size = l.uint
-# proc fromm*[T](data_buf: ptr T, l: Natural): PVecSummary[T] =
-#   result.size = l
+  result.hash = 0
+  for i in 0..<l:
+    result.hash = result.hash xor buf[i].hash
 
 type
   PVec*[T] = SumTree[T, PVecSummary[T]]
@@ -178,28 +185,20 @@ proc reset*[D, S](s: SumTreeRef[D, S]) =
     s.data_count = 0
     s.data = array[BUFFER_WIDTH, D]
 
-proc compute_local_summary*[D, S](s: SumTreeRef[D, S]): S =
-  if s.kind == STInterior:
-    result = S.zero()
-    for i in 0..<s.nodes_count:
-      result = result + s.nodes[i].summary
-  else:
-    result = S.fromm(10, s.data_count)
-
 proc resummarize*[D, S](s: SumTreeRef[D, S]) =
   if s.kind == STInterior:
     s.summary = S.zero()
     for i in 0..<s.nodes_count:
       s.summary = s.summary + s.nodes[i].summary
   else:
-    s.summary = S.fromm(10, s.data_count)
+    s.summary = S.from_buf(s.data, s.data_count)
 
 template mut_append_case_1*[D, S](s: SumTreeRef[D, S], d: D) =
   ## The node is a leaf and there's room in the data
   s.data[s.data_count] = d
   s.data_count += 1
   s.size += 1
-  s.summary = S.fromm(10, s.data_count)
+  s.summary = S.from_buf(s.data, s.data_count)
 
 proc init_sumtree*[D, S](d: D): SumTreeRef[D, S] =
   var s = SumTreeRef[D, S](kind: STLeaf)
@@ -463,7 +462,7 @@ template mut_pop_case_1*[D, S](s: SumTreeRef[D, S]) =
   s.data_count -= 1
   s.data[s.data_count] = default(D)
   s.size -= 1
-  s.summary = S.fromm(10, s.data_count)
+  s.summary = S.from_buf(s.data, s.data_count)
 
 proc mut_pop_case_2*[D, S](s, child: SumTreeRef[D, S]) =
   ## The node is an interior
@@ -523,7 +522,7 @@ template mut_prepend_case_1*[D, S](s: SumTreeRef[D, S], d: D) =
   s.data[0] = d
   s.data_count += 1
   s.size += 1
-  s.summary = S.fromm(10, s.data_count)
+  s.summary = S.from_buf(s.data, s.data_count)
 
 proc mut_prepend_case_2*[D, S](s, child: SumTreeRef[D, S]) =
   ## The node is an interior with room for a new child
@@ -803,6 +802,14 @@ proc pairs_closure[D, S](s: SumTreeRef[D, S]): iterator(): (int, D) =
   return iterator(): (int, D) =
     iterate_pairs(s)
 
+proc compute_local_summary*[D, S](s: SumTreeRef[D, S]): S =
+  if s.kind == STInterior:
+    result = S.zero()
+    for i in 0..<s.nodes_count:
+      result = result + s.nodes[i].summary
+  else:
+    result = S.from_buf(s.data, s.data_count)
+
 proc compute_local_size[D, S](s: SumTreeRef[D, S]): int =
   if s.kind == STLeaf:
     return s.data_count
@@ -838,6 +845,7 @@ template len*[D, S](s: SumTreeRef[D, S]): Natural = s.size
 
 proc `==`*[D](v1, v2: PVecRef[D]): bool =
   if v1.size != v2.size: return false
+  if v1.summary.hash != v2.summary.hash: return false
   var
     t1 = v1.pairs_closure()
     t2 = v2.pairs_closure()

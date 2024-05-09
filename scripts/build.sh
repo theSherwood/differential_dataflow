@@ -282,6 +282,7 @@ elif [ $NATIVE -eq 1 ]; then
     --gc: arc \
     --opt: speed \
     --threads: off \
+    --stackTrace: off \
     --d: release \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
