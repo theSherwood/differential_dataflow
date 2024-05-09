@@ -11,6 +11,7 @@
 
 import std/[tables, sets, bitops, strutils, strformat, macros]
 import hashes
+import persistent/[sumtree]
 
 ## # Immutable Value Types
 ## =======================
@@ -197,6 +198,7 @@ type
   ImArrayPayload* = object
     hash: Hash
     data: seq[ImValue]
+    vec: PVecRef[ImValue]
   ImMapPayload* = object
     hash: Hash
     data: Table[ImValue, ImValue]
@@ -618,9 +620,12 @@ else:
 
 func hash*(v: ImValue): Hash =
   if is_heap(v):
-    # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
-    let vh = cast[ImString](v)
-    result = vh.payload.hash.as_hash
+    if is_array(v):
+      result = v.as_arr.payload.hash.as_hash
+    else:
+      # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
+      let vh = cast[ImString](v)
+      result = vh.payload.hash.as_hash
   else:
     when c32:
       # We fold it and hash it for 32-bit stack values because a lot of them
@@ -818,17 +823,18 @@ template `&`*(m1, m2: ImMap): ImMap = m1.merge(m2)
 # ---------------------------------------------------------------------
 
 template buildImArray(new_hash, new_data: typed) {.dirty.} =
-  when c32:
-    let h = new_hash
-    var new_array = ImArray(
-      head: update_head(MASK_SIG_ARR, h.as_u32),
-      tail: ImArrayPayloadRef(hash: h, data: new_data)
-    )
-  else:
-    var re = new ImArrayPayload
-    GC_ref(re)
+  var re = new ImArrayPayload
+  block:
+    re.vec = to_vec[ImValue](new_data)
     re.hash = new_hash
     re.data = new_data
+  when c32:
+    var new_array = ImArray(
+      head: update_head(MASK_SIG_ARR, new_hash.as_u32),
+      tail: re
+    )
+  else:
+    GC_ref(re)
     var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
 
 proc init_array_empty(): ImArray =
@@ -921,11 +927,13 @@ template slice*(a: ImArray, i1, i2: typed): ImArray = a.slice(i1.v, i2.v)
 
 template set_impl*(a: ImArray, i: int, v: ImValue) =
   let derefed = a.payload
+  let new_vec = derefed.vec.set(i, v)
   # hash the previous version's hash with the new value and the old value
   let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
   var new_data = derefed.data
   new_data[i] = v
   buildImArray(new_hash, new_data)
+  new_array.payload.vec = new_vec
   return new_array
 template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
   if i.is_num: set_impl(a, i.as_f64.int, v)
@@ -949,11 +957,13 @@ proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
 proc add*(a: ImArray, v: ImValue): ImArray =
   let derefed = a.payload
+  let new_vec = derefed.vec.append(v)
   # hash the previous version's hash with the new value and the old value
   let new_hash = calc_hash(derefed.hash, v.hash)
   var new_data = derefed.data
   new_data.add(v)
   buildImArray(new_hash, new_data)
+  new_array.payload.vec = new_vec
   return new_array
 template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
 
