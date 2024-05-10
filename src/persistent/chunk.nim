@@ -52,8 +52,10 @@ template getOrDefault*[Count, T](c: Chunk[Count, T], i: int): T = c.getOrDefault
 
 template pop_multiple*[Count, T](c: var Chunk[Count, T], n: int) =
   c.len = max(0, c.len - n)
-template pop*[Count, T](c: var Chunk[Count, T]) =
-  c.pop_multiple(0)
+# Assumes the caller knows bounds
+proc pop*[Count, T](c: var Chunk[Count, T]): T =
+  c.len -= 1
+  return c.buf[c.len]
 
 proc get_run*[Count, T](c: Chunk[Count, T], idx: int, length: int): Chunk[Count, T] =
   var
@@ -107,6 +109,14 @@ proc concat*[Count, T](c1: Chunk[Count, T], c2: Chunk[Count, T]): (Chunk[Count, 
     n = c.concat_in_place(c2)
   return (c, n)
 
+## Assumes that the caller handles bounds checks
+template shift_down*[Count, T](c: var Chunk[Count, T], idx, n: int) =
+  for i in countdown(c.len - 1, idx):
+    c.buf[i + n] = c.buf[i]
+  c.len += n
+template shift_down*[Count, T](c: var Chunk[Count, T]) =
+  shift_down(c, 0, 1)
+
 ## TODO
 ## - fix these to deal with idx of 0
 ## - provide unsafe versions
@@ -115,18 +125,14 @@ proc insert*[Count, T](c: var Chunk[Count, T], idx: int, items: openArray[T]) =
   if len + c.len >= Count or idx < 0 or not(idx <= len):
     raise newException(IndexError, "Index is out of bounds")
   var offset = len - 1
-  for i in countdown(c.len, idx):
-    c.buf[i + offset] = c.buf[i - 1]
+  c.shift_down(idx, len)
   for i in 0..<len:
     c.buf[idx + i] = items[i]
-  c.len += len
 proc insert*[Count, T](c: var Chunk[Count, T], idx: int, t: T) =
   if c.len == Count or idx < 0 or not(idx <= c.len):
     raise newException(IndexError, "Index is out of bounds")
-  for i in countdown(c.len, idx):
-    c.buf[i] = c.buf[i - 1]
+  c.shift_down(idx, 1)
   c.buf[idx] = t
-  c.len += 1
 
 proc reverse_in_place*[Count, T](c: var Chunk[Count, T]) =
   var

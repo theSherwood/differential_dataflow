@@ -20,20 +20,29 @@ type
     hash*: Hash
     size*: uint
 
+proc zero*[T](t: typedesc[PVecSummary[T]]): PVecSummary[T] =
+  result.size = 0
+  result.hash = 0
 proc `+`*[T](s1, s2: PVecSummary[T]): PVecSummary[T] =
   result.size = s1.size + s2.size
   result.hash = s1.hash xor s2.hash
 proc `-`*[T](s1, s2: PVecSummary[T]): PVecSummary[T] =
   result.size = s1.size - s2.size
   result.hash = s1.hash xor s2.hash
-proc zero*[T](t: typedesc[PVecSummary[T]]): PVecSummary[T] =
-  result.size = 0
-  result.hash = 0
+proc `+`*[T](s: PVecSummary[T], it: T): PVecSummary[T] =
+  result.size = s.size + 1
+  result.hash = s.hash xor it.hash
+proc `-`*[T](s: PVecSummary[T], it: T): PVecSummary[T] =
+  result.size = s.size - 1
+  result.hash = s.hash xor it.hash
 proc from_buf*[T](t: typedesc[PVecSummary[T]], buf: openArray[T], l: Natural): PVecSummary[T] =
   result.size = l.uint
   result.hash = 0
   for i in 0..<l:
     result.hash = result.hash xor buf[i].hash
+proc from_item*[T](t: typedesc[PVecSummary[T]], it: T): PVecSummary[T] =
+  result.size = 1
+  result.hash = it.hash
 
 type
   PVec*[T] = object
@@ -176,9 +185,7 @@ proc reset*[T](s: PVecRef[T]) =
     s.nodes.len = 0
     s.nodes = array[BRANCH_WIDTH, T]
   else:
-    discard
-    # s.data.len = 0
-    # s.data = array[BUFFER_WIDTH, T]
+    s.data.len = 0
 
 proc resummarize*[T](s: PVecRef[T]) =
   if s.kind == kInterior:
@@ -192,7 +199,7 @@ template mut_append_case_1*[T](s: PVecRef[T], d: T) =
   ## The node is a leaf and there's room in the data
   s.data.add(d)
   s.size += 1
-  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
+  s.summary = s.summary + d
 
 proc init_sumtree*[T](d: T): PVecRef[T] =
   var s = PVecRef[T](kind: kLeaf)
@@ -317,17 +324,6 @@ proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     else:
       interiors = interiors2
 
-
-## Assumes that bounds checks have already been performed
-proc shift_nodes*[T](s: PVecRef[T]) =
-  for i in countdown(s.nodes.len, 1):
-    s.nodes[i] = s.nodes[i - 1]
-
-## Assumes that bounds checks have already been performed
-proc shift_data*[T](s: PVecRef[T]) =
-  for i in countdown(s.data.len, 1):
-    s.data[i] = s.data[i - 1]
-
 proc depth_safe*[T](s: PVecRef[T]): uint8 =
   if s.kind == kLeaf:
     return 0
@@ -351,9 +347,7 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
     else:
       # make the nodes children of a new one
       root = init_sumtree[T](kInterior)
-      root.nodes[0] = s1
-      root.nodes[1] = s2
-      root.nodes.len = 2
+      root.nodes.insert(0, [s1, s2])
       root.depth = 1
   elif kinds == (kLeaf, kInterior):
     var
@@ -373,15 +367,11 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
     while true:
       if n.nodes.len < BRANCH_WIDTH:
         n_clone = n.clone()
-        n_clone.shift_nodes
-        n_clone.nodes[0] = s1
-        n_clone.nodes.len += 1
+        n_clone.nodes.insert(0, s1)
         return shadow(stack, n_clone)
       elif stack.len == 0:
         root = init_sumtree[T](kInterior)
-        root.nodes[0] = s1
-        root.nodes[1] = s2
-        root.nodes.len = 2
+        root.nodes.insert(0, [s1, s2])
         root.depth = max(s1.depth_safe, s2.depth_safe) + 1
         break
       else:
@@ -409,9 +399,7 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         return shadow(stack, n_clone)
       elif stack.len == 0:
         root = init_sumtree[T](kInterior)
-        root.nodes[0] = s1
-        root.nodes[1] = s2
-        root.nodes.len = 2
+        root.nodes.insert(0, [s1, s2])
         root.depth = max(s1.depth_safe, s2.depth_safe) + 1
         break
       else:
@@ -434,9 +422,7 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       root.depth += 1
     else:
       # add the nodes as children of this one
-      root.nodes[0] = s1
-      root.nodes[1] = s2
-      root.nodes.len = 2
+      root.nodes.insert(0, [s1, s2])
       root.depth = max(s1.depth, s2.depth) + 1
   root.summary = s1.summary + s2.summary
   root.size = s1.size + s2.size
@@ -451,10 +437,9 @@ proc normalize*[T](s: PVecRef[T]) =
 
 template mut_pop_case_1*[T](s: PVecRef[T]) =
   ## The node is a leaf
-  s.data.len -= 1
-  s.data[s.data.len] = default(T)
+  var d = s.data.pop()
+  s.summary = s.summary - d
   s.size -= 1
-  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 proc mut_pop_case_2*[T](s, child: PVecRef[T]) =
   ## The node is an interior
@@ -488,8 +473,7 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
           return
       # Add a child
       var new_st = init_sumtree[T](d)
-      n.nodes[n.nodes.len] = new_st
-      n.nodes.len += 1
+      n.nodes.add(new_st)
       # Walk up what's left of the stack to increase the size and fix summaries
       while n.isNil.not:
         n.size += 1
@@ -511,16 +495,13 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
 template mut_prepend_case_1*[T](s: PVecRef[T], d: T) =
   ## The node is a leaf and there's room in the data
   # s.data.insert(0, d)
-  s.shift_data
-  s.data[0] = d
-  s.data.len += 1
+  s.data.insert(0, d)
   s.size += 1
-  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
+  s.summary = s.summary + d
 
 proc mut_prepend_case_2*[T](s, child: PVecRef[T]) =
   ## The node is an interior with room for a new child
-  s.shift_nodes
-  s.nodes.len += 1
+  s.nodes.insert(0, child)
   s.size += 1
   s.summary = s.summary + child.summary
   if s.depth <= child.depth:
