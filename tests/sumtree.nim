@@ -147,5 +147,11 @@ proc main* =
       check v3.valid
       check v1 == v2
       check v1 != v3
+    test "pop":
+      var
+        v1 = [1, 2, 3, 4, 5, 6].to_vec
+        (v2, six) = v1.pop()
+      check v2.size == 5
+      check six == 6
   
   echo "done"

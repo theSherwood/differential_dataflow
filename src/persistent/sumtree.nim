@@ -1,5 +1,278 @@
+## 
+## DESIGN
+## 
+## Zed
+##
+##  struct SumTree<T: Item>(pub Arc<Node<T>>);
+##  enum Node<T: Item> {
+##      Internal {
+##          height: u8,
+##          summary: T::Summary,
+##          child_summaries: ArrayVec<T::Summary, { 2 * TREE_BASE }>,
+##          child_trees: ArrayVec<SumTree<T>, { 2 * TREE_BASE }>,
+##      },
+##      Leaf {
+##          summary: T::Summary,
+##          items: ArrayVec<T, { 2 * TREE_BASE }>,
+##          item_summaries: ArrayVec<T::Summary, { 2 * TREE_BASE }>,
+##      },
+##  }
+## 
+## 
+#[
+
+type 
+  Chunk[Count: static int, T] = object
+    len: uint32
+    buf: array[Count, T]
+  
+  ZedSumTree*[Data, Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        child_trees*: Chunk[32, ZedSumTreeRef[Data, Summary]]
+        child_summaries: Chunk[32, Summary]
+      of STLeaf:
+        items: Chunk64[Data]
+        item_summaries: Chunk64[Summary]
+  ZedSumTreeRef*[Data, Summary] = ref ZedSumTree[Data, Summary]
+
+  ImArraySummary = object
+    hash: Hash
+    len: uint32
+    # we could accumulate additional stats here, like `max`, `min`, etc, but
+    # probably no point.
+
+  Array*[Value, Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        children*: Chunk[32, ArrayRef[Value, Summary]]
+        children_summaries*: Chunk[32, Summary]
+      of STLeaf:
+        data: Chunk[64, Value]
+  ArrayRef*[Value, Summary] = ref Array[Value, Summary]
+
+  ## Additional Array considerations
+  ## - do we want to have cumulative summaries of children on interior nodes?
+  ##   - this is also a consideration for strings
+  ##   - that lets us do binary search on children summaries when we `get`
+  ##   - but comes at the cost of reaccumulating summaries on every `set`
+  ##   - probably not worth doing initially
+  ## - do we want to support sparse arrays?
+  ##   - this is probably not worth doing
+  ##   - probably better to just have ops like `setLen` fill with `default(Value)`
+  ##   - probably not worth doing initially
+  ##   
+
+  TextSummary = object
+    hash: Hash
+    # utf8 string
+    bytes: uint32
+    # What the user would consider a character/grapheme
+    # characters/graphemes must not cross chunk boundaries
+    characters: uint32
+    # Just count the number of newlines
+    lines: uint32
+
+  String*[Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        children*: Chunk[32, StringRef[Summary]]
+        children_summaries*: Chunk[32, Summary]
+      of STLeaf:
+        data: Chunk[64, uint8]
+  StringRef*[Summary] = ref String[Summary]
+
+  Entry[Key, Value] = object
+    key: Key
+    value: Value
+  ImSortedMapSummary = object
+    hash: Hash
+    len: uint32
+    max: Key
+    high: Key
+
+  # TODO - support custom sort orders?
+  # This would also need a sort fn or something if we want to support custom
+  # sort orders.
+  SortedMap*[Entry[Key, Value], Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        children*: Chunk[32, SortedMapRef[Summary]]
+        children_summaries*: Chunk[32, Summary]
+      of STLeaf:
+        data: Chunk[64, Entry[Key, Value]]
+  SortedMapRef*[Summary] = ref SortedMap[Summary]
+
+  ## Additional SortedMap considerations
+  ## - unlike Arrays, we may profit from doing binary search to find elements
+
+  ImSortedSetSummary = object
+    hash: Hash
+    len: uint32
+    max: Key
+    high: Key
+
+  SortedSet*[Value, Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        children*: Chunk[32, SortedSetRef[Summary]]
+        children_summaries*: Chunk[32, Summary]
+      of STLeaf:
+        data: Chunk[64, Value]
+  SortedSetRef*[Summary] = ref SortedSet[Summary]
+
+  ## 
+  ## - Orderless versions of Map and Set should use HAMT or similar
+  ## - How do we want to handle Rich text and other widget trees?
+  ## - How about refs? Do we want to use SumTrees for refs?
+  ##   - They're still useful for any kind of sorted data where
+  ##     insertions/deletions can happen at any key
+  ##     - SortedMap, SortedSet, Text, possibly even Array
+  ## - Transients?
+  ##   - It might be good to have an additional Summary operation for removing
+  ##     or adding a single element rather than rehashing up to 64 data items.
+  ##     - for ImValues, the hash should just be the 64bit float cast to a hash
+  ##     - probably good even without transients
+  ## - Tables?
+  ## 
+  ## USE CASES???
+  ## (UNI = our dynamic Value)
+  ## (UNI_IM = our immutable dynamic values)
+  ## (UNI_REF = our reference dynamic values)
+  ## 
+  ## # UNI_IM
+  ## - ImString
+  ## 
+  ## # Specific to UNI_IMs (this affects the shape of summaries)
+  ## # The box around these things will probably get interned for fast comparisons.
+  ## - ImArray[UNI_IM]
+  ## - ImSortedSet[UNI_IM]
+  ## - ImSortedMap[UNI_IM, UNI_IM]
+  ## 
+  ## # Generic (level 1)
+  ## # Use the immutable collections in a typed fashion?
+  ## # We can have basic summary and summary ops prepped for each type
+  ## # Do we still hash in the summaries?
+  ## - ImArray[V]
+  ## - ImSortedSet[V]
+  ## - ImSortedMap[K, V]
+  ## 
+  ## # Generic (level 2)
+  ## # Expose the summary interface? (this is almost definitely a bad idea)
+  ## - ImArray[V, Summary]
+  ## - ImSortedSet[V, Summary]
+  ## - ImSortedMap[K, V, Summary]
+  ## 
+  ## # Mutable UNI_REFs
+  ## - Text (mutable string)
+  ## 
+  ## # Still dedicated to our UNI-type. Is there any particular restriction
+  ## # on Summaries? If not, then we can just have this all be Generic (level 1)
+  ## - Array[UNI]
+  ## - SortedSet[UNI]
+  ## - SortedMap[UNI, UNI]
+  ## 
+  ## # Generic (level 1)
+  ## - Array[V]
+  ## - SortedSet[V]
+  ## - SortedMap[K, V]
+  ## 
+  ## # Generic (level 2)
+  ## # Again, bad idea?
+  ## - Array[V, Summary]
+  ## - SortedSet[V, Summary]
+  ## - SortedMap[K, V, Summary]
+  ## 
+  ## # With all this mutable stuff, how do we actually use that within Jackal?
+  ## # How does any of that work with our logic programming?
+  ## # Obviously we need something that is mutable at the top level, but
+  ## # other than that, mutability is going to be a problem for tracking state
+  ## # and ensuring determinism.
+  ## 
+  ## # With all the generic stuff, do we want to allow for changes to chunk
+  ## # sizes? Probably not.
+  ## 
+  ## RichText, Widget Trees (like vDOM), R trees?
+  ## - It's conceptually straightforward to use SumTrees for something linear,
+  ##   but how does it work for something tree-like?
+  ## - I think R-trees might be possible just with summaries as interior nodes
+  ##   and the data items in the chunk in the leaf.
+  ##   - Insertion is going to have to be a bit different because sometimes
+  ##     it might make more sense to expand a slice of node data into its own
+  ##     node rather than wrapping it.
+  ##   - maintaining balance may be irritating
+  ##   - ideally we could parameterize the number of dimensions, the types for
+  ##     each dimension, a comparison function for each dimension, and what
+  ##     indices we want to maintain for traversal in different orders.
+  ##     - maintaining different indices may be overkill
+  ## - I don't think widget trees make sense to model with SumTrees because
+  ##   each node in a widget tree needs to represent some widget. If the
+  ##   thought is to put a widget in the summary, there's a problem with that.
+  ##   Namely that widgets aren't summable.
+  ##   - RichText is probably not going to work for similar reasons
+  ## 
+  
+  RangeTree1D[Key, Value, Summary] = object
+    summary*: Summary
+    case kind*: STNodeKind
+      of STInterior:
+        height*: uint8
+        children*: Chunk[32, RangeTreeRef[Summary]]
+        children_summaries*: Chunk[32, Summary]
+      of STLeaf:
+        data: Chunk[64, Value]
+  RangeTreeRef*[Summary] = ref RangeTree[Summary]
+
+  # Ideal API for range trees requires macros
+  RangeTree:
+    name:            Super3DRangeTree3000        # the name to be used for the generated types
+    value:           ValueType
+    dimension_types: [ Key1,  Key2,  Key3]       # 3D range tree
+    dimension_index: [  Asc,  None,  Both]       # tells the number and types of sorted
+                                                 # buffers we want to maintain on each
+                                                 # node
+    dimension_cmps:  [func1, func2, func3]       # comparison functions for the key types
+    branch_width:    16                          # defaults to 32
+    buffer_width:    64                          # defaults to 2 * branch_width
+    summary:         SummaryType
+    summary_zero:    func4           # get an empty SummaryType
+    summary_from:    func7           # get a SummaryType from a buffer of ValueType
+    summary_sum:     func5           # sum two SummaryTypes together
+    summary_minus:   func6           # subtract a SummaryType from a SummaryType
+    partial_sum:     func8           # add a ValueType to a SummaryType
+    partial_minus:   func9           # subtract a ValueType from a SummaryType
+  
+  # Ideal API for SumTrees requires macros?
+  SumTree:
+    name:            SomeSumTree     # the name to be used fro the generated types
+    value:           ValueType
+    summary:         SummaryType
+    branch_width:    16              # defaults to 32
+    buffer_width:    64              # defaults to 2 * branch_width
+    summary_zero:    func4           # get an empty SummaryType
+    summary_from:    func7           # get a SummaryType from a buffer of ValueType
+    summary_sum:     func5           # sum two SummaryTypes together
+    summary_minus:   func6           # subtract a SummaryType from a SummaryType
+    partial_sum:     func8           # add a ValueType to a SummaryType
+    partial_minus:   func9           # subtract a ValueType from a SummaryType
+
+]#
+## 
+## 
+
 import std/[strformat, sequtils]
 import hashes
+import chunk
 
 func copyRef[T](node: T): T =
   new result
@@ -12,7 +285,12 @@ const
 
 type
   KeyError* = object of CatchableError
-  IndexError* = object of CatchableError
+  # IndexError* = object of CatchableError
+
+  Chunk[Count: static int, T] = object
+    len: uint32
+    buf: array[Count, T]
+
 
   Summary[Data] = concept x, y, type T
     x + y is T
@@ -144,6 +422,19 @@ proc im_set*[D, S](s: SumTreeRef[D, S], idx: int, d: D): SumTreeRef[D, S] =
   n_clone.data[i] = d
   n_clone.summary = S.from_buf(n_clone.data, n_clone.data_count)
   return shadow[D, S](stack, n_clone)
+
+proc im_pop*[D, S](s: SumTreeRef[D, S]): (SumTreeRef[D, S], D) =
+  ## TODO - handle indices that don't yet exist.
+  ## TODO - handle sparse arrays
+  get_stack_to_leaf_at_index_template(s, s.size - 1)
+  var (n, i) = stack.pop()
+  var n_clone = n.clone()
+  var item = n_clone.data[i]
+  n_clone.data[i] = default(D)
+  n_clone.data_count -= 1
+  n_clone.size -= 1
+  n_clone.summary = S.from_buf(n_clone.data, n_clone.data_count)
+  return (shadow[D, S](stack, n_clone), item)
 
 const
   VEC_BITS = 5
@@ -864,6 +1155,8 @@ template push*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 
 template prepend*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)
 template push_front*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)
+
+template pop*[T](vec: PVecRef[T]): (PVecRef[T], T) = vec.im_pop()
 
 template set*[T](vec: PVecRef[T], idx: int, item: T): PVecRef[T] = vec.im_set(idx, item)
 
