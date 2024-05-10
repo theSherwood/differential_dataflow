@@ -1,278 +1,7 @@
-## 
-## DESIGN
-## 
-## Zed
-##
-##  struct PVec<T: Item>(pub Arc<Node<T>>);
-##  enum Node<T: Item> {
-##      Internal {
-##          height: u8,
-##          summary: T::Summary,
-##          child_summaries: ArrayVec<T::Summary, { 2 * TREE_BASE }>,
-##          child_trees: ArrayVec<PVec<T>, { 2 * TREE_BASE }>,
-##      },
-##      Leaf {
-##          summary: T::Summary,
-##          items: ArrayVec<T, { 2 * TREE_BASE }>,
-##          item_summaries: ArrayVec<T::Summary, { 2 * TREE_BASE }>,
-##      },
-##  }
-## 
-## 
-#[
-
-type 
-  Chunk[Count: static int, T] = object
-    len: uint32
-    buf: array[Count, T]
-  
-  ZedPVec*[Data, Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        child_trees*: Chunk[32, ZedPVecRef[Data, Summary]]
-        child_summaries: Chunk[32, Summary]
-      of kLeaf:
-        items: Chunk64[Data]
-        item_summaries: Chunk64[Summary]
-  ZedPVecRef*[Data, Summary] = ref ZedPVec[Data, Summary]
-
-  ImArraySummary = object
-    hash: Hash
-    len: uint32
-    # we could accumulate additional stats here, like `max`, `min`, etc, but
-    # probably no point.
-
-  Array*[Value, Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        children*: Chunk[32, ArrayRef[Value, Summary]]
-        children_summaries*: Chunk[32, Summary]
-      of kLeaf:
-        data: Chunk[64, Value]
-  ArrayRef*[Value, Summary] = ref Array[Value, Summary]
-
-  ## Additional Array considerations
-  ## - do we want to have cumulative summaries of children on interior nodes?
-  ##   - this is also a consideration for strings
-  ##   - that lets us do binary search on children summaries when we `get`
-  ##   - but comes at the cost of reaccumulating summaries on every `set`
-  ##   - probably not worth doing initially
-  ## - do we want to support sparse arrays?
-  ##   - this is probably not worth doing
-  ##   - probably better to just have ops like `setLen` fill with `default(Value)`
-  ##   - probably not worth doing initially
-  ##   
-
-  TextSummary = object
-    hash: Hash
-    # utf8 string
-    bytes: uint32
-    # What the user would consider a character/grapheme
-    # characters/graphemes must not cross chunk boundaries
-    characters: uint32
-    # Just count the number of newlines
-    lines: uint32
-
-  String*[Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        children*: Chunk[32, StringRef[Summary]]
-        children_summaries*: Chunk[32, Summary]
-      of kLeaf:
-        data: Chunk[64, uint8]
-  StringRef*[Summary] = ref String[Summary]
-
-  Entry[Key, Value] = object
-    key: Key
-    value: Value
-  ImSortedMapSummary = object
-    hash: Hash
-    len: uint32
-    max: Key
-    high: Key
-
-  # TODO - support custom sort orders?
-  # This would also need a sort fn or something if we want to support custom
-  # sort orders.
-  SortedMap*[Entry[Key, Value], Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        children*: Chunk[32, SortedMapRef[Summary]]
-        children_summaries*: Chunk[32, Summary]
-      of kLeaf:
-        data: Chunk[64, Entry[Key, Value]]
-  SortedMapRef*[Summary] = ref SortedMap[Summary]
-
-  ## Additional SortedMap considerations
-  ## - unlike Arrays, we may profit from doing binary search to find elements
-
-  ImSortedSetSummary = object
-    hash: Hash
-    len: uint32
-    max: Key
-    high: Key
-
-  SortedSet*[Value, Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        children*: Chunk[32, SortedSetRef[Summary]]
-        children_summaries*: Chunk[32, Summary]
-      of kLeaf:
-        data: Chunk[64, Value]
-  SortedSetRef*[Summary] = ref SortedSet[Summary]
-
-  ## 
-  ## - Orderless versions of Map and Set should use HAMT or similar
-  ## - How do we want to handle Rich text and other widget trees?
-  ## - How about refs? Do we want to use PVecs for refs?
-  ##   - They're still useful for any kind of sorted data where
-  ##     insertions/deletions can happen at any key
-  ##     - SortedMap, SortedSet, Text, possibly even Array
-  ## - Transients?
-  ##   - It might be good to have an additional Summary operation for removing
-  ##     or adding a single element rather than rehashing up to 64 data items.
-  ##     - for ImValues, the hash should just be the 64bit float cast to a hash
-  ##     - probably good even without transients
-  ## - Tables?
-  ## 
-  ## USE CASES???
-  ## (UNI = our dynamic Value)
-  ## (UNI_IM = our immutable dynamic values)
-  ## (UNI_REF = our reference dynamic values)
-  ## 
-  ## # UNI_IM
-  ## - ImString
-  ## 
-  ## # Specific to UNI_IMs (this affects the shape of summaries)
-  ## # The box around these things will probably get interned for fast comparisons.
-  ## - ImArray[UNI_IM]
-  ## - ImSortedSet[UNI_IM]
-  ## - ImSortedMap[UNI_IM, UNI_IM]
-  ## 
-  ## # Generic (level 1)
-  ## # Use the immutable collections in a typed fashion?
-  ## # We can have basic summary and summary ops prepped for each type
-  ## # Do we still hash in the summaries?
-  ## - ImArray[V]
-  ## - ImSortedSet[V]
-  ## - ImSortedMap[K, V]
-  ## 
-  ## # Generic (level 2)
-  ## # Expose the summary interface? (this is almost definitely a bad idea)
-  ## - ImArray[V, Summary]
-  ## - ImSortedSet[V, Summary]
-  ## - ImSortedMap[K, V, Summary]
-  ## 
-  ## # Mutable UNI_REFs
-  ## - Text (mutable string)
-  ## 
-  ## # Still dedicated to our UNI-type. Is there any particular restriction
-  ## # on Summaries? If not, then we can just have this all be Generic (level 1)
-  ## - Array[UNI]
-  ## - SortedSet[UNI]
-  ## - SortedMap[UNI, UNI]
-  ## 
-  ## # Generic (level 1)
-  ## - Array[V]
-  ## - SortedSet[V]
-  ## - SortedMap[K, V]
-  ## 
-  ## # Generic (level 2)
-  ## # Again, bad idea?
-  ## - Array[V, Summary]
-  ## - SortedSet[V, Summary]
-  ## - SortedMap[K, V, Summary]
-  ## 
-  ## # With all this mutable stuff, how do we actually use that within Jackal?
-  ## # How does any of that work with our logic programming?
-  ## # Obviously we need something that is mutable at the top level, but
-  ## # other than that, mutability is going to be a problem for tracking state
-  ## # and ensuring determinism.
-  ## 
-  ## # With all the generic stuff, do we want to allow for changes to chunk
-  ## # sizes? Probably not.
-  ## 
-  ## RichText, Widget Trees (like vDOM), R trees?
-  ## - It's conceptually straightforward to use PVecs for something linear,
-  ##   but how does it work for something tree-like?
-  ## - I think R-trees might be possible just with summaries as interior nodes
-  ##   and the data items in the chunk in the leaf.
-  ##   - Insertion is going to have to be a bit different because sometimes
-  ##     it might make more sense to expand a slice of node data into its own
-  ##     node rather than wrapping it.
-  ##   - maintaining balance may be irritating
-  ##   - ideally we could parameterize the number of dimensions, the types for
-  ##     each dimension, a comparison function for each dimension, and what
-  ##     indices we want to maintain for traversal in different orders.
-  ##     - maintaining different indices may be overkill
-  ## - I don't think widget trees make sense to model with PVecs because
-  ##   each node in a widget tree needs to represent some widget. If the
-  ##   thought is to put a widget in the summary, there's a problem with that.
-  ##   Namely that widgets aren't summable.
-  ##   - RichText is probably not going to work for similar reasons
-  ## 
-  
-  RangeTree1D[Key, Value, Summary] = object
-    summary*: Summary
-    case kind*: NodeKind
-      of kInterior:
-        height*: uint8
-        children*: Chunk[32, RangeTreeRef[Summary]]
-        children_summaries*: Chunk[32, Summary]
-      of kLeaf:
-        data: Chunk[64, Value]
-  RangeTreeRef*[Summary] = ref RangeTree[Summary]
-
-  # Ideal API for range trees requires macros
-  RangeTree:
-    name:            Super3DRangeTree3000        # the name to be used for the generated types
-    value:           ValueType
-    dimension_types: [ Key1,  Key2,  Key3]       # 3D range tree
-    dimension_index: [  Asc,  None,  Both]       # tells the number and types of sorted
-                                                 # buffers we want to maintain on each
-                                                 # node
-    dimension_cmps:  [func1, func2, func3]       # comparison functions for the key types
-    branch_width:    16                          # defaults to 32
-    buffer_width:    64                          # defaults to 2 * branch_width
-    summary:         SummaryType
-    summary_zero:    func4           # get an empty SummaryType
-    summary_from:    func7           # get a SummaryType from a buffer of ValueType
-    summary_sum:     func5           # sum two SummaryTypes together
-    summary_minus:   func6           # subtract a SummaryType from a SummaryType
-    partial_sum:     func8           # add a ValueType to a SummaryType
-    partial_minus:   func9           # subtract a ValueType from a SummaryType
-  
-  # Ideal API for PVecs requires macros?
-  PVec:
-    name:            SomePVec     # the name to be used fro the generated types
-    value:           ValueType
-    summary:         SummaryType
-    branch_width:    16              # defaults to 32
-    buffer_width:    64              # defaults to 2 * branch_width
-    summary_zero:    func4           # get an empty SummaryType
-    summary_from:    func7           # get a SummaryType from a buffer of ValueType
-    summary_sum:     func5           # sum two SummaryTypes together
-    summary_minus:   func6           # subtract a SummaryType from a SummaryType
-    partial_sum:     func8           # add a ValueType to a SummaryType
-    partial_minus:   func9           # subtract a ValueType from a SummaryType
-
-]#
-## 
-## 
-
 import std/[strformat, sequtils]
 import hashes
 import chunk
+export chunk
 
 const
   BRANCH_WIDTH = 32
@@ -282,7 +11,6 @@ type
   KeyError* = object of CatchableError
   IndexError* = object of CatchableError
 
-  STBuffer[Data] = array[BUFFER_WIDTH, Data]
   NodeKind* = enum
     kInterior
     kLeaf
@@ -313,13 +41,12 @@ type
     size*: Natural
     summary*: PVecSummary[T]
     case kind*: NodeKind
-    of kInterior:
-      depth*: uint8
-      nodes_count*: Natural
-      nodes: array[BRANCH_WIDTH, PVecRef[T]]
-    of kLeaf:
-      data_count*: Natural
-      data: STBuffer[T]
+      of kInterior:
+        depth*: uint8
+        nodes_count*: Natural
+        nodes: array[BRANCH_WIDTH, PVecRef[T]]
+      of kLeaf:
+        data*: Chunk[BUFFER_WIDTH, T]
   PVecRef*[T] = ref PVec[T]
 
 proc `$`*[T](s: PVecRef[T]): string =
@@ -329,7 +56,7 @@ proc `$`*[T](s: PVecRef[T]): string =
   result.add(&"  kind: {s.kind}\n")
   if s.kind == kLeaf:
     discard
-    # result.add(&"  data_count: {s.data_count}")
+    # result.add(&"  data.len: {s.data.len}")
   else:
     result.add(&"  depth: {s.depth}\n")
     result.add(&"  nodes_count: {s.nodes_count}\n")
@@ -342,7 +69,6 @@ proc clone*[T](s: PVecRef[T]): PVecRef[T] =
   result.kind = s.kind
   result.summary = s.summary
   if result.kind == kLeaf:
-    result.data_count = s.data_count
     result.data = s.data
   else:
     result.depth = s.depth
@@ -426,7 +152,7 @@ proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
   var (n, i) = stack.pop()
   var n_clone = n.clone()
   n_clone.data[i] = d
-  n_clone.summary = PVecSummary[T].from_buf(n_clone.data, n_clone.data_count)
+  n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
   return shadow[T](stack, n_clone)
 
 proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
@@ -437,9 +163,9 @@ proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
   var n_clone = n.clone()
   var item = n_clone.data[i]
   n_clone.data[i] = default(T)
-  n_clone.data_count -= 1
+  n_clone.data.len -= 1
   n_clone.size -= 1
-  n_clone.summary = PVecSummary[T].from_buf(n_clone.data, n_clone.data_count)
+  n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
   return (shadow[T](stack, n_clone), item)
 
 ## Does not change the Node kind
@@ -451,8 +177,9 @@ proc reset*[T](s: PVecRef[T]) =
     s.nodes_count = 0
     s.nodes = array[BRANCH_WIDTH, T]
   else:
-    s.data_count = 0
-    s.data = array[BUFFER_WIDTH, T]
+    discard
+    # s.data.len = 0
+    # s.data = array[BUFFER_WIDTH, T]
 
 proc resummarize*[T](s: PVecRef[T]) =
   if s.kind == kInterior:
@@ -460,14 +187,13 @@ proc resummarize*[T](s: PVecRef[T]) =
     for i in 0..<s.nodes_count:
       s.summary = s.summary + s.nodes[i].summary
   else:
-    s.summary = PVecSummary[T].from_buf(s.data, s.data_count)
+    s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 template mut_append_case_1*[T](s: PVecRef[T], d: T) =
   ## The node is a leaf and there's room in the data
-  s.data[s.data_count] = d
-  s.data_count += 1
+  s.data.add(d)
   s.size += 1
-  s.summary = PVecSummary[T].from_buf(s.data, s.data_count)
+  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 proc init_sumtree*[T](d: T): PVecRef[T] =
   var s = PVecRef[T](kind: kLeaf)
@@ -514,7 +240,7 @@ proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     var n = init_sumtree[T](kLeaf)
     for idx in 0..<its.len:
       n.data[idx] = its[idx]
-    n.data_count = its.len
+    n.data.len = its.len
     n.size = its.len
     n.resummarize()
     return n
@@ -530,7 +256,7 @@ proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     n = init_sumtree[T](kLeaf)
     for idx in 0..<BUFFER_WIDTH:
       n.data[idx] = its[i + idx]
-    n.data_count = BUFFER_WIDTH
+    n.data.len = BUFFER_WIDTH
     n.resummarize()
     n.size = BUFFER_WIDTH
     i += BUFFER_WIDTH
@@ -539,9 +265,9 @@ proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     n = init_sumtree[T](kLeaf)
     for idx in 0..<adj_size:
       n.data[idx] = its[i + idx]
-    n.data_count = adj_size
+    n.data.len = adj_size
     n.resummarize()
-    n.size = n.data_count
+    n.size = n.data.len
     add_leaf_dirty_template()
   if leaves_count > 0:
     create_interior_dirty_template()
@@ -602,7 +328,7 @@ proc shift_nodes*[T](s: PVecRef[T]) =
 
 ## Assumes that bounds checks have already been performed
 proc shift_data*[T](s: PVecRef[T]) =
-  for i in countdown(s.data_count, 1):
+  for i in countdown(s.data.len, 1):
     s.data[i] = s.data[i - 1]
 
 proc depth_safe*[T](s: PVecRef[T]): uint8 =
@@ -617,14 +343,14 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
   var root: PVecRef[T]
   let kinds = (s1.kind, s2.kind)
   if kinds == (kLeaf, kLeaf):
-    if s1.data_count + s2.data_count <= BUFFER_WIDTH:
+    if s1.data.len + s2.data.len <= BUFFER_WIDTH:
       # pack the contents of both nodes into a new one
       root = init_sumtree[T](kLeaf)
-      for i in 0..<s1.data_count:
+      for i in 0..<s1.data.len:
         root.data[i] = s1.data[i] 
-      for i in 0..<s2.data_count:
-        root.data[i + s1.data_count] = s2.data[i]
-      root.data_count = s1.data_count + s2.data_count
+      for i in 0..<s2.data.len:
+        root.data[i + s1.data.len] = s2.data[i]
+      root.data.len = s1.data.len + s2.data.len
     else:
       # make the nodes children of a new one
       root = init_sumtree[T](kInterior)
@@ -638,13 +364,13 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       child: PVecRef[T] 
       n_clone: PVecRef[T] 
       (n, i) = stack.pop()
-    if s1.data_count + n.data_count <= BUFFER_WIDTH:
+    if s1.data.len + n.data.len <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
-      for i in 0..<s1.data_count:
+      for i in 0..<s1.data.len:
         child.data[i] = s1.data[i] 
-      for i in 0..<n.data_count:
-        child.data[i + s1.data_count] = n.data[i]
-      child.data_count = s1.data_count + n.data_count
+      for i in 0..<n.data.len:
+        child.data[i + s1.data.len] = n.data[i]
+      child.data.len = s1.data.len + n.data.len
       return shadow(stack, child)
     (n, i) = stack.pop()
     while true:
@@ -669,13 +395,13 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       child: PVecRef[T] 
       n_clone: PVecRef[T] 
       (n, i) = stack.pop()
-    if n.data_count + s2.data_count <= BUFFER_WIDTH:
+    if n.data.len + s2.data.len <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
-      for i in 0..<n.data_count:
+      for i in 0..<n.data.len:
         child.data[i] = n.data[i] 
-      for i in 0..<s2.data_count:
-        child.data[i + n.data_count] = s2.data[i]
-      child.data_count = n.data_count + s2.data_count
+      for i in 0..<s2.data.len:
+        child.data[i + n.data.len] = s2.data[i]
+      child.data.len = n.data.len + s2.data.len
       return shadow(stack, child)
     (n, i) = stack.pop()
     while true:
@@ -728,10 +454,10 @@ proc normalize*[T](s: PVecRef[T]) =
 
 template mut_pop_case_1*[T](s: PVecRef[T]) =
   ## The node is a leaf
-  s.data_count -= 1
-  s.data[s.data_count] = default(T)
+  s.data.len -= 1
+  s.data[s.data.len] = default(T)
   s.size -= 1
-  s.summary = PVecSummary[T].from_buf(s.data, s.data_count)
+  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 proc mut_pop_case_2*[T](s, child: PVecRef[T]) =
   ## The node is an interior
@@ -775,7 +501,7 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
       return
     stack.add(n)
     n = n.nodes[n.nodes_count - 1]
-  if n.data_count < BUFFER_WIDTH:
+  if n.data.len < BUFFER_WIDTH:
     n.mut_append_case_1(d)
   else:
     let s_clone = s.clone()
@@ -787,11 +513,12 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
 
 template mut_prepend_case_1*[T](s: PVecRef[T], d: T) =
   ## The node is a leaf and there's room in the data
+  # s.data.insert(0, d)
   s.shift_data
   s.data[0] = d
-  s.data_count += 1
+  s.data.len += 1
   s.size += 1
-  s.summary = PVecSummary[T].from_buf(s.data, s.data_count)
+  s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 proc mut_prepend_case_2*[T](s, child: PVecRef[T]) =
   ## The node is an interior with room for a new child
@@ -848,7 +575,7 @@ proc im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
     stack.add(n)
     n = n.nodes[n.nodes_count - 1]
   var new_child: PVecRef[T]
-  if n.data_count < BUFFER_WIDTH:
+  if n.data.len < BUFFER_WIDTH:
     new_child = n.im_append_case_1(d)
   else:
     new_child = n.im_append_case_2(d)
@@ -910,7 +637,7 @@ proc im_prepend*[T](s: PVecRef[T], d: T): PVecRef[T] =
     stack.add(n)
     n = n.nodes[n.nodes_count - 1]
   var new_child: PVecRef[T]
-  if n.data_count < BUFFER_WIDTH:
+  if n.data.len < BUFFER_WIDTH:
     new_child = n.im_prepend_case_1(d)
   else:
     new_child = n.im_prepend_case_2(d)
@@ -1053,8 +780,8 @@ template iterate_pairs*[T](s: PVecRef[T]) {.dirty.} =
   var total_idx = 0
   for n in s.leaves_and_sparse_nodes_in_order:
     if n.kind == kLeaf:
-      for i in 0..<n.data_count:
-        yield (total_idx, n.data[i])
+      for it in n.data.items:
+        yield (total_idx, it)
         total_idx += 1
     else:
       # sparse node
@@ -1077,11 +804,11 @@ proc compute_local_summary*[T](s: PVecRef[T]): PVecSummary[T] =
     for i in 0..<s.nodes_count:
       result = result + s.nodes[i].summary
   else:
-    result = PVecSummary[T].from_buf(s.data, s.data_count)
+    result = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
 proc compute_local_size[T](s: PVecRef[T]): int =
   if s.kind == kLeaf:
-    return s.data_count
+    return s.data.len.int
   else:
     var computed_size = 0
     for i in 0..<s.nodes_count:

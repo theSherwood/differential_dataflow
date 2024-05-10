@@ -1,8 +1,10 @@
 type
-  Chunk[Count: static int, T] = object
-    len: uint32
-    data: array[Count, T]
-  ChunkRef[Count: static int, T] = ref Chunk[Count, T]
+  IndexError* = object of CatchableError
+
+  Chunk*[Count: static int, T] = object
+    len*: int
+    buf*: array[Count, T]
+  ChunkRef*[Count: static int, T] = ref Chunk[Count, T]
 
 proc clone*[Count, T](c: Chunk[Count, T]): Chunk[Count, T] =
   result = c
@@ -11,38 +13,41 @@ template is_empty*[Count, T](c: var Chunk[Count, T]): bool = c.len == 0
 template is_full*[Count, T](c: var Chunk[Count, T]): bool = c.len == Count
 
 # Assume the caller has done the bounds checks
-template set_unsafe*[Count, T](c: var Chunk[Count, T], i: int, v: T) = c.data[i] = v
-template get_unsafe*[Count, T](c: var Chunk[Count, T], i: int): T = c.data[i]
+template set_unsafe*[Count, T](c: var Chunk[Count, T], i: int, v: T) = c.buf[i] = v
+template get_unsafe*[Count, T](c: Chunk[Count, T], i: int): T = c.buf[i]
 template add_unsafe*[Count, T](c: var Chunk[Count, T], v: T) =
-  c.data[c.len] = v
+  c.buf[c.len] = v
   c.len += 1
 
-proc get*[Count, T](c: Chunk[Count, T], i: int): T =
+proc get_safe*[Count, T](c: Chunk[Count, T], i: int): T =
   if i < 0 or not(i < c.len):
     raise newException(IndexError, "Index is out of bounds")
-  return c.data[i]
-template `[]`*[Count, T](c: Chunk[Count, T], i: int): T = c.get(i)
-template set*[Count, T](c: var Chunk[Count, T], i: int, v: T) =
+  return c.buf[i]
+template set_safe*[Count, T](c: var Chunk[Count, T], i: int, v: T) =
   if i < 0 or not(i < c.len):
     raise newException(IndexError, "Index is out of bounds")
-  c.data[i] = v
-template `[]=`*[Count, T](c: var Chunk[Count, T], i: int, v: T) = c.set(i, v)
+  c.buf[i] = v
 template add*[Count, T](c: var Chunk[Count, T], v: T) =
   if c.len == Count:
     raise newException(IndexError, "Chunk is full")
-  c.data[c.len] = v
+  c.buf[c.len] = v
   c.len += 1
 template add*[Count, T](c: var Chunk[Count, T], items: openArray[T]) =
   if c.len + items.len >= Count:
     raise newException(IndexError, "Chunk is full")
   for i in 0..<items.len:
-    c.data[c.len + i] = items[i]
+    c.buf[c.len + i] = items[i]
   c.len += items.len
 
+# default to unsafe
+template get*[Count, T](c: Chunk[Count, T], i: int): T = get_unsafe(c, i)
+template set*[Count, T](c: var Chunk[Count, T], i: int, v: T) = set_unsafe(c, i, v)
+template `[]`*[Count, T](c: Chunk[Count, T], i: int): T = get(c, i)
+template `[]=`*[Count, T](c: var Chunk[Count, T], i: int, v: T) = set(c, i, v)
 
 proc getOrDefault*[Count, T](c: Chunk[Count, T], i: int, d: T): T =
   if i < 0 or not(i < len): return d
-  return c.data[i]
+  return c.buf[i]
 template getOrDefault*[Count, T](c: Chunk[Count, T], i: int): T = c.getOrDefault(i, default(T))
 
 template pop_multiple*[Count, T](c: var Chunk[Count, T], n: int) =
@@ -55,7 +60,7 @@ proc get_run*[Count, T](c: Chunk[Count, T], idx: int, length: int): Chunk[Count,
     len = 0
     target = min(idx + length, c.len)
   while idx + len < target:
-    result.data[len] = c.data[idx + len]
+    result.buf[len] = c.buf[idx + len]
     len += 1
   result.len = len
 # TODO - add support for negative indices
@@ -69,7 +74,7 @@ template delete_run*[Count, T](c: var Chunk[Count, T], idx: int, length: int) =
       offset = 0
       diff = c.len - run2_idx
     while offset < diff:
-      c.data[i + offset] = c.data[run2_idx + offset]
+      c.buf[i + offset] = c.buf[run2_idx + offset]
       offset += 1
     c.len -= length
   else:
@@ -86,7 +91,7 @@ proc fill*[Count, T](c1: var Chunk[Count, T], c2: Chunk[Count, T]): int =
     len = c1.len
     target = min(Count, c1.len + c2.len)
   while len + i < target:
-    c1.data[len + i] = c2.data[i]
+    c1.buf[len + i] = c2.buf[i]
     i += 1
   c1.len = len + i
   return i
@@ -102,22 +107,25 @@ proc concat*[Count, T](c1: Chunk[Count, T], c2: Chunk[Count, T]): (Chunk[Count, 
     n = c.concat_in_place(c2)
   return (c, n)
 
+## TODO
+## - fix these to deal with idx of 0
+## - provide unsafe versions
 proc insert*[Count, T](c: var Chunk[Count, T], idx: int, items: openArray[T]) =
   var len = items.len
   if len + c.len >= Count or idx < 0 or not(idx <= len):
     raise newException(IndexError, "Index is out of bounds")
   var offset = len - 1
   for i in countdown(c.len, idx):
-    c.data[i + offset] = c.data[i - 1]
+    c.buf[i + offset] = c.buf[i - 1]
   for i in 0..<len:
-    c.data[idx + i] = items[i]
+    c.buf[idx + i] = items[i]
   c.len += len
 proc insert*[Count, T](c: var Chunk[Count, T], idx: int, t: T) =
   if c.len == Count or idx < 0 or not(idx <= c.len):
     raise newException(IndexError, "Index is out of bounds")
   for i in countdown(c.len, idx):
-    c.data[i] = c.data[i - 1]
-  c.data[idx] = t
+    c.buf[i] = c.buf[i - 1]
+  c.buf[idx] = t
   c.len += 1
 
 proc reverse_in_place*[Count, T](c: var Chunk[Count, T]) =
@@ -126,15 +134,15 @@ proc reverse_in_place*[Count, T](c: var Chunk[Count, T]) =
     idx2 = c.len - 1
     tmp: T
   while idx1 < idx2:
-    tmp = c.data[idx1]
-    c.data[idx1] = c.data[idx2]
-    c.data[idx2] = tmp
+    tmp = c.buf[idx1]
+    c.buf[idx1] = c.buf[idx2]
+    c.buf[idx2] = tmp
     idx1 += 1
     idx2 -= 1
 proc to_reversed*[Count, T](c: Chunk[Count, T]): Chunk[Count, T] =
   var offset = c.len - 1
   for i in 0..<c.len:
-    result[offset - i] = c.data[i]
+    result[offset - i] = c.buf[i]
   result.len = c.len
 
 # Iterators #
@@ -142,31 +150,31 @@ proc to_reversed*[Count, T](c: Chunk[Count, T]): Chunk[Count, T] =
 
 iterator items*[Count, T](c: Chunk[Count, T]): T =
   for i in 0..<c.len:
-    yield c.data[i]
+    yield c.buf[i]
 iterator mitems*[Count, T](c: var Chunk[Count, T]): var T =
   for i in 0..<c.len:
-    yield c.data[i]
+    yield c.buf[i]
 
 iterator pairs*[Count, T](c: Chunk[Count, T]): (int, T) =
   for i in 0..<c.len:
-    yield (i, c.data[i])
+    yield (i, c.buf[i])
 iterator mpairs*[Count, T](c: var Chunk[Count, T]): (int, var T) =
   for i in 0..<c.len:
-    yield (i, c.data[i])
+    yield (i, c.buf[i])
 
 iterator iter_run_items*[Count, T](c: Chunk[Count, T], idx: int, length: int): T =
   for i in idx..<min(c.len, idx + length):
-    yield c.data[i]
+    yield c.buf[i]
 iterator miter_run_items*[Count, T](c: var Chunk[Count, T], idx: int, length: int): var T =
   for i in idx..<min(c.len, idx + length):
-    yield c.data[i]
+    yield c.buf[i]
 
 iterator iter_run_pairs*[Count, T](c: Chunk[Count, T], idx: int, length: int): (int, T) =
   for i in idx..<min(c.len, idx + length):
-    yield (i, c.data[i])
+    yield (i, c.buf[i])
 iterator miter_run_pairs*[Count, T](c: var Chunk[Count, T], idx: int, length: int): (int, var T) =
   for i in idx..<min(c.len, idx + length):
-    yield (i, c.data[i])
+    yield (i, c.buf[i])
 
 # TODO - add support for negative indices
 iterator iter_slice_items*[Count, T](c: Chunk[Count, T], idx1: int, idx2: int): T =
