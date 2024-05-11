@@ -1,4 +1,8 @@
-import std/[strformat, sequtils]
+## TODO
+## - simplify sparse array handling
+## - just fill with empty leaves
+
+import std/[strformat, sequtils, strutils]
 import hashes
 import chunk
 export chunk
@@ -57,18 +61,34 @@ type
         data*: Chunk[BUFFER_WIDTH, T]
   PVecRef*[T] = ref PVec[T]
 
+proc json*[T](s: PVecRef[T]): string =
+  result.add("{\n")
+  result.add(&"  \"size\": {s.size},\n")
+  result.add(&"  \"kind\": \"{s.kind}\",\n")
+  if s.kind == kLeaf:
+    result.add(&"  \"data_len\": {s.data.len}")
+  else:
+    var inner = ""
+    for (i, it) in s.nodes.pairs:
+      if i == s.nodes.len - 1:
+        inner = inner & it.json
+      else:
+        inner = inner & it.json & ","
+    result.add(&"  \"depth\": {s.depth},\n")
+    result.add(&"  \"nodes_len\": {s.nodes.len},\n")
+    result.add(&"  \"nodes\": [{inner}]\n")
+  result.add("}")
+
 proc `$`*[T](s: PVecRef[T]): string =
   result.add(&"ST(\n")
-  result.add(&"  size: {s.size}\n")
-  # result.add(&"  summary: TODO\n")
-  result.add(&"  kind: {s.kind}\n")
+  result.add(&"  size: {s.size},\n")
+  result.add(&"  kind: {s.kind},\n")
   if s.kind == kLeaf:
-    discard
-    # result.add(&"  data.len: {s.data.len}")
+    result.add(&"  data.len: {s.data.len}")
   else:
-    result.add(&"  depth: {s.depth}\n")
-    result.add(&"  nodes.len: {s.nodes.len}\n")
-    # result.add(&"  nodes: {s.nodes}\n")
+    result.add(&"  depth: {s.depth},\n")
+    result.add(&"  nodes.len: {s.nodes.len},\n")
+    result.add(&"  nodes: {s.nodes}\n")
   result.add(&")")
 
 proc clone*[T](s: PVecRef[T]): PVecRef[T] =
@@ -117,8 +137,8 @@ template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
       block inner:
         for i in 0..<n.nodes.len:
           candidate = n.nodes[i]
-          if adj_idx > candidate.size:
-            adj_idx = adj_idx - candidate.size
+          if adj_idx >= candidate.size:
+            adj_idx -= candidate.size
           else:
             stack.add((n, i))
             n = candidate
@@ -147,6 +167,8 @@ proc shadow*[T](stack: var seq[(PVecRef[T], int)], child: var PVecRef[T]): PVecR
     (n, i) = stack.pop()
     n_clone = n.clone()
     n_clone.summary = (n_clone.summary - n_clone.nodes[i].summary) + ch.summary
+    n_clone.size = n_clone.size - n_clone.nodes[i].size + ch.size
+    n_clone.depth = max(n_clone.depth, ch.depth_safe)
     n_clone.nodes[i] = ch
     ch = n_clone
   return n_clone
@@ -201,6 +223,13 @@ template mut_append_case_1*[T](s: PVecRef[T], d: T) =
   s.size += 1
   s.summary = s.summary + d
 
+proc mut_append_case_2*[T](s, child: PVecRef[T]) =
+  ## The node is an interior with room for a new child
+  s.nodes.add(child)
+  s.size += child.size
+  s.summary = s.summary + child.summary
+  s.depth = max(s.depth, child.depth_safe + 1)
+
 proc init_sumtree*[T](d: T): PVecRef[T] =
   var s = PVecRef[T](kind: kLeaf)
   s.mut_append_case_1(d)
@@ -210,15 +239,6 @@ proc init_sumtree*[T](kind: NodeKind): PVecRef[T] =
   s.summary = PVecSummary[T].zero()
   return s
 template init_sumtree*[T](): PVecRef[T] = init_sumtree(kLeaf)
-
-proc mut_append_case_2*[T](s, child: PVecRef[T]) =
-  ## The node is an interior with room for a new child
-  s.nodes[s.nodes.len] = child
-  s.nodes.len += 1
-  s.size += 1
-  s.summary = s.summary + child.summary
-  if s.depth <= child.depth:
-    s.depth = child.depth + 1
 
 template create_interior_dirty_template() {.dirty.} =
   var interior = init_sumtree[T](kInterior)
@@ -514,7 +534,7 @@ proc im_append_case_1*[T](s: PVecRef[T], d: T): PVecRef[T] =
   return new_st
 
 proc im_append_case_2*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  ## The node is a leaf and there's room in the data
+  ## The node is a leaf but there's no room so we make a new leaf and root
   var new_st = init_sumtree[T](kInterior)
   var new_leaf = init_sumtree[T](d)
   new_st.mut_append_case_2(s)
@@ -522,52 +542,33 @@ proc im_append_case_2*[T](s: PVecRef[T], d: T): PVecRef[T] =
   return new_st
 
 proc im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  var
-    n = s
-    stack: seq[PVecRef[T]]
-  while n.kind == kInterior:
-    if n.nodes.len == 0:
-      # The node is being used to express a gap (sparse arr).
-      # So we have to backtrack and add a child to the parent.
-      n = stack.pop()
-      while n.nodes.len == BRANCH_WIDTH:
-        n = stack.pop()
-        if n.isNil:
-          # There is no more room at the end of any of the PVecs
-          var new_st = init_sumtree[T](kInterior)
-          var new_leaf = init_sumtree[T](d)
-          new_st.mut_append_case_2(s)
-          new_st.mut_append_case_2(new_leaf)
-          return new_st
-      # Add a child
-      var new_child = init_sumtree[T](d)
-      # Walk up what's left of the stack to increase the size and fix summaries
-      while n.isNil.not:
-        var n_clone = n.clone()
-        n_clone.nodes[n.nodes.len - 1] = new_child
-        n_clone.size += 1
-        n_clone.resummarize()
-        new_child = n_clone
-        n = stack.pop()
-      return new_child
-    stack.add(n)
-    n = n.nodes[n.nodes.len - 1]
-  var new_child: PVecRef[T]
-  if n.data.len < BUFFER_WIDTH:
-    new_child = n.im_append_case_1(d)
-  else:
-    new_child = n.im_append_case_2(d)
-  if stack.len > 0:
-    n = stack.pop()
-  # Walk up what's left of the stack to increase the size and fix summaries
-  while stack.len > 0:
+  get_stack_to_leaf_at_index_template(s, s.size - 1)
+  var stack_len = stack.len
+  var (n, i) = stack.pop()
+  if i < BUFFER_WIDTH - 1:
     var n_clone = n.clone()
-    n_clone.nodes[n.nodes.len - 1] = new_child
-    n_clone.size += 1
-    n_clone.resummarize()
-    new_child = n_clone
-    n = stack.pop()
-  return new_child
+    n_clone.mut_append_case_1(d)
+    return shadow[T](stack, n_clone)
+  else:
+    while stack.len > 0:
+      (n, i) = stack.pop()
+      if i < BRANCH_WIDTH - 1:
+        var new_child = init_sumtree[T](d)
+        # Try to keep things balanced by filling out to approximately the same
+        # depth as other leaves? There is probably a better way to do this for
+        # more random access and write patterns. This approach works well
+        # for many successive pushes. But if some user action causes the depth
+        # to get uncharacteristically large in some node, this approach to
+        # appending could cause that increased depth to be maintained for other
+        # nodes unnecessarily.
+        for j in 0..<min(n.depth.int - 1, 2):
+          var s = PVecRef[T](kind: kInterior)
+          s.mut_append_case_2(new_child)
+          new_child = s
+        var n_clone = n.clone()
+        n_clone.mut_append_case_2(new_child)
+        return shadow[T](stack, n_clone)
+  return n.im_append_case_2(d)
 
 proc im_prepend_case_1*[T](s: PVecRef[T], d: T): PVecRef[T] =
   ## The node is a leaf and there's room in the data

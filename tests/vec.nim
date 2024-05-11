@@ -56,6 +56,17 @@ proc main* =
       check v1 != v2
       check v1.len == 0
       check v2.len == 1
+    test "push":
+      var
+        sz = 100000
+        v = init_vec[int]()
+      for i in 0..<sz:
+        v = v.push(i)
+      check v.valid
+      check v.len == sz
+      check toSeq(v.items) == toSeq(0..<sz)
+      # check how flat it is
+      check v.depth == 3
     test "push and iterator pairs":
       var
         v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
