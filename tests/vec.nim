@@ -183,10 +183,20 @@ proc main* =
       check v1 == v2
       check v1 != v3
     test "pop":
-      var
-        v1 = [1, 2, 3, 4, 5, 6].to_vec
-        (v2, six) = v1.pop()
-      check v2.size == 5
-      check six == 6
+      proc pop_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          item: int
+          v = to_vec(offset_seq)
+        check v.valid
+        for i in 0..<sz:
+          (v, item) = v.pop()
+          check item == sz - 1 - i + offset
+          check v.len == sz - 1 - i
+          check v.valid
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        pop_test(sz)
   
   echo "done"

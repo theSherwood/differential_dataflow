@@ -173,6 +173,12 @@ proc shadow*[T](stack: var PathStack[T], child: var PVecRef[T]): PVecRef[T] =
     ch = n_clone
   return n_clone
 
+proc get_minimum_root*[T](s: PVecRef[T]): PVecRef[T] =
+  var n = s
+  while n.kind == kInterior and n.nodes.len == 1:
+    n = n.nodes[0]
+  return n
+
 proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
   ## TODO - handle indices that don't yet exist.
   ## TODO - handle sparse arrays
@@ -184,19 +190,6 @@ proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
   n_clone.data[i] = d
   n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
   return shadow[T](stack, n_clone)
-
-proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
-  ## TODO - handle indices that don't yet exist.
-  ## TODO - handle sparse arrays
-  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
-  var (n, l, i) = stack.pop()
-  var n_clone = n.clone()
-  var item = n_clone.data[i]
-  n_clone.data[i] = default(T)
-  n_clone.data.len -= 1
-  n_clone.size -= 1
-  n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
-  return (shadow[T](stack, n_clone), item)
 
 ## Does not change the Node kind
 proc reset*[T](s: PVecRef[T]) =
@@ -809,7 +802,32 @@ proc `==`*[T](v1, v2: PVecRef[T]): bool =
     if fin != finished(t2): return false
     if t1() != t2(): return false
     if fin: return true
-  
+
+proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
+  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
+  var (n, l, i) = stack.pop()
+  var datum: T
+  if l == 1:
+    datum = n.data[0]
+    while l == 1:
+      if stack.len > 0:
+        (n, l, i) = stack.pop()
+      else:
+        return (init_sumtree[T](kLeaf), datum)
+    var n_clone = n.clone()
+    var child = n_clone.nodes.pop()
+    if n_clone.depth == child.depth_safe + 1:
+      n_clone.depth = n_clone.compute_local_depth
+    n_clone.size -= 1
+    n_clone.summary = n_clone.summary - child.summary
+    return (shadow[T](stack, n_clone).get_minimum_root, datum)
+  else:
+    var n_clone = n.clone()
+    var datum = n_clone.data.pop()
+    n_clone.size -= 1
+    n_clone.summary = n_clone.summary - datum
+    return (shadow[T](stack, n_clone), datum)
+
 template init_vec*[T](): PVecRef[T] = init_sumtree[T](kLeaf)
 template to_vec*[T](items: openArray[T]): PVecRef[T] = to_sumtree[T](items)
 
