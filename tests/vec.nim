@@ -1,4 +1,4 @@
-import std/[tables, strutils, sequtils]
+import std/[tables, strutils, sequtils, algorithm]
 import ../src/[test_utils]
 import ../src/persistent/[vec]
 # import ../src/persistent/[sumtree]
@@ -18,7 +18,7 @@ import ../src/persistent/[vec]
 ## [x] splice
 ## [x] map
 ## [x] filter
-## [ ] reverse
+## [x] reverse
 ## [ ] transient mutation
 ## 
 ## Impl
@@ -41,7 +41,6 @@ import ../src/persistent/[vec]
 
 proc main* =
   suite "persistent vec":
-# #[
     test "clone":
       var v1 = init_vec[int]()
       var v2 = v1.clone()
@@ -110,7 +109,6 @@ proc main* =
         s = toSeq(v1.items)
       check v1.valid
       check s == @[13, 12, 11, 10]
-# ]#
 
     test "to_vec":
       proc to_vec_test(size: int) =
@@ -136,7 +134,6 @@ proc main* =
       check [1, 2, 3, 4, 5, 6].to_vec.kind == kLeaf
       check toSeq(0..<100).to_vec.valid
 
-# #[
     test "get idx":
       proc get_test(sz: int) =
         var
@@ -384,8 +381,22 @@ proc main* =
       var sizes = [1, 10, 100, 1_000, 10_000]
       for sz in sizes:
         zip_test(sz)
+    
+    test "reverse":
+      proc reverse_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          v1 = to_vec(offset_seq)
+          v2 = v1.reverse
+        check v2.valid
+        check toSeq(v2) == offset_seq.reversed
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        reverse_test(sz)
 
 
-# ]#
+#[
+]#
 
   echo "done"

@@ -583,51 +583,81 @@ iterator nodes_post_order*[T](s: PVecRef[T]): PVecRef[T] =
           discard idx_stack.pop()
           idx_stack[^1] += 1
 
-iterator leaves_in_order*[T](s: PVecRef[T]): PVecRef[T] =
+iterator leaves*[T](s: PVecRef[T]): PVecRef[T] =
   var
     n = s
-    idx: Natural
-    n_stack: seq[PVecRef[T]]
-    idx_stack: seq[Natural]
+    sz = 0
+    idx = 0
+    stack: PathStack[T]
+  if n.kind == kLeaf:
+    yield n
+  else:
+    stack.add((n, 0, 0))
+    stack.add((n.nodes[0], 0, 0))
+    while stack.len > 0:
+      (n, sz, idx) = stack[^1]
+      if n.kind == kLeaf:
+        yield n
+        discard stack.pop()
+        if stack.len > 0: stack[^1][2] += 1
+      elif idx < n.nodes.len:
+        n = n.nodes[idx]
+        stack.add((n, 0, 0))
+      else:
+        discard stack.pop()
+        if stack.len > 0: stack[^1][2] += 1
+
+iterator leaves_reverse*[T](s: PVecRef[T]): PVecRef[T] =
+  var
+    n = s
+    sz = 0
+    idx = 0
+    stack: PathStack[T]
   if s.kind == kLeaf:
     yield s
   else:
-    n_stack.add(s)
-    # We push an extra idx onto the stack because we are going to be fiddling
-    # with the top of the idx_stack after popping. This gives us a little 
-    # cushion when the n_stack is empty before the while loop ends.
-    idx_stack.add(0)
-    idx_stack.add(0)
-    while n_stack.len > 0:
-      n = n_stack[^1]
-      idx = idx_stack[^1]
+    idx = n.nodes.len - 1
+    stack.add((n, 0, idx))
+    n = n.nodes[idx]
+    if n.kind == kLeaf: stack.add((n, 0, n.data.len - 1))
+    else:               stack.add((n, 0, n.nodes.len - 1))
+    while stack.len > 0:
+      (n, sz, idx) = stack[^1]
       if n.kind == kLeaf:
         yield n
-        discard n_stack.pop()
-        discard idx_stack.pop()
-        idx_stack[^1] += 1
+        discard stack.pop()
+        if stack.len > 0: stack[^1][2] -= 1
+      elif idx > -1:
+        n = n.nodes[idx]
+        if n.kind == kLeaf: stack.add((n, 0, n.data.len - 1))
+        else:               stack.add((n, 0, n.nodes.len - 1))
       else:
-        if idx < n.nodes.len:
-          # We haven't reached the end of the node's children
-          n_stack.add(n.nodes[idx])
-          idx_stack.add(0)
-        else:
-          # We reached the end of the node's children
-          discard n_stack.pop()
-          discard idx_stack.pop()
-          idx_stack[^1] += 1
+        discard stack.pop()
+        if stack.len > 0: stack[^1][2] -= 1
 
 template iterate_pairs*[T](s: PVecRef[T]) {.dirty.} =
   var total_idx = 0
-  for n in s.leaves_in_order:
+  for n in s.leaves:
     for it in n.data.items:
       yield (total_idx, it)
       total_idx += 1
 
+template iterate_pairs_reverse*[T](s: PVecRef[T]) {.dirty.} =
+  var total_idx = s.size
+  for n in s.leaves_reverse:
+    for i in countdown(n.data.len - 1, 0):
+      total_idx -= 1
+      yield (total_idx, n.data[i])
+
 iterator pairs*[T](s: PVecRef[T]): (int, T) =
   iterate_pairs(s)
+iterator pairs_reverse*[T](s: PVecRef[T]): (int, T) =
+  iterate_pairs_reverse(s)
 iterator items*[T](s: PVecRef[T]): T =
   for (idx, d) in s.pairs:
+    yield d
+iterator items_reverse*[T](s: PVecRef[T]): T =
+  for (idx, d) in s.pairs_reverse:
     yield d
 proc pairs_closure[T](s: PVecRef[T]): iterator(): (int, T) =
   return iterator(): (int, T) =
@@ -672,6 +702,9 @@ func filter*[T](s: PVecRef[T], pred: proc (x: T): bool {.closure.}): PVecRef[T] 
   to_sumtree(T, filter_iter[T](s, pred))
 proc zip*[T, U](s1: PVecRef[T], s2: PVecRef[U]): PVecRef[(T, U)] =
   to_sumtree((T, U), zip_iter[T, U](s1, s2))
+
+func reverse*[T](s: PVecRef[T]): PVecRef[T] =
+  to_sumtree(T, items_reverse[T](s))
 
 # #endregion ==========================================================
 #            MUTABLE API
