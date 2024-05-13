@@ -61,10 +61,10 @@ proc main* =
         var v = init_vec[int]()
         for i in 0..<sz:
           v = v.push(i)
-        check v.valid
+          check v.valid
         check v.len == sz
         check toSeq(v.items) == toSeq(0..<sz)
-      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      var sizes = [1, 10, 100, 1_000, 10_000]
       for sz in sizes:
         push_test(sz)
     test "prepend":
@@ -72,10 +72,10 @@ proc main* =
         var v = init_vec[int]()
         for i in 0..<sz:
           v = v.prepend(i)
-        check v.valid
+          check v.valid
         check v.len == sz
         check toSeq(v.items) == toSeq(countdown(sz - 1, 0))
-      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      var sizes = [1, 10, 100, 1_000, 10_000]
       for sz in sizes:
         push_test(sz)
     test "push and iterator pairs":
@@ -142,11 +142,11 @@ proc main* =
           offset = 5
           offset_seq = toSeq(offset..<(sz + offset))
           v = to_vec(toSeq(0..<sz))
-        check v.valid
         for i in 0..<sz:
           v = v.set(i, i + offset)
+          check v.valid
         check toSeq(v.items) == offset_seq
-      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      var sizes = [1, 10, 100, 1_000, 10_000]
       for sz in sizes:
         set_test(sz)
     test "simple equality":
