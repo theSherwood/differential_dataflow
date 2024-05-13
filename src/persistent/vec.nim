@@ -374,12 +374,16 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       for i in 0..<n.data.len:
         child.data[i + s1.data.len] = n.data[i]
       child.data.len = s1.data.len + n.data.len
+      child.size = child.data.len
+      child.summary = s1.summary + n.summary
       return shadow(stack, child)
     (n, l, i) = stack.pop()
     while true:
       if l < BRANCH_WIDTH:
         n_clone = n.clone()
         n_clone.nodes.insert(0, s1)
+        n_clone.size += s1.size
+        n_clone.summary = n_clone.summary + s1.summary
         return shadow(stack, n_clone)
       elif stack.len == 0:
         root = init_sumtree[T](kInterior)
@@ -401,13 +405,16 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       for i in 0..<s2.data.len:
         child.data[i + n.data.len] = s2.data[i]
       child.data.len = n.data.len + s2.data.len
+      child.size = child.data.len
+      child.summary = n.summary + s2.summary
       return shadow(stack, child)
     (n, l, i) = stack.pop()
     while true:
       if l < BRANCH_WIDTH:
         n_clone = n.clone()
-        n_clone.nodes[n_clone.nodes.len] = s2
-        n_clone.nodes.len += 1
+        n_clone.nodes.add(s2)
+        n_clone.size += s2.size
+        n_clone.summary = n_clone.summary + s2.summary
         return shadow(stack, n_clone)
       elif stack.len == 0:
         root = init_sumtree[T](kInterior)
@@ -780,12 +787,22 @@ proc compute_local_depth[T](s: PVecRef[T]): uint8 =
 
 proc valid*[T](s: PVecRef[T]): bool =
   for n in s.nodes_post_order:
-    if n.size != n.compute_local_size: return false
-    if n.summary != n.compute_local_summary: return false
+    if n.size != n.compute_local_size:
+      echo "size"
+      return false
+    if n.summary != n.compute_local_summary:
+      echo "summary"
+      return false
     if n.kind == kInterior:
-      if n.depth == 0: return false
-      if n.depth != n.compute_local_depth: return false
-      if n.nodes.len == 1 and n.nodes[0].kind == kInterior: return false
+      if n.depth == 0:
+        echo "depth == 0"
+        return false
+      if n.depth != n.compute_local_depth:
+        echo "depth"
+        return false
+      if n.nodes.len == 1 and n.nodes[0].kind == kInterior:
+        echo "not minimum root"
+        return false
   return true
 
 template len*[T](s: PVecRef[T]): Natural = s.size

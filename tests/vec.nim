@@ -165,10 +165,10 @@ proc main* =
           s2 = toSeq(0..<sz2)
           v1 = to_vec(s1)
           v2 = to_vec(s2)
-        check v1.valid
-        check v2.valid
-        check toSeq(v1 & v2) == s1 & s2
-      var sizes = @[0, 1, 10, 100, 1_000, 10_000]
+          v3 = v1 & v2
+        check v3.valid
+        check toSeq(v3) == s1 & s2
+      var sizes = [0, 1, 10, 100, 1_000, 10_000]
       for sz1 in sizes:
         for sz2 in sizes:
           concat_test(sz1, sz2)
