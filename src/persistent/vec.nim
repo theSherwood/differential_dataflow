@@ -526,6 +526,32 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
   return root
 template `&`*[T](s1, s2: PVecRef[T]): PVecRef[T] = s1.concat(s2)
 
+func splice*[T](s: PVecRef[T], idx, length: int, items: openArray[T]): PVecRef[T] =
+  doAssert length >= 0
+  doAssert idx >= 0 and idx < s.size
+  return concat(
+    concat(s.take(idx), to_sumtree[T](items)),
+    s.drop(idx + length)
+  )
+func splice*[T](s: PVecRef[T], idx, length: int, vec: PVecRef[T]): PVecRef[T] =
+  doAssert length >= 0
+  doAssert idx >= 0 and idx < s.size
+  return concat(
+    concat(s.take(idx), vec),
+    s.drop(idx + length)
+  )
+func splice*[T](s: PVecRef[T], idx, length: int): PVecRef[T] =
+  doAssert length >= 0
+  doAssert idx >= 0 and idx < s.size
+  return concat(s.take(idx), s.drop(idx + length))
+
+template delete*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
+  s.splice(slice.a, slice.b + 1 - slice.a)
+template insert*[T](s: PVecRef[T], items: openArray[T], idx: int): PVecRef[T] =
+  s.splice(idx, 0, items)
+template insert*[T](s: PVecRef[T], vec: PVecRef[T], idx: int): PVecRef[T] =
+  s.splice(idx, 0, vec)
+
 ## TODO - Mutates in place where safe to do so.
 proc normalize*[T](s: PVecRef[T]) =
   if s.kind == kLeaf: return

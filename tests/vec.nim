@@ -9,13 +9,13 @@ import ../src/persistent/[vec]
 ## API
 ## [x] to_vec
 ## [x] concat
-## [ ] del
-## [ ] slice
-## [ ] take
-## [ ] drop
+## [x] del
+## [x] slice
+## [x] take
+## [x] drop
 ## [ ] set_len
-## [ ] insert
-## [ ] splice
+## [x] insert
+## [x] splice
 ## [ ] map
 ## [ ] filter
 ## [ ] reverse
@@ -35,8 +35,8 @@ import ../src/persistent/[vec]
 ## 
 ## Test
 ## [ ] all the APIs
-## [ ] much larger sizes
-## [ ] sparse arrays
+## [x] larger sizes
+## [-] sparse arrays
 ## 
 
 proc main* =
@@ -267,5 +267,58 @@ proc main* =
       var sizes = [1, 10, 100, 1_000, 10_000]
       for sz in sizes:
         drop_test(sz)
-  
+
+    test "delete":
+      proc delete_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          seq_copy: seq[int]
+          v = to_vec(offset_seq)
+          v2: type(v)
+          slices = [
+            (sz div 2)..<sz,
+            0..<(sz div 2),
+            (sz div 3)..<((sz div 3) shl 1),
+            (sz div 3)..(sz div 3),
+          ]
+        for slice in slices:
+          v2 = v.delete(slice)
+          check v2.valid
+          seq_copy = toSeq[offset_seq]
+          seq_copy.delete(slice)
+          check toSeq(v2) == seq_copy
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        delete_test(sz)
+
+    test "insert":
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      proc insert_test(sz: int) =
+        var
+          to_insert_seq: seq[int]
+          to_insert_vec: PVecRef[int]
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          seq_copy: seq[int]
+          v = to_vec(offset_seq)
+          v2: type(v)
+          v3: type(v)
+          idxes = [0, sz div 2, sz div 3, (sz div 3) shl 1, sz div 4]
+        for size in sizes:
+          to_insert_seq = toSeq(0..<size)
+          to_insert_vec = to_insert_seq.to_vec
+          for idx in idxes:
+            v2 = v.insert(to_insert_seq, idx)
+            v3 = v.insert(to_insert_vec, idx)
+            check v2.valid
+            check v3.valid
+            check v2 == v3
+            seq_copy = toSeq[offset_seq]
+            seq_copy.insert(to_insert_seq, idx)
+            check toSeq(v2) == seq_copy
+            check toSeq(v3) == seq_copy
+      for sz in sizes:
+        insert_test(sz)
+
   echo "done"
