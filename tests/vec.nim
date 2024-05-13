@@ -13,11 +13,11 @@ import ../src/persistent/[vec]
 ## [x] slice
 ## [x] take
 ## [x] drop
-## [ ] set_len
+## [x] set_len
 ## [x] insert
 ## [x] splice
-## [ ] map
-## [ ] filter
+## [x] map
+## [x] filter
 ## [ ] reverse
 ## [ ] transient mutation
 ## 
@@ -341,7 +341,51 @@ proc main* =
           check toSeq(v2) == seq_copy
       for sz in sizes:
         set_len_test(sz)
-      
+
+    test "map":
+      proc map_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          v = to_vec(offset_seq)
+          op = proc (x: int): string = $(x + 91)
+          v2 = v.map(op)
+        check v2.valid
+        check toSeq(v2) == offset_seq.map(op)
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        map_test(sz)
+
+    test "filter":
+      proc filter_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          v = to_vec(offset_seq)
+          predicate = proc (x: int): bool = 0 == (x mod 2)
+          v2 = v.filter(predicate)
+        check v2.valid
+        check toSeq(v2) == offset_seq.filter(predicate)
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        filter_test(sz)
+
+    test "zip":
+      proc zip_test(sz: int) =
+        var
+          seqq = toSeq(0..<sz)
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          v1 = to_vec(seqq)
+          v2 = to_vec(offset_seq)
+          v3 = zip(v1, v2)
+        check v3.valid
+        check toSeq(v3) == zip(seqq, offset_seq)
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        zip_test(sz)
+
+
 # ]#
 
   echo "done"

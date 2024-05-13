@@ -2,7 +2,7 @@
 ## - simplify sparse array handling
 ## - just fill with empty leaves
 
-import std/[strformat, sequtils, strutils]
+import std/[strformat, sequtils, strutils, sugar]
 import hashes
 import chunk
 export chunk
@@ -313,6 +313,25 @@ proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     i += BUFFER_WIDTH
     adj_size -= BUFFER_WIDTH
   return tree_from_leaves(leaves)
+
+template to_sumtree*(T: typedesc, iter: untyped): untyped =
+  var
+    i = 0
+    n = init_sumtree[T](kLeaf)
+    leaves: seq[PVecRef[T]]
+  # build the leaves
+  for it in iter:
+    if i == BUFFER_WIDTH:
+      n.size = BUFFER_WIDTH
+      leaves.add(n)
+      n = init_sumtree[T](kLeaf)
+      i = 0
+    n.data.add(it)
+    n.summary = n.summary + it
+    i += 1
+  n.size = n.data.len
+  leaves.add(n)
+  result = tree_from_leaves(leaves)
 
 func delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   if idx <= 0: return s
@@ -823,6 +842,46 @@ proc pairs_closure[T](s: PVecRef[T]): iterator(): (int, T) =
   return iterator(): (int, T) =
     iterate_pairs(s)
 
+iterator map_iter*[T, U](s: PVecRef[T], op: proc (x: T, idx: int): U {.closure.}): U =
+  for (idx, d) in s.pairs:
+    yield op(d, idx)
+iterator map_iter*[T, U](s: PVecRef[T], op: proc (x: T): U {.closure.}): U =
+  for (idx, d) in s.pairs:
+    yield op(d)
+iterator filter_iter*[T](s: PVecRef[T], pred: proc (x: T, idx: int): bool {.closure.}): T =
+  for (idx, d) in s.pairs:
+    if pred(d, idx): yield d
+iterator filter_iter*[T](s: PVecRef[T], pred: proc (x: T): bool {.closure.}): T =
+  for (idx, d) in s.pairs:
+    if pred(d): yield d
+iterator zip_iter*[T, U](s1: PVecRef[T], s2: PVecRef[U]): (T, U) =
+  var
+    t1 = s1.pairs_closure()
+    t2 = s2.pairs_closure()
+  for i in 0..<min(s1.size, s2.size):
+    yield (t1()[1], t2()[1])
+
+# TODO - figure out how to deal with iterables for flat_map
+# iterator flat_map*[T, U](s: PVecRef[T], op: proc (x: T, idx: int): iterable[U] {.closure.}): U =
+#   for (idx, d) in s.pairs:
+#     for item in op(d, idx):
+#       yield item
+# iterator flat_map*[T, U](s: PVecRef[T], op: proc (x: T): iterable[U] {.closure.}): U =
+#   for (idx, d) in s.pairs:
+#     for item in op(d):
+#       yield item
+
+proc map*[T, U](s: PVecRef[T], op: proc (x: T, idx: int): U {.closure.}): PVecRef[U] =
+  to_sumtree(U, map_iter[T, U](s, op))
+proc map*[T, U](s: PVecRef[T], op: proc (x: T): U {.closure.}): PVecRef[U] =
+  to_sumtree(U, map_iter[T, U](s, op))
+proc filter*[T](s: PVecRef[T], pred: proc (x: T, idx: int): bool {.closure.}): PVecRef[T] =
+  to_sumtree(T, filter_iter[T](s, pred))
+proc filter*[T](s: PVecRef[T], pred: proc (x: T): bool {.closure.}): PVecRef[T] =
+  to_sumtree(T, filter_iter[T](s, pred))
+proc zip*[T, U](s1: PVecRef[T], s2: PVecRef[U]): PVecRef[(T, U)] =
+  to_sumtree((T, U), zip_iter[T, U](s1, s2))
+
 proc compute_local_summary*[T](s: PVecRef[T]): PVecSummary[T] =
   if s.kind == kInterior:
     result = PVecSummary[T].zero()
@@ -920,6 +979,7 @@ proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
 
 template init_vec*[T](): PVecRef[T] = init_sumtree[T](kLeaf)
 template to_vec*[T](items: openArray[T]): PVecRef[T] = to_sumtree[T](items)
+template to_vec*[T](iter: iterator): PVecRef[T] = to_sumtree[T](iter)
 
 template append*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 template push*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
