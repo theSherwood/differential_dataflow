@@ -57,16 +57,27 @@ proc main* =
       check v1.len == 0
       check v2.len == 1
     test "push":
-      var
-        sz = 100000
-        v = init_vec[int]()
-      for i in 0..<sz:
-        v = v.push(i)
-      check v.valid
-      check v.len == sz
-      check toSeq(v.items) == toSeq(0..<sz)
-      # check how flat it is
-      check v.depth == 3
+      proc push_test(sz: int) =
+        var v = init_vec[int]()
+        for i in 0..<sz:
+          v = v.push(i)
+        check v.valid
+        check v.len == sz
+        check toSeq(v.items) == toSeq(0..<sz)
+      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      for sz in sizes:
+        push_test(sz)
+    test "prepend":
+      proc push_test(sz: int) =
+        var v = init_vec[int]()
+        for i in 0..<sz:
+          v = v.prepend(i)
+        check v.valid
+        check v.len == sz
+        check toSeq(v.items) == toSeq(countdown(sz - 1, 0))
+      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      for sz in sizes:
+        push_test(sz)
     test "push and iterator pairs":
       var
         v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
@@ -91,28 +102,6 @@ proc main* =
         s = toSeq(v1.items)
       check v1.valid
       check s == @[13, 12, 11, 10]
-    test "get":
-      var v1 = init_vec[int]().push(10).push(11).push(12).push(13).push(14).push(15)
-      check v1.valid
-      check v1.get(0) == 10
-      check v1.get(5) == 15
-      for (i, d) in v1.pairs():
-        check d == v1.get(i)
-    test "set":
-      var v1 = init_vec[int]()
-        .push(10).push(11).push(12).push(13).push(14).push(15)
-        .set(0, 100).set(1, 101).set(2, 102).set(3, 103).set(4, 104).set(5, 105)
-      check v1.valid
-      check toSeq(v1.pairs()) == @[(0, 100), (1, 101), (2, 102), (3, 103), (4, 104), (5, 105)]
-    test "simple equality":
-      var
-        v1 = init_vec[int]()
-        v2 = v1.push(1)
-        v3 = v1.push(1)
-      check v1.valid
-      check v2.valid
-      check v3.valid
-      check v2 == v3
     test "to_vec":
       proc to_vec_test(size: int) =
         var
@@ -135,6 +124,40 @@ proc main* =
       check [0].to_vec.kind == kLeaf
       check [1, 2, 3, 4, 5, 6].to_vec.kind == kLeaf
       check toSeq(0..<100).to_vec.valid
+    test "get":
+      proc get_test(sz: int) =
+        var
+          offset = 5
+          v = to_vec(toSeq(offset..<(sz + offset)))
+        check v.valid
+        for i in 0..<sz:
+          var res = v.get(i) == i + offset
+          check res
+      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      for sz in sizes:
+        get_test(sz)
+    test "set":
+      proc set_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          v = to_vec(toSeq(0..<sz))
+        check v.valid
+        for i in 0..<sz:
+          v = v.set(i, i + offset)
+        check toSeq(v.items) == offset_seq
+      var sizes = [1, 10, 100, 1_000, 10_000, 100_000]
+      for sz in sizes:
+        set_test(sz)
+    test "simple equality":
+      var
+        v1 = init_vec[int]()
+        v2 = v1.push(1)
+        v3 = v1.push(1)
+      check v1.valid
+      check v2.valid
+      check v3.valid
+      check v2 == v3
     test "concat":
       proc concat_test(sz1, sz2: int) =
         var
@@ -145,7 +168,7 @@ proc main* =
         check v1.valid
         check v2.valid
         check toSeq(v1 & v2) == s1 & s2
-      var sizes = @[0, 1, 10, 100, 1000, 10000]
+      var sizes = @[0, 1, 10, 100, 1_000, 10_000]
       for sz1 in sizes:
         for sz2 in sizes:
           concat_test(sz1, sz2)

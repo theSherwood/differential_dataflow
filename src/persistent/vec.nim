@@ -61,6 +61,9 @@ type
         data*: Chunk[BUFFER_WIDTH, T]
   PVecRef*[T] = ref PVec[T]
 
+  PathStackItem*[T] = tuple[node: PVecRef[T], len: int, index: int]
+  PathStack*[T] = seq[PathStackItem[T]]
+
 proc json*[T](s: PVecRef[T]): string =
   result.add("{\n")
   result.add(&"  \"size\": {s.size},\n")
@@ -113,7 +116,7 @@ template find_leaf_node_at_index_template*(s, idx: untyped) {.dirty.} =
       block inner:
         for i in 0..<n.nodes.len:
           candidate = n.nodes[i]
-          if adj_idx > candidate.size:
+          if adj_idx >= candidate.size:
             adj_idx = adj_idx - candidate.size
           else:
             n = candidate
@@ -123,11 +126,10 @@ proc find_leaf_node_at_index*[T](s: PVecRef[T], idx: int): (PVecRef[T], int) =
   find_leaf_node_at_index_template(s, idx)
   return (n, adj_idx)
 
-# TODO - handle spare nodes
-template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
-  var stack: seq[(PVecRef[T], int)]
+proc get_stack_to_leaf_at_index*[T](s: PVecRef[T], idx: int): PathStack[T] =
+  var stack: PathStack[T]
   if s.kind == kLeaf:
-    stack.add((s, idx))
+    stack.add((s, s.data.len, idx))
   else:
     var
       n = s
@@ -140,31 +142,29 @@ template get_stack_to_leaf_at_index_template*(s, idx: untyped) {.dirty.} =
           if adj_idx >= candidate.size:
             adj_idx -= candidate.size
           else:
-            stack.add((n, i))
+            stack.add((n, n.nodes.len, i))
             n = candidate
             break inner
-    stack.add((n, adj_idx))
-
-proc get_stack_to_leaf_at_index*[T](s: PVecRef[T], idx: int): seq[(PVecRef[T], int)] =
-  get_stack_to_leaf_at_index_template(s, idx)
+    stack.add((n, n.data.len, adj_idx))
   return stack
 
 proc get*[T](s: PVecRef[T], idx: int): T =
   ## TODO - handle negative indices?
   ## TODO - handle sparse arrays
-  if idx < 0 or idx > s.size:
+  if idx < 0 or idx >= s.size:
     raise newException(IndexError, "Index is out of bounds")
   find_leaf_node_at_index_template(s, idx)
   return n.data[adj_idx]
 
-proc shadow*[T](stack: var seq[(PVecRef[T], int)], child: var PVecRef[T]): PVecRef[T] =
+proc shadow*[T](stack: var PathStack[T], child: var PVecRef[T]): PVecRef[T] =
   var 
     ch = child
     n_clone = child
     n: PVecRef[T]
+    l: int
     i: int
   while stack.len > 0:
-    (n, i) = stack.pop()
+    (n, l, i) = stack.pop()
     n_clone = n.clone()
     n_clone.summary = (n_clone.summary - n_clone.nodes[i].summary) + ch.summary
     n_clone.size = n_clone.size - n_clone.nodes[i].size + ch.size
@@ -178,8 +178,8 @@ proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
   ## TODO - handle sparse arrays
   if idx < 0 or idx > s.size:
     raise newException(IndexError, "Index is out of bounds")
-  get_stack_to_leaf_at_index_template(s, idx)
-  var (n, i) = stack.pop()
+  var stack = get_stack_to_leaf_at_index[T](s, idx)
+  var (n, l, i) = stack.pop()
   var n_clone = n.clone()
   n_clone.data[i] = d
   n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
@@ -188,8 +188,8 @@ proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
 proc im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
   ## TODO - handle indices that don't yet exist.
   ## TODO - handle sparse arrays
-  get_stack_to_leaf_at_index_template(s, s.size - 1)
-  var (n, i) = stack.pop()
+  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
+  var (n, l, i) = stack.pop()
   var n_clone = n.clone()
   var item = n_clone.data[i]
   n_clone.data[i] = default(T)
@@ -238,7 +238,6 @@ proc init_sumtree*[T](kind: NodeKind): PVecRef[T] =
   var s = PVecRef[T](kind: kind)
   s.summary = PVecSummary[T].zero()
   return s
-template init_sumtree*[T](): PVecRef[T] = init_sumtree(kLeaf)
 
 template create_interior_dirty_template() {.dirty.} =
   var interior = init_sumtree[T](kInterior)
@@ -371,11 +370,11 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       root.depth = 1
   elif kinds == (kLeaf, kInterior):
     var
-      stack = s2.get_stack_to_leaf_at_index(0)
+      stack = get_stack_to_leaf_at_index[T](s2, 0)
       child: PVecRef[T] 
       n_clone: PVecRef[T] 
-      (n, i) = stack.pop()
-    if s1.data.len + n.data.len <= BUFFER_WIDTH:
+      (n, l, i) = stack.pop()
+    if s1.data.len + l <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
       for i in 0..<s1.data.len:
         child.data[i] = s1.data[i] 
@@ -383,9 +382,9 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         child.data[i + s1.data.len] = n.data[i]
       child.data.len = s1.data.len + n.data.len
       return shadow(stack, child)
-    (n, i) = stack.pop()
+    (n, l, i) = stack.pop()
     while true:
-      if n.nodes.len < BRANCH_WIDTH:
+      if l < BRANCH_WIDTH:
         n_clone = n.clone()
         n_clone.nodes.insert(0, s1)
         return shadow(stack, n_clone)
@@ -395,13 +394,13 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         root.depth = max(s1.depth_safe, s2.depth_safe) + 1
         break
       else:
-        (n, i) = stack.pop()
+        (n, l, i) = stack.pop()
   elif kinds == (kInterior, kLeaf):
     var
-      stack = s1.get_stack_to_leaf_at_index(s1.size - 1)
+      stack = get_stack_to_leaf_at_index[T](s1, s1.size - 1)
       child: PVecRef[T] 
       n_clone: PVecRef[T] 
-      (n, i) = stack.pop()
+      (n, l, i) = stack.pop()
     if n.data.len + s2.data.len <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
       for i in 0..<n.data.len:
@@ -410,9 +409,9 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         child.data[i + n.data.len] = s2.data[i]
       child.data.len = n.data.len + s2.data.len
       return shadow(stack, child)
-    (n, i) = stack.pop()
+    (n, l, i) = stack.pop()
     while true:
-      if n.nodes.len < BRANCH_WIDTH:
+      if l < BRANCH_WIDTH:
         n_clone = n.clone()
         n_clone.nodes[n_clone.nodes.len] = s2
         n_clone.nodes.len += 1
@@ -423,7 +422,7 @@ proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         root.depth = max(s1.depth_safe, s2.depth_safe) + 1
         break
       else:
-        (n, i) = stack.pop()
+        (n, l, i) = stack.pop()
   elif kinds == (kInterior, kInterior):
     root = init_sumtree[T](kInterior)
     if s1.nodes.len + s2.nodes.len <= BRANCH_WIDTH:
@@ -512,9 +511,9 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
     s.mut_append_case_2(s_clone)
     s.mut_append_case_2(new_st)
 
+
 template mut_prepend_case_1*[T](s: PVecRef[T], d: T) =
   ## The node is a leaf and there's room in the data
-  # s.data.insert(0, d)
   s.data.insert(0, d)
   s.size += 1
   s.summary = s.summary + d
@@ -522,10 +521,9 @@ template mut_prepend_case_1*[T](s: PVecRef[T], d: T) =
 proc mut_prepend_case_2*[T](s, child: PVecRef[T]) =
   ## The node is an interior with room for a new child
   s.nodes.insert(0, child)
-  s.size += 1
+  s.size += child.size
   s.summary = s.summary + child.summary
-  if s.depth <= child.depth:
-    s.depth = child.depth + 1
+  s.depth = max(s.depth, child.depth_safe + 1)
 
 proc im_append_case_1*[T](s: PVecRef[T], d: T): PVecRef[T] =
   ## The node is a leaf and there's room in the data
@@ -542,16 +540,16 @@ proc im_append_case_2*[T](s: PVecRef[T], d: T): PVecRef[T] =
   return new_st
 
 proc im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  get_stack_to_leaf_at_index_template(s, s.size - 1)
+  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
   var stack_len = stack.len
-  var (n, i) = stack.pop()
+  var (n, l, i) = stack.pop()
   if i < BUFFER_WIDTH - 1:
     var n_clone = n.clone()
     n_clone.mut_append_case_1(d)
     return shadow[T](stack, n_clone)
   else:
     while stack.len > 0:
-      (n, i) = stack.pop()
+      (n, l, i) = stack.pop()
       if i < BRANCH_WIDTH - 1:
         var new_child = init_sumtree[T](d)
         # Try to keep things balanced by filling out to approximately the same
@@ -570,6 +568,35 @@ proc im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
         return shadow[T](stack, n_clone)
   return n.im_append_case_2(d)
 
+proc im_prepend*[T](s: PVecRef[T], d: T): PVecRef[T] =
+  var stack = get_stack_to_leaf_at_index[T](s, 0)
+  var stack_len = stack.len
+  var (n, l, i) = stack.pop()
+  if l < BUFFER_WIDTH:
+    var n_clone = n.clone()
+    n_clone.mut_prepend_case_1(d)
+    return shadow[T](stack, n_clone)
+  else:
+    while stack.len > 0:
+      (n, l, i) = stack.pop()
+      if l < BRANCH_WIDTH:
+        var new_child = init_sumtree[T](d)
+        # Try to keep things balanced by filling out to approximately the same
+        # depth as other leaves? There is probably a better way to do this for
+        # more random access and write patterns. This approach works well
+        # for many successive pushes. But if some user action causes the depth
+        # to get uncharacteristically large in some node, this approach to
+        # prepending could cause that increased depth to be maintained for other
+        # nodes unnecessarily.
+        for j in 0..<min(n.depth.int - 1, 2):
+          var s = PVecRef[T](kind: kInterior)
+          s.mut_prepend_case_2(new_child)
+          new_child = s
+        var n_clone = n.clone()
+        n_clone.mut_prepend_case_2(new_child)
+        return shadow[T](stack, n_clone)
+  return n.im_prepend_case_2(d)
+
 proc im_prepend_case_1*[T](s: PVecRef[T], d: T): PVecRef[T] =
   ## The node is a leaf and there's room in the data
   var new_st = s.clone
@@ -583,54 +610,6 @@ proc im_prepend_case_2*[T](s: PVecRef[T], d: T): PVecRef[T] =
   new_st.mut_prepend_case_2(s)
   new_st.mut_prepend_case_2(new_leaf)
   return new_st
-
-proc im_prepend*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  var
-    n = s
-    stack: seq[PVecRef[T]]
-  while n.kind == kInterior:
-    if n.nodes.len == 0:
-      # The node is being used to express a gap (sparse arr).
-      # So we have to backtrack and add a child to the parent.
-      n = stack.pop()
-      while n.nodes.len == BRANCH_WIDTH:
-        n = stack.pop()
-        if n.isNil:
-          # There is no more room at the end of any of the PVecs
-          var new_st = init_sumtree[T](kInterior)
-          var new_leaf = init_sumtree[T](d)
-          new_st.mut_prepend_case_2(s)
-          new_st.mut_prepend_case_2(new_leaf)
-          return new_st
-      # Add a child
-      var new_child = init_sumtree[T](d)
-      # Walk up what's left of the stack to increase the size and fix summaries
-      while n.isNil.not:
-        var n_clone = n.clone()
-        n_clone.nodes[n.nodes.len - 1] = new_child
-        n_clone.size += 1
-        n_clone.resummarize()
-        new_child = n_clone
-        n = stack.pop()
-      return new_child
-    stack.add(n)
-    n = n.nodes[n.nodes.len - 1]
-  var new_child: PVecRef[T]
-  if n.data.len < BUFFER_WIDTH:
-    new_child = n.im_prepend_case_1(d)
-  else:
-    new_child = n.im_prepend_case_2(d)
-  if stack.len > 0:
-    n = stack.pop()
-  # Walk up what's left of the stack to increase the size and fix summaries
-  while stack.len > 0:
-    var n_clone = n.clone()
-    n_clone.nodes[n.nodes.len - 1] = new_child
-    n_clone.size += 1
-    n_clone.resummarize()
-    new_child = n_clone
-    n = stack.pop()
-  return new_child
 
 iterator nodes_pre_order*[T](s: PVecRef[T]): PVecRef[T] =
   # yield after we push onto the stack
