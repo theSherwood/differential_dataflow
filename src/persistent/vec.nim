@@ -106,6 +106,24 @@ proc clone*[T](s: PVecRef[T]): PVecRef[T] =
     result.nodes.len = s.nodes.len
     result.nodes = s.nodes
 
+template find_local_node_index_by_total_idx_template*(s, idx: untyped) {.dirty.} =
+  ## Assumes s is an interior node
+  var 
+    node_idx: int
+    adj_idx = idx
+  block:
+    var candidate: PVecRef[T]
+    for i in 0..<s.nodes.len:
+      candidate = s.nodes[i]
+      if adj_idx >= candidate.size:
+        adj_idx -= candidate.size
+      else:
+        node_idx = i
+        break;
+func find_local_node_index_by_total_idx*[T](s: PVecRef[T], idx: int): (int, int) =
+  find_local_node_index_by_total_idx_template(s, idx)
+  return (node_idx, adj_idx)
+
 template find_leaf_node_at_index_template*(s, idx: untyped) {.dirty.} =
   var
     n = s
@@ -148,14 +166,6 @@ proc get_stack_to_leaf_at_index*[T](s: PVecRef[T], idx: int): PathStack[T] =
     stack.add((n, n.data.len, adj_idx))
   return stack
 
-proc get*[T](s: PVecRef[T], idx: int): T =
-  ## TODO - handle negative indices?
-  ## TODO - handle sparse arrays
-  if idx < 0 or idx >= s.size:
-    raise newException(IndexError, "Index is out of bounds")
-  find_leaf_node_at_index_template(s, idx)
-  return n.data[adj_idx]
-
 proc shadow*[T](stack: var PathStack[T], child: var PVecRef[T]): PVecRef[T] =
   var 
     ch = child
@@ -173,7 +183,7 @@ proc shadow*[T](stack: var PathStack[T], child: var PVecRef[T]): PVecRef[T] =
     ch = n_clone
   return n_clone
 
-proc get_minimum_root*[T](s: PVecRef[T]): PVecRef[T] =
+func get_minimum_root*[T](s: PVecRef[T]): PVecRef[T] =
   var n = s
   while n.kind == kInterior and n.nodes.len == 1:
     n = n.nodes[0]
@@ -340,6 +350,74 @@ proc depth_safe*[T](s: PVecRef[T]): uint8 =
   if s.kind == kLeaf:
     return 0
   return s.depth
+
+func delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
+  if idx <= 0: return s
+  if idx >= s.size: return init_sumtree[T](kLeaf)
+  var stack = get_stack_to_leaf_at_index(s, idx)
+  var (n, l, i) = stack.pop()
+  var n_clone: PVecRef[T]
+  if i == 0:
+    result = n
+  else:
+    result = init_sumtree[T](kLeaf)
+    for j in i..<n.data.len:
+      result.data.add(n.data[j])
+    result.size = result.data.len
+    result.resummarize
+  while stack.len > 0:
+    (n, l, i) = stack.pop()
+    n_clone = init_sumtree[T](kInterior)
+    n_clone.mut_append_case_2(result)
+    for j in (i + 1)..<n.nodes.len:
+      n_clone.mut_append_case_2(n.nodes[j])
+    result = n_clone
+  result = result.get_minimum_root
+template drop*[T](s: PVecRef[T], idx: int): PVecRef[T] = s.delete_before(idx)
+
+func delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T] =
+  if idx < 0: return init_sumtree[T](kLeaf)
+  if idx >= s.size: return s
+  var stack = get_stack_to_leaf_at_index(s, idx)
+  var (n, l, i) = stack.pop()
+  var n_clone: PVecRef[T]
+  if i == l - 1:
+    result = n
+  else:
+    result = init_sumtree[T](kLeaf)
+    for j in 0..i:
+      result.data.add(n.data[j])
+    result.size = result.data.len
+    result.resummarize
+  while stack.len > 0:
+    (n, l, i) = stack.pop()
+    n_clone = init_sumtree[T](kInterior)
+    for j in 0..<i:
+      n_clone.mut_append_case_2(n.nodes[j])
+    n_clone.mut_append_case_2(result)
+    result = n_clone
+  result = result.get_minimum_root
+template take*[T](s: PVecRef[T], idx: int): PVecRef[T] = s.delete_after(idx - 1)
+
+func get*[T](s: PVecRef[T], idx: int): T =
+  find_leaf_node_at_index_template(s, idx)
+  return n.data[adj_idx]
+func get*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
+  if slice.a > s.size:
+    result = init_sumtree[T](kLeaf)
+  elif s.kind == kLeaf:
+    result = init_sumtree[T](kLeaf)
+    result.data = s.data[slice]
+    result.size = result.data.len
+    result.resummarize
+  else:
+    result = s.delete_before(slice.a).delete_after(slice.b - slice.a)
+
+func getOrDefault*[T](s: PVecRef[T], idx: int, d: T): T =
+  if idx < 0 or idx >= s.len: return d
+  find_leaf_node_at_index_template(s, idx)
+  return n.data[adj_idx]
+template getOrDefault*[T](s: PVecRef[T], idx: int): T = getOrDefault[T](s, idx, default(T))
 
 proc concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
   if s2.size == 0: return s1
@@ -806,6 +884,7 @@ proc valid*[T](s: PVecRef[T]): bool =
   return true
 
 template len*[T](s: PVecRef[T]): Natural = s.size
+template high*[T](s: PVecRef[T]): Natural = s.size - 1
 
 proc `==`*[T](v1, v2: PVecRef[T]): bool =
   if v1.size != v2.size: return false
