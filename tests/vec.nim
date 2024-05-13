@@ -41,6 +41,7 @@ import ../src/persistent/[vec]
 
 proc main* =
   suite "persistent vec":
+# #[
     test "clone":
       var v1 = init_vec[int]()
       var v2 = v1.clone()
@@ -109,6 +110,7 @@ proc main* =
         s = toSeq(v1.items)
       check v1.valid
       check s == @[13, 12, 11, 10]
+# ]#
 
     test "to_vec":
       proc to_vec_test(size: int) =
@@ -134,6 +136,7 @@ proc main* =
       check [1, 2, 3, 4, 5, 6].to_vec.kind == kLeaf
       check toSeq(0..<100).to_vec.valid
 
+# #[
     test "get idx":
       proc get_test(sz: int) =
         var
@@ -320,5 +323,25 @@ proc main* =
             check toSeq(v3) == seq_copy
       for sz in sizes:
         insert_test(sz)
+
+    test "set_len":
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      proc set_len_test(sz: int) =
+        var
+          offset = 5
+          offset_seq = toSeq(offset..<(sz + offset))
+          seq_copy: seq[int]
+          v = to_vec(offset_seq)
+          v2: type(v)
+        for new_len in sizes:
+          v2 = v.set_len(new_len)
+          check v2.valid
+          seq_copy = toSeq[offset_seq]
+          seq_copy.setLen(new_len)
+          check toSeq(v2) == seq_copy
+      for sz in sizes:
+        set_len_test(sz)
+      
+# ]#
 
   echo "done"

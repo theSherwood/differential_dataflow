@@ -64,7 +64,7 @@ type
   PathStackItem*[T] = tuple[node: PVecRef[T], len: int, index: int]
   PathStack*[T] = seq[PathStackItem[T]]
 
-proc json*[T](s: PVecRef[T]): string =
+proc debug_json*[T](s: PVecRef[T]): string =
   result.add("{\n")
   result.add(&"  \"size\": {s.size},\n")
   result.add(&"  \"kind\": \"{s.kind}\",\n")
@@ -74,9 +74,9 @@ proc json*[T](s: PVecRef[T]): string =
     var inner = ""
     for (i, it) in s.nodes.pairs:
       if i == s.nodes.len - 1:
-        inner = inner & it.json
+        inner = inner & it.debug_json
       else:
-        inner = inner & it.json & ","
+        inner = inner & it.debug_json & ","
     result.add(&"  \"depth\": {s.depth},\n")
     result.add(&"  \"nodes_len\": {s.nodes.len},\n")
     result.add(&"  \"nodes\": [{inner}]\n")
@@ -105,6 +105,11 @@ proc clone*[T](s: PVecRef[T]): PVecRef[T] =
     result.depth = s.depth
     result.nodes.len = s.nodes.len
     result.nodes = s.nodes
+
+proc depth_safe*[T](s: PVecRef[T]): uint8 =
+  if s.kind == kLeaf:
+    return 0
+  return s.depth
 
 template find_local_node_index_by_total_idx_template*(s, idx: untyped) {.dirty.} =
   ## Assumes s is an interior node
@@ -242,114 +247,72 @@ proc init_sumtree*[T](kind: NodeKind): PVecRef[T] =
   s.summary = PVecSummary[T].zero()
   return s
 
-template create_interior_dirty_template() {.dirty.} =
-  var interior = init_sumtree[T](kInterior)
-  interior.nodes = leaves
-  interior.size = BUFFER_WIDTH * (leaves.len - 1)
-  interior.size += interior.nodes[leaves.len - 1].size
-  interior.depth = 1
-  interior.resummarize()
+proc tree_from_leaves[T](leaves: seq[PVecRef[T]]): PVecRef[T] =
+  var
+    layer = leaves
+    interiors: type(layer)
+    idx: int
+  while layer.len > 1:
+    interiors.setLen(0)
+    idx = 0
+    while idx < layer.len:
+      var
+        n = init_sumtree[T](kInterior)
+        child: PVecRef[T]
+        max_depth: uint8 = 0
+      for j in 0..<min(BRANCH_WIDTH, layer.len - idx):
+        child = layer[idx + j]
+        max_depth = max(max_depth, child.depth_safe)
+        n.nodes.add(child)
+        n.size += child.size
+        n.summary = n.summary + child.summary
+      n.depth = max_depth + 1
+      interiors.add(n)
+      idx += BRANCH_WIDTH
+    layer = interiors
+  return layer[0]
 
-template add_leaf_dirty_template() {.dirty.} =
-  if leaves.len == BRANCH_WIDTH:
-    create_interior_dirty_template()
-    interiors.add(interior)
-    leaves[0] = n
-    leaves.len = 1
-  else:
-    leaves[leaves.len] = n
-    leaves.len += 1
+proc fill_sumtree_of_len*[T](len: int, filler: T): PVecRef[T] =
+  if len == 0:
+    return init_sumtree[T](kLeaf)
+  var
+    i = 0
+    adj_size = len
+    n: PVecRef[T]
+    leaves: seq[PVecRef[T]]
+  # build the leaves
+  while adj_size >= 0:
+    n = init_sumtree[T](kLeaf)
+    for idx in 0..<min(adj_size, BUFFER_WIDTH):
+      n.data.add(filler)
+      n.summary = n.summary + filler
+    n.size = n.data.len
+    leaves.add(n)
+    i += BUFFER_WIDTH
+    adj_size -= BUFFER_WIDTH
+  return tree_from_leaves(leaves)
+template init_empty_sumtree_of_len*[T](len: int): PVecRef[T] =
+  fill_sumtree_of_len[T](len, default(T))
 
 proc to_sumtree*[T](its: openArray[T]): PVecRef[T] =
   if its.len == 0:
     return init_sumtree[T](kLeaf)
-  if its.len <= BUFFER_WIDTH:
-    var n = init_sumtree[T](kLeaf)
-    for idx in 0..<its.len:
-      n.data[idx] = its[idx]
-    n.data.len = its.len
-    n.size = its.len
-    n.resummarize()
-    return n
   var
     i = 0
     adj_size = its.len
     n: PVecRef[T]
-    leaves: Chunk[BRANCH_WIDTH, PVecRef[T]]
-    interiors: seq[PVecRef[T]]
-  while adj_size > BUFFER_WIDTH:
-    adj_size -= BUFFER_WIDTH
+    leaves: seq[PVecRef[T]]
+  # build the leaves
+  while adj_size >= 0:
     n = init_sumtree[T](kLeaf)
-    for idx in 0..<BUFFER_WIDTH:
-      n.data[idx] = its[i + idx]
-    n.data.len = BUFFER_WIDTH
-    n.resummarize()
-    n.size = BUFFER_WIDTH
-    i += BUFFER_WIDTH
-    add_leaf_dirty_template()
-  if adj_size > 0:
-    n = init_sumtree[T](kLeaf)
-    for idx in 0..<adj_size:
-      n.data[idx] = its[i + idx]
-    n.data.len = adj_size
-    n.resummarize()
+    for idx in 0..<min(adj_size, BUFFER_WIDTH):
+      n.data.add(its[i + idx])
+      n.summary = n.summary + its[i + idx]
     n.size = n.data.len
-    add_leaf_dirty_template()
-  if leaves.len > 0:
-    create_interior_dirty_template()
-    interiors.add(interior)
-  if interiors.len == 0:
-    case leaves.len:
-      of 0:
-        return init_sumtree[T](kLeaf)
-      of 1:
-        return leaves[0]
-      else:
-        create_interior_dirty_template()
-        return interior
-  if interiors.len == 1: return interiors[0]
-  while interiors.len > 0:
-    i = 0
-    adj_size = interiors.len
-    var
-      interior: PVecRef[T]
-      interiors2: seq[PVecRef[T]]
-    while adj_size > BRANCH_WIDTH:
-      adj_size -= BRANCH_WIDTH
-      n = init_sumtree[T](kInterior)
-      n.size = 0
-      n.depth = 0
-      for idx in 0..<BRANCH_WIDTH:
-        interior = interiors[i + idx]
-        n.nodes[idx] = interior
-        n.size += interior.size
-        n.depth = max(n.depth, interior.depth)
-      n.depth += 1
-      n.nodes.len = BRANCH_WIDTH
-      n.resummarize()
-      i += BRANCH_WIDTH
-      interiors2.add(n)
-    if adj_size > 0:
-      n = init_sumtree[T](kInterior)
-      n.depth = 0
-      for idx in 0..<adj_size:
-        interior = interiors[i + idx]
-        n.nodes[idx] = interior
-        n.size += interior.size
-        n.depth = max(n.depth, interior.depth)
-      n.depth += 1
-      n.nodes.len = adj_size
-      n.resummarize()
-      interiors2.add(n)
-    if interiors2.len == 1:
-      return interiors2[0]
-    else:
-      interiors = interiors2
-
-proc depth_safe*[T](s: PVecRef[T]): uint8 =
-  if s.kind == kLeaf:
-    return 0
-  return s.depth
+    leaves.add(n)
+    i += BUFFER_WIDTH
+    adj_size -= BUFFER_WIDTH
+  return tree_from_leaves(leaves)
 
 func delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   if idx <= 0: return s
@@ -911,6 +874,11 @@ proc valid*[T](s: PVecRef[T]): bool =
 
 template len*[T](s: PVecRef[T]): Natural = s.size
 template high*[T](s: PVecRef[T]): Natural = s.size - 1
+
+proc set_len*[T](s: PVecRef[T], len: int): PVecRef[T] =
+  if len == s.len: return s
+  if len < s.len: return s.take(len)
+  return concat(s, fill_sumtree_of_len[T](len - s.len, default(T)))
 
 proc `==`*[T](v1, v2: PVecRef[T]): bool =
   if v1.size != v2.size: return false
