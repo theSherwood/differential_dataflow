@@ -6,6 +6,7 @@ import ./src/nim/parazoa/map as p_map
 import ./src/nim/nim_persistent_vector/arr as pers_arr
 import ./src/nim/pvec/arr as pvec_arr
 
+const RUN_IMVALUE    = true
 const RUN_PARAZOA    = true
 const RUN_PERSVECTOR = true
 const RUN_PVEC       = true
@@ -24,7 +25,7 @@ proc output_results() =
   for tr in csv_rows:
     tr.to_row.write_row
 
-const IMMUTABLE  = "immutable"
+const IMVALUE  = "im_value"
 const PVEC       = "pvec"
 const PARAZOA    = "parazoa"
 const PERSVECTOR = "persvector"
@@ -40,8 +41,9 @@ proc run_benchmarks() =
   block:
     # for it in [10]:
     for it in [10, 100, 1000]:
-      bench("arr_create", IMMUTABLE, arr_create, 0, it)
-      bench("map_create", IMMUTABLE, map_create, 0, it)
+      if RUN_IMVALUE:
+        bench("arr_create", IMVALUE, arr_create, 0, it)
+        bench("map_create", IMVALUE, map_create, 0, it)
       if RUN_PVEC:
         bench("arr_create", PVEC, pvec_arr_create, 0, it)
       if RUN_PERSVECTOR:
@@ -54,32 +56,33 @@ proc run_benchmarks() =
         if it < 100 and sz < 100: continue
         if it > 100 and sz >= 100: continue
         if it >= 100 and sz > 100: continue
-        block arr:
-          bench("arr_push", IMMUTABLE, arr_push, sz, it)
-          bench("arr_pop", IMMUTABLE, arr_pop, sz, it)
-          bench("arr_slice", IMMUTABLE, arr_slice, sz, it)
-          bench("arr_get_existing", IMMUTABLE, arr_get_existing, sz, it)
-          bench("arr_get_non_existing", IMMUTABLE, arr_get_non_existing, sz, it)
-          bench("arr_set", IMMUTABLE, arr_set, sz, it)
-          bench("arr_iter", IMMUTABLE, arr_iter, sz, it)
-          bench("arr_equal_true", IMMUTABLE, arr_equal_true, sz, it)
-          bench("arr_equal_false", IMMUTABLE, arr_equal_false, sz, it)
-        # block map:
-        if false:
-          bench("map_add_entry", IMMUTABLE, map_add_entry, sz, it)
-          bench("map_add_entry_multiple", IMMUTABLE, map_add_entry_multiple, sz, it)
-          bench("map_overwrite_entry", IMMUTABLE, map_overwrite_entry, sz, it)
-          bench("map_del_entry", IMMUTABLE, map_del_entry, sz, it)
-          bench("map_merge", IMMUTABLE, map_merge, sz, it)
-          bench("map_has_key_true", IMMUTABLE, map_has_key_true, sz, it)
-          bench("map_has_key_false", IMMUTABLE, map_has_key_false, sz, it)
-          bench("map_get_existing", IMMUTABLE, map_get_existing, sz, it)
-          bench("map_get_non_existing", IMMUTABLE, map_get_non_existing, sz, it)
-          bench("map_iter_keys", IMMUTABLE, map_iter_keys, sz, it)
-          bench("map_iter_values", IMMUTABLE, map_iter_values, sz, it)
-          bench("map_iter_entries", IMMUTABLE, map_iter_entries, sz, it)
-          bench("map_equal_true", IMMUTABLE, map_equal_true, sz, it)
-          bench("map_equal_false", IMMUTABLE, map_equal_false, sz, it)
+        if RUN_IMVALUE:
+          block arr:
+            bench("arr_push", IMVALUE, arr_push, sz, it)
+            bench("arr_pop", IMVALUE, arr_pop, sz, it)
+            bench("arr_slice", IMVALUE, arr_slice, sz, it)
+            bench("arr_get_existing", IMVALUE, arr_get_existing, sz, it)
+            bench("arr_get_non_existing", IMVALUE, arr_get_non_existing, sz, it)
+            bench("arr_set", IMVALUE, arr_set, sz, it)
+            bench("arr_iter", IMVALUE, arr_iter, sz, it)
+            bench("arr_equal_true", IMVALUE, arr_equal_true, sz, it)
+            bench("arr_equal_false", IMVALUE, arr_equal_false, sz, it)
+          # block map:
+          if false:
+            bench("map_add_entry", IMVALUE, map_add_entry, sz, it)
+            bench("map_add_entry_multiple", IMVALUE, map_add_entry_multiple, sz, it)
+            bench("map_overwrite_entry", IMVALUE, map_overwrite_entry, sz, it)
+            bench("map_del_entry", IMVALUE, map_del_entry, sz, it)
+            bench("map_merge", IMVALUE, map_merge, sz, it)
+            bench("map_has_key_true", IMVALUE, map_has_key_true, sz, it)
+            bench("map_has_key_false", IMVALUE, map_has_key_false, sz, it)
+            bench("map_get_existing", IMVALUE, map_get_existing, sz, it)
+            bench("map_get_non_existing", IMVALUE, map_get_non_existing, sz, it)
+            bench("map_iter_keys", IMVALUE, map_iter_keys, sz, it)
+            bench("map_iter_values", IMVALUE, map_iter_values, sz, it)
+            bench("map_iter_entries", IMVALUE, map_iter_entries, sz, it)
+            bench("map_equal_true", IMVALUE, map_equal_true, sz, it)
+            bench("map_equal_false", IMVALUE, map_equal_false, sz, it)
 
         if RUN_PVEC:
           block arr:
