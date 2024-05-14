@@ -23,14 +23,14 @@ import ../src/persistent/[vec]
 ## 
 ## Impl
 ## [ ] get ImArray to use this
-## [ ] add hash to pvec summary
+## [x] add hash to pvec summary
 ## [ ] use `distinct` so that we can have monomorphic impls come after sumtree
 ##   - look at impl of https://github.com/Nycto/RBTreeNim/blob/master/src/rbtree.nim
 ## [ ] parameterize branch size and buffer size
 ##   - i'd like to benchmark different sizes
 ## [ ] top-level sumtree should not be a ref
 ## [ ] store cumulative size array on the sumtree node
-## [ ] add validate fn for testing and debugging
+## [x] add validate fn for testing and debugging
 ## [ ] transients
 ## 
 ## Test

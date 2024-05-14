@@ -1,3 +1,8 @@
+## TODO
+## - [x] simplify mutations
+## - [ ] put `size` in summary
+## - [ ] put summary in the parent
+
 import std/[strformat, sequtils, strutils, sugar]
 import hashes
 import chunk
@@ -16,8 +21,8 @@ type
     kLeaf
 
   PVecSummary[T] = object
+    size*: Natural
     hash*: Hash
-    size*: uint
 
   PVec*[T] = object
     # total count of T items in the tree
@@ -27,6 +32,7 @@ type
       of kInterior:
         depth*: uint8
         nodes: Chunk[BRANCH_WIDTH, PVecRef[T]]
+        node_summaries: Chunk[BRANCH_WIDTH, PVecSummary[T]]
       of kLeaf:
         data*: Chunk[BUFFER_WIDTH, T]
   PVecRef*[T] = ref PVec[T]
@@ -194,6 +200,7 @@ func shadow*[T](stack: var PathStack[T], child: PVecRef[T]): PVecRef[T] =
     n_clone.size = n_clone.size - n_clone.nodes[i].size + ch.size
     n_clone.depth = max(n_clone.depth, ch.depth_safe)
     n_clone.nodes[i] = ch
+    n_clone.node_summaries[i] = ch.summary
     ch = n_clone
   return n_clone
 
@@ -208,9 +215,9 @@ proc reset*[T](s: PVecRef[T]) =
   s.summary = PVecSummary[T].zero()
   s.size = 0
   if s.kind == kInterior:
-    s.depth = 0
+    s.depth = 1
     s.nodes.len = 0
-    s.nodes = array[BRANCH_WIDTH, T]
+    s.node_summaries.len = 0
   else:
     s.data.len = 0
 
@@ -219,6 +226,7 @@ func resummarize*[T](s: PVecRef[T]) =
     s.summary = PVecSummary[T].zero()
     for i in 0..<s.nodes.len:
       s.summary = s.summary + s.nodes[i].summary
+      s.node_summaries[i] = s.nodes[i].summary
   else:
     s.summary = PVecSummary[T].from_buf(s.data.buf, s.data.len)
 
@@ -260,17 +268,8 @@ func tree_from_leaves[T](leaves: seq[PVecRef[T]]): PVecRef[T] =
     interiors.setLen(0)
     idx = 0
     while idx < layer.len:
-      var
-        n = init_sumtree[T](kInterior)
-        child: PVecRef[T]
-        max_depth: uint8 = 0
-      for j in 0..<min(BRANCH_WIDTH, layer.len - idx):
-        child = layer[idx + j]
-        max_depth = max(max_depth, child.depth_safe)
-        n.nodes.add(child)
-        n.size += child.size
-        n.summary = n.summary + child.summary
-      n.depth = max_depth + 1
+      var n = init_sumtree[T](kInterior)
+      n.mut_append_to_interior_with_room(idx, min(idx + BRANCH_WIDTH, layer.len), layer)
       interiors.add(n)
       idx += BRANCH_WIDTH
     layer = interiors
@@ -281,80 +280,111 @@ func tree_from_leaves[T](leaves: seq[PVecRef[T]]): PVecRef[T] =
 # #region =============================================================
 
 template mut_append_to_leaf_with_room*[T](s: PVecRef[T], d: T) =
-  ## The node is a leaf and there's room in the data
   s.data.add(d)
   s.size += 1
   s.summary = s.summary + d
+proc mut_append_to_leaf_with_room*[T](s: PVecRef[T], start_idx, end_idx: int, data: openArray[T]) =
+  var datum: T
+  for i in start_idx..<end_idx:
+    datum = data[i]
+    s.data.add(datum)
+    s.summary = s.summary + datum
+  s.size += end_idx - start_idx
+template mut_append_to_leaf_with_room*[T](s: PVecRef[T], len: int, data: openArray[T]) =
+  mut_append_to_leaf_with_room(s, 0, len, data)
+template mut_append_to_leaf_with_room*[T](s: PVecRef[T], data: openArray[T]) =
+  mut_append_to_leaf_with_room(s, 0, data.len, data)
+
+template mut_insert_in_leaf_with_room*[T](s: PVecRef[T], idx: int, d: T) =
+  s.data.insert(idx, d)
+  s.size += 1
+  s.summary = s.summary + d
+proc mut_insert_in_leaf_with_room*[T](s: PVecRef[T], idx: int, data: openArray[T]) =
+  s.data.insert(idx, data)
+  s.size += data.len
+  for d in data:
+    s.summary = s.summary + d
+
+template mut_prepend_to_leaf_with_room*[T](s: PVecRef[T], d: T) =
+  mut_insert_in_leaf_with_room(s, 0, d)
 
 proc mut_append_to_interior_with_room*[T](s, child: PVecRef[T]) =
-  ## The node is an interior with room for a new child
   s.nodes.add(child)
-  s.size += child.size
+  s.node_summaries.add(child.summary)
   s.summary = s.summary + child.summary
+  s.size += child.size
   s.depth = max(s.depth, child.depth_safe + 1)
+proc mut_append_to_interior_with_room*[T](s: PVecRef[T], start_idx, end_idx: int, children: openArray[PVecRef[T]]) =
+  var child: PVecRef[T]
+  for i in start_idx..<end_idx:
+    child = children[i]
+    s.nodes.add(child)
+    s.node_summaries.add(child.summary)
+    s.summary = s.summary + child.summary
+    s.size += child.size
+    s.depth = max(s.depth, child.depth_safe + 1)
+template mut_append_to_interior_with_room*[T](s: PVecRef[T], len: int, children: openArray[PVecRef[T]]) =
+  mut_append_to_interior_with_room(s, 0, len, children)
+template mut_append_to_interior_with_room*[T](s: PVecRef[T], children: openArray[PVecRef[T]]) =
+  mut_append_to_interior_with_room(s, 0, children.len, children)
 
-template mut_pop_case_1*[T](s: PVecRef[T]) =
-  ## The node is a leaf
+proc mut_insert_in_interior_with_room*[T](s: PVecRef[T], idx: int, child: PVecRef[T]) =
+  s.nodes.insert(idx, child)
+  s.node_summaries.insert(idx, child.summary)
+  s.summary = s.summary + child.summary
+  s.size += child.size
+  s.depth = max(s.depth, child.depth_safe + 1)
+proc mut_insert_in_interior_with_room*[T](s: PVecRef[T], idx: int, children: openArray[PVecRef[T]]) =
+  s.nodes.insert(idx, children)
+  var summaries: seq[PVecSummary[T]]
+  for child in children:
+    summaries.add(child.summary)
+    s.size += child.size
+    s.depth = max(s.depth, child.depth_safe + 1)
+    s.summary = s.summary + child.summary
+  s.node_summaries.insert(idx, summaries)
+
+template mut_prepend_to_interior_with_room*[T](s, child: PVecRef[T]) =
+  mut_insert_in_interior_with_room(s, 0, child)
+
+proc mut_pop_leaf*[T](s: PVecRef[T]): T =
   var d = s.data.pop()
   s.summary = s.summary - d
   s.size -= 1
+  return d
 
-proc mut_pop_case_2*[T](s, child: PVecRef[T]) =
-  ## The node is an interior
-  s.nodes.len -= 1
-  let child = s.nodes[s.nodes.len]
-  s.nodes[s.nodes.len] = default(T)
-  s.size -= 1
+proc mut_pop_interior*[T](s: PVecRef[T]): PVecRef[T] =
+  let child = s.nodes.pop()
+  discard s.node_summaries.pop()
   s.summary = s.summary - child.summary
-  var depth = 0
-  for i in 0..<s.nodes.len:
-    depth = max(s.nodes[i].depth, depth)
-  s.depth = depth + 1
-
-template mut_prepend_to_leaf_with_room*[T](s: PVecRef[T], d: T) =
-  ## The node is a leaf and there's room in the data
-  s.data.insert(0, d)
-  s.size += 1
-  s.summary = s.summary + d
-
-proc mut_prepend_to_interior_with_room*[T](s, child: PVecRef[T]) =
-  ## The node is an interior with room for a new child
-  s.nodes.insert(0, child)
-  s.size += child.size
-  s.summary = s.summary + child.summary
-  s.depth = max(s.depth, child.depth_safe + 1)
+  s.size -= child.size
+  if s.depth == child.depth_safe + 1:
+    s.depth = s.compute_local_depth
+  return child
 
 # #endregion ==========================================================
 #            IMMUTABLE HELPERS
 # #region =============================================================
 
 func im_append_to_leaf_with_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  ## The node is a leaf and there's room in the data
-  var new_st = s.clone
-  new_st.mut_append_to_leaf_with_room(d)
-  return new_st
+  result = s.clone
+  result.mut_append_to_leaf_with_room(d)
 
 func im_append_to_leaf_no_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  ## The node is a leaf but there's no room so we make a new leaf and root
-  var new_st = init_sumtree[T](kInterior)
   var new_leaf = init_sumtree[T](d)
-  new_st.mut_append_to_interior_with_room(s)
-  new_st.mut_append_to_interior_with_room(new_leaf)
-  return new_st
+  result = init_sumtree[T](kInterior)
+  result.mut_append_to_interior_with_room(s)
+  result.mut_append_to_interior_with_room(new_leaf)
 
 func im_prepend_to_leaf_with_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  ## The node is a leaf and there's room in the data
-  var new_st = s.clone
-  new_st.mut_prepend_to_leaf_with_room(d)
-  return new_st
+  result = s.clone
+  result.mut_prepend_to_leaf_with_room(d)
 
 func im_prepend_to_leaf_no_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  ## The node is a leaf but there's no room so we make a new leaf and root
-  var new_st = init_sumtree[T](kInterior)
   var new_leaf = init_sumtree[T](d)
-  new_st.mut_prepend_to_interior_with_room(s)
-  new_st.mut_prepend_to_interior_with_room(new_leaf)
-  return new_st
+  result = init_sumtree[T](kInterior)
+  result.mut_prepend_to_interior_with_room(s)
+  result.mut_prepend_to_interior_with_room(new_leaf)
 
 # #endregion ==========================================================
 #            INITIALIZERS
@@ -378,8 +408,8 @@ func clone*[T](s: PVecRef[T]): PVecRef[T] =
     result.data = s.data
   else:
     result.depth = s.depth
-    result.nodes.len = s.nodes.len
     result.nodes = s.nodes
+    result.node_summaries = s.node_summaries
 
 proc fill_sumtree_of_len*[T](len: int, filler: T): PVecRef[T] =
   if len == 0:
@@ -393,9 +423,7 @@ proc fill_sumtree_of_len*[T](len: int, filler: T): PVecRef[T] =
   while adj_size >= 0:
     n = init_sumtree[T](kLeaf)
     for idx in 0..<min(adj_size, BUFFER_WIDTH):
-      n.data.add(filler)
-      n.summary = n.summary + filler
-    n.size = n.data.len
+      n.mut_append_to_leaf_with_room(filler)
     leaves.add(n)
     i += BUFFER_WIDTH
     adj_size -= BUFFER_WIDTH
@@ -415,9 +443,7 @@ func to_sumtree*[T](its: openArray[T]): PVecRef[T] =
   while adj_size >= 0:
     n = init_sumtree[T](kLeaf)
     for idx in 0..<min(adj_size, BUFFER_WIDTH):
-      n.data.add(its[i + idx])
-      n.summary = n.summary + its[i + idx]
-    n.size = n.data.len
+      n.mut_append_to_leaf_with_room(its[i + idx])
     leaves.add(n)
     i += BUFFER_WIDTH
     adj_size -= BUFFER_WIDTH
@@ -479,11 +505,15 @@ func valid*[T](s: PVecRef[T]): bool =
       debugEcho "summary"
       return false
     if n.kind == kInterior:
+      for i in 0..<n.nodes.len:
+        if n.nodes[i].summary != n.node_summaries[i]:
+          debugEcho "inline summaries"
+          return false
       if n.depth == 0:
         debugEcho "depth == 0"
         return false
       if n.depth != n.compute_local_depth:
-        debugEcho "depth"
+        debugEcho "depth was ", n.depth, " but should have been ", n.compute_local_depth 
         return false
       if n.nodes.len == 1 and n.nodes[0].kind == kInterior:
         debugEcho "not minimum root"
@@ -740,16 +770,12 @@ func im_delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
     result = n
   else:
     result = init_sumtree[T](kLeaf)
-    for j in i..<n.data.len:
-      result.data.add(n.data[j])
-    result.size = result.data.len
-    result.resummarize
+    result.mut_append_to_leaf_with_room(i, n.data.len, n.data.buf)
   while stack.len > 0:
     (n, l, i) = stack.pop()
     n_clone = init_sumtree[T](kInterior)
     n_clone.mut_append_to_interior_with_room(result)
-    for j in (i + 1)..<n.nodes.len:
-      n_clone.mut_append_to_interior_with_room(n.nodes[j])
+    n_clone.mut_append_to_interior_with_room(i + 1, n.nodes.len, n.nodes.buf)
     result = n_clone
   result = result.get_minimum_root
 template im_drop*[T](s: PVecRef[T], idx: int): PVecRef[T] = s.im_delete_before(idx)
@@ -764,15 +790,11 @@ func im_delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T] =
     result = n
   else:
     result = init_sumtree[T](kLeaf)
-    for j in 0..i:
-      result.data.add(n.data[j])
-    result.size = result.data.len
-    result.resummarize
+    result.mut_append_to_leaf_with_room(i + 1, n.data.buf)
   while stack.len > 0:
     (n, l, i) = stack.pop()
     n_clone = init_sumtree[T](kInterior)
-    for j in 0..<i:
-      n_clone.mut_append_to_interior_with_room(n.nodes[j])
+    n_clone.mut_append_to_interior_with_room(i, n.nodes.buf)
     n_clone.mut_append_to_interior_with_room(result)
     result = n_clone
   result = result.get_minimum_root
@@ -785,58 +807,42 @@ proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
   var stack = get_stack_to_leaf_at_index[T](s, idx)
   var (n, l, i) = stack.pop()
   var n_clone = n.clone()
+  n_clone.summary = n_clone.summary - n_clone.data[i] + d
   n_clone.data[i] = d
-  n_clone.summary = PVecSummary[T].from_buf(n_clone.data.buf, n_clone.data.len)
   return shadow[T](stack, n_clone)
 
 func im_concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
   if s2.size == 0: return s1
   if s1.size == 0: return s2
   # TODO - take depth into account to try not to be too imbalanced
-  var root: PVecRef[T]
   let kinds = (s1.kind, s2.kind)
   if kinds == (kLeaf, kLeaf):
     if s1.data.len + s2.data.len <= BUFFER_WIDTH:
-      # pack the contents of both nodes into a new one
-      root = init_sumtree[T](kLeaf)
-      for i in 0..<s1.data.len:
-        root.data[i] = s1.data[i] 
-      for i in 0..<s2.data.len:
-        root.data[i + s1.data.len] = s2.data[i]
-      root.data.len = s1.data.len + s2.data.len
+      result = init_sumtree[T](kLeaf)
+      result.mut_append_to_leaf_with_room(s1.data.len, s1.data.buf)
+      result.mut_append_to_leaf_with_room(s2.data.len, s2.data.buf)
     else:
-      # make the nodes children of a new one
-      root = init_sumtree[T](kInterior)
-      root.nodes.insert(0, [s1, s2])
-      root.depth = 1
+      result = init_sumtree[T](kInterior)
+      result.mut_append_to_interior_with_room([s1, s2])
   elif kinds == (kLeaf, kInterior):
     var
       stack = get_stack_to_leaf_at_index[T](s2, 0)
       child: PVecRef[T] 
-      n_clone: PVecRef[T] 
       (n, l, i) = stack.pop()
     if s1.data.len + l <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
-      for i in 0..<s1.data.len:
-        child.data[i] = s1.data[i] 
-      for i in 0..<n.data.len:
-        child.data[i + s1.data.len] = n.data[i]
-      child.data.len = s1.data.len + n.data.len
-      child.size = child.data.len
-      child.summary = s1.summary + n.summary
+      child.mut_append_to_leaf_with_room(s1.data.len, s1.data.buf)
+      child.mut_append_to_leaf_with_room(n.data.len, n.data.buf)
       return shadow(stack, child)
     (n, l, i) = stack.pop()
     while true:
       if l < BRANCH_WIDTH:
-        n_clone = n.clone()
-        n_clone.nodes.insert(0, s1)
-        n_clone.size += s1.size
-        n_clone.summary = n_clone.summary + s1.summary
-        return shadow(stack, n_clone)
+        child = n.clone()
+        child.mut_insert_in_interior_with_room(0, s1)
+        return shadow(stack, child)
       elif stack.len == 0:
-        root = init_sumtree[T](kInterior)
-        root.nodes.insert(0, [s1, s2])
-        root.depth = max(s1.depth_safe, s2.depth_safe) + 1
+        result = init_sumtree[T](kInterior)
+        result.mut_append_to_interior_with_room([s1, s2])
         break
       else:
         (n, l, i) = stack.pop()
@@ -844,56 +850,31 @@ func im_concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
     var
       stack = get_stack_to_leaf_at_index[T](s1, s1.size - 1)
       child: PVecRef[T] 
-      n_clone: PVecRef[T] 
       (n, l, i) = stack.pop()
     if n.data.len + s2.data.len <= BUFFER_WIDTH:
       child = init_sumtree[T](kLeaf)
-      for i in 0..<n.data.len:
-        child.data[i] = n.data[i] 
-      for i in 0..<s2.data.len:
-        child.data[i + n.data.len] = s2.data[i]
-      child.data.len = n.data.len + s2.data.len
-      child.size = child.data.len
-      child.summary = n.summary + s2.summary
+      child.mut_append_to_leaf_with_room(n.data.len, n.data.buf)
+      child.mut_append_to_leaf_with_room(s2.data.len, s2.data.buf)
       return shadow(stack, child)
     (n, l, i) = stack.pop()
     while true:
       if l < BRANCH_WIDTH:
-        n_clone = n.clone()
-        n_clone.nodes.add(s2)
-        n_clone.size += s2.size
-        n_clone.summary = n_clone.summary + s2.summary
-        return shadow(stack, n_clone)
+        child = n.clone()
+        child.mut_append_to_interior_with_room(s2)
+        return shadow(stack, child)
       elif stack.len == 0:
-        root = init_sumtree[T](kInterior)
-        root.nodes.insert(0, [s1, s2])
-        root.depth = max(s1.depth_safe, s2.depth_safe) + 1
+        result = init_sumtree[T](kInterior)
+        result.mut_append_to_interior_with_room([s1, s2])
         break
       else:
         (n, l, i) = stack.pop()
   elif kinds == (kInterior, kInterior):
-    root = init_sumtree[T](kInterior)
+    result = init_sumtree[T](kInterior)
     if s1.nodes.len + s2.nodes.len <= BRANCH_WIDTH:
-      # pack the contents of both nodes into this one
-      root = init_sumtree[T](kInterior)
-      var n: PVecRef[T]
-      for i in 0..<s1.nodes.len:
-        n = s1.nodes[i]
-        root.nodes[i] = n
-        root.depth = max(root.depth, n.depth_safe)
-      for i in 0..<s2.nodes.len:
-        n = s2.nodes[i]
-        root.nodes[i + s1.nodes.len] = n
-        root.depth = max(root.depth, n.depth_safe)
-      root.nodes.len = s1.nodes.len + s2.nodes.len
-      root.depth += 1
+      result.mut_append_to_interior_with_room(s1.nodes.len, s1.nodes.buf)
+      result.mut_append_to_interior_with_room(s2.nodes.len, s2.nodes.buf)
     else:
-      # add the nodes as children of this one
-      root.nodes.insert(0, [s1, s2])
-      root.depth = max(s1.depth, s2.depth) + 1
-  root.summary = s1.summary + s2.summary
-  root.size = s1.size + s2.size
-  return root
+      result.mut_append_to_interior_with_room([s1, s2])
 
 func im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
   var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
@@ -996,17 +977,11 @@ func im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
       else:
         return (init_sumtree[T](kLeaf), datum)
     var n_clone = n.clone()
-    var child = n_clone.nodes.pop()
-    if n_clone.depth == child.depth_safe + 1:
-      n_clone.depth = n_clone.compute_local_depth
-    n_clone.size -= 1
-    n_clone.summary = n_clone.summary - child.summary
+    discard n_clone.mut_pop_interior()
     return (shadow[T](stack, n_clone).get_minimum_root, datum)
   else:
     var n_clone = n.clone()
-    var datum = n_clone.data.pop()
-    n_clone.size -= 1
-    n_clone.summary = n_clone.summary - datum
+    var datum = n_clone.mut_pop_leaf()
     return (shadow[T](stack, n_clone), datum)
 
 # #endregion ==========================================================
