@@ -3,8 +3,10 @@
 import ./src/nim/[common, map, arr, rules]
 import ./src/nim/parazoa/arr as p_arr
 import ./src/nim/parazoa/map as p_map
+import ./src/nim/nim_persistent_vector/arr as pers_arr
 
 const RUN_PARAZOA = true
+const RUN_PERSVECTOR = true
 
 proc sanity_check(tr: TaskResult, sz, n: int) =
   var s = 0.0
@@ -20,8 +22,9 @@ proc output_results() =
   for tr in csv_rows:
     tr.to_row.write_row
 
-const IMMUTABLE = "immutable"
-const PARAZOA = "parazoa"
+const IMMUTABLE  = "immutable"
+const PARAZOA    = "parazoa"
+const PERSVECTOR = "persvector"
 const IMPERATIVE = "imperative"
 
 proc run_benchmarks() =
@@ -32,12 +35,16 @@ proc run_benchmarks() =
 
   # value benchmarks
   block:
+    # for it in [10]:
     for it in [10, 100, 1000]:
       bench("arr_create", IMMUTABLE, arr_create, 0, it)
       bench("map_create", IMMUTABLE, map_create, 0, it)
+      if RUN_PERSVECTOR:
+        bench("arr_create", PERSVECTOR, persvector_arr_create, 0, it)
       if RUN_PARAZOA:
         bench("arr_create", PARAZOA, parazoa_arr_create, 0, it)
         bench("map_create", PARAZOA, parazoa_map_create, 0, it)
+      # for sz in [100]:
       for sz in [1, 10, 100, 1000]:
         if it < 100 and sz < 100: continue
         if it > 100 and sz >= 100: continue
@@ -52,7 +59,8 @@ proc run_benchmarks() =
           bench("arr_iter", IMMUTABLE, arr_iter, sz, it)
           bench("arr_equal_true", IMMUTABLE, arr_equal_true, sz, it)
           bench("arr_equal_false", IMMUTABLE, arr_equal_false, sz, it)
-        block map:
+        # block map:
+        if false:
           bench("map_add_entry", IMMUTABLE, map_add_entry, sz, it)
           bench("map_add_entry_multiple", IMMUTABLE, map_add_entry_multiple, sz, it)
           bench("map_overwrite_entry", IMMUTABLE, map_overwrite_entry, sz, it)
@@ -68,6 +76,17 @@ proc run_benchmarks() =
           bench("map_equal_true", IMMUTABLE, map_equal_true, sz, it)
           bench("map_equal_false", IMMUTABLE, map_equal_false, sz, it)
 
+        if RUN_PERSVECTOR:
+          block arr:
+            bench("arr_push", PERSVECTOR, persvector_arr_push, sz, it)
+            bench("arr_pop", PERSVECTOR, persvector_arr_pop, sz, it)
+            bench("arr_get_existing", PERSVECTOR, persvector_arr_get_existing, sz, it)
+            # bench("arr_get_non_existing", PERSVECTOR, persvector_arr_get_non_existing, sz, it)
+            bench("arr_set", PERSVECTOR, persvector_arr_set, sz, it)
+            bench("arr_iter", PERSVECTOR, persvector_arr_iter, sz, it)
+            # bench("arr_equal_true", PERSVECTOR, persvector_arr_equal_true, sz, it)
+            # bench("arr_equal_false", PERSVECTOR, persvector_arr_equal_false, sz, it)
+
         if RUN_PARAZOA:
           block arr:
             bench("arr_push", PARAZOA, parazoa_arr_push, sz, it)
@@ -78,7 +97,8 @@ proc run_benchmarks() =
             bench("arr_iter", PARAZOA, parazoa_arr_iter, sz, it)
             bench("arr_equal_true", PARAZOA, parazoa_arr_equal_true, sz, it)
             bench("arr_equal_false", PARAZOA, parazoa_arr_equal_false, sz, it)
-          block map:
+          # block map:
+          if false:
             bench("map_add_entry", PARAZOA, parazoa_map_add_entry, sz, it)
             bench("map_add_entry_multiple", PARAZOA, parazoa_map_add_entry_multiple, sz, it)
             bench("map_overwrite_entry", PARAZOA, parazoa_map_overwrite_entry, sz, it)
