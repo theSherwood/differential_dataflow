@@ -9,9 +9,10 @@
 ##     - proc outer_contains(v1, v2: ImValue): ImValue
 ## -[ ] find a way to not have to reimplement iterators (eg, for ImMap as well as ImValue)
 
-import std/[tables, sets, bitops, strutils, strformat, macros]
+import std/[tables, sets, bitops, strutils, sequtils, strformat, macros]
 import hashes
-import persistent/[sumtree]
+import persistent/[vec]
+# import persistent/[sumtree]
 
 ## # Immutable Value Types
 ## =======================
@@ -196,8 +197,6 @@ type
     hash: Hash
     data: string
   ImArrayPayload* = object
-    hash: Hash
-    data: seq[ImValue]
     vec: PVecRef[ImValue]
   ImMapPayload* = object
     hash: Hash
@@ -492,7 +491,8 @@ template eq_heap_value_generic*(v1, v2: typed) =
       let signature = bitand(v1.as_u64, MASK_SIGNATURE)
     case signature:
       of MASK_SIG_STR:    eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
-      of MASK_SIG_ARR:    eq_heap_payload(v1.as_arr.payload, v2.as_arr.payload)
+      of MASK_SIG_ARR:    
+        result = v1.as_arr.payload.vec == v2.as_arr.payload.vec
       of MASK_SIG_MAP:    eq_heap_payload(v1.as_map.payload, v2.as_map.payload)
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
@@ -505,7 +505,8 @@ func `==`*(f: float64, v: ImValue): bool = return v == f.as_v
     
 func `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImMap): bool = eq_heap_value_specific(v1, v2)
-func `==`*(v1, v2: ImArray): bool = eq_heap_value_specific(v1, v2)
+func `==`*(v1, v2: ImArray): bool =
+  return v1.payload.vec == v2.payload.vec
 func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
@@ -579,7 +580,7 @@ proc `$`*(v: ImValue): string =
       # TODO - type error
     of kString:           return $(v.as_str.payload.data)
     of kMap:              return $(v.as_map.payload.data)
-    of kArray:            return $(v.as_arr.payload.data)
+    of kArray:            return $(v.as_arr.payload.vec)
     of kSet:              return $(v.as_set.payload.data) 
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
     # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
@@ -621,7 +622,7 @@ else:
 func hash*(v: ImValue): Hash =
   if is_heap(v):
     if is_array(v):
-      result = v.as_arr.payload.hash.as_hash
+      result = v.as_arr.payload.vec.summary.hash
     else:
       # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
       let vh = cast[ImString](v)
@@ -822,15 +823,26 @@ template `&`*(m1, m2: ImMap): ImMap = m1.merge(m2)
 # ImArray Impl #
 # ---------------------------------------------------------------------
 
-template buildImArray(new_hash, new_data: typed) {.dirty.} =
+template array_from_vec(new_vec: typed) {.dirty} =
+  var re = new ImArrayPayload
+  block:
+    re.vec = new_vec
+  when c32:
+    var new_array = ImArray(
+      head: update_head(MASK_SIG_ARR, 0),
+      tail: re
+    )
+  else:
+    GC_ref(re)
+    var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
+
+template buildImArray(new_data: typed) {.dirty.} =
   var re = new ImArrayPayload
   block:
     re.vec = to_vec[ImValue](new_data)
-    re.hash = new_hash
-    re.data = new_data
   when c32:
     var new_array = ImArray(
-      head: update_head(MASK_SIG_ARR, new_hash.as_u32),
+      head: update_head(MASK_SIG_ARR, 0),
       tail: re
     )
   else:
@@ -838,9 +850,8 @@ template buildImArray(new_hash, new_data: typed) {.dirty.} =
     var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
 
 proc init_array_empty(): ImArray =
-  let new_hash = INITIAL_ARR_HASH
   let new_data: seq[ImValue] = @[]
-  buildImArray(new_hash, new_data)
+  buildImArray(new_data)
   return new_array
 
 let empty_array = init_array_empty()
@@ -848,46 +859,35 @@ let empty_array = init_array_empty()
 proc init_array*(): ImArray = return empty_array
 proc init_array*(init_data: openArray[ImValue]): ImArray =
   if init_data.len == 0: return empty_array
-  var new_hash = INITIAL_ARR_HASH
   var new_data = newSeq[ImValue]()
   for v in init_data:
-    new_hash = calc_hash(new_hash, v.hash)
     new_data.add(v)
-  buildImArray(new_hash, new_data)
+  buildImArray(new_data)
   return new_array
 proc init_array*(new_data: seq[ImValue]): ImArray =
   if new_data.len == 0: return empty_array
-  var new_hash = INITIAL_ARR_HASH
-  for v in new_data:
-    new_hash = calc_hash(new_hash, v.hash)
-  buildImArray(new_hash, new_data)
+  buildImArray(new_data)
   return new_array
 
 proc size*(a: ImArray): int =
-  return a.payload.data.len.int
+  return a.payload.vec.len
 
 ## TODO
 ## - ImValue indices
 ## - Negative indices
 ## - range indices
 template get_impl(a: ImArray, i: int) =
-  let data = a.payload.data
-  if i >= data.len:
-    return Nil.as_v
-  else:
-    return data[i]
+  return a.payload.vec.getOrDefault(i, Nil.v)
 template get_impl(a: ImArray, i: ImValue) =
   if i.is_num:
     get_impl(a, i.as_f64.int)
   else:
-    # TODO - raise exception
-    discard
+    raise newException(TypeException, &"Cannot get with index of {$i} of type {i.type_label}")
 template get_impl(a: ImArray, i: float64) =
   if i.is_num:
     get_impl(a, i.as_f64.int)
   else:
-    # TODO - raise exception
-    discard
+    raise newException(TypeException, &"Cannot get with index of {$i} of type {i.type_label}")
 
 proc `[]`*(a: ImArray, i: int): ImValue = get_impl(a, i)
 proc `[]`*(a: ImArray, i: ImValue): ImValue = get_impl(a, i)
@@ -897,26 +897,12 @@ proc get*(a: ImArray, i: ImValue): ImValue  = get_impl(a, i)
 proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
 
 iterator items*(a: ImArray): ImValue =
-  for v in a.payload.data:
+  for v in a.payload.vec.items:
     yield v
 
 proc slice*(a: ImArray, i1, i2: int): ImArray =
-  let old_data = a.payload.data
-  var Start = i1
-  var End = i2
-  if End < 0: End = a.size + End
-  elif End > old_data.len: End = old_data.len
-  if End < Start: return empty_array
-  elif Start < 0: Start = 0
-  if Start == 0 and End == old_data.len: return a
-  var new_hash = INITIAL_ARR_HASH
-  var new_data = newSeq[ImValue](End - Start)
-  var it: ImValue
-  for idx in Start..<End:
-    it = old_data[idx]
-    new_hash = calc_hash(new_hash, it)
-    new_data[idx - Start] = it
-  buildImArray(new_hash, new_data)
+  let new_vec = a.payload.vec.get(i1..<i2)
+  array_from_vec(new_vec)
   return new_array
 proc slice*(a: ImArray, i1, i2: ImValue): ImArray =
   if i1.is_num and i2.is_num:
@@ -926,25 +912,17 @@ proc slice*(a: ImArray, i1, i2: ImValue): ImArray =
 template slice*(a: ImArray, i1, i2: typed): ImArray = a.slice(i1.v, i2.v)
 
 template set_impl*(a: ImArray, i: int, v: ImValue) =
-  let derefed = a.payload
-  let new_vec = derefed.vec.set(i, v)
-  # hash the previous version's hash with the new value and the old value
-  let new_hash = calc_hash(calc_hash(derefed.hash, derefed.data[i].hash), v.hash)
-  var new_data = derefed.data
-  new_data[i] = v
-  buildImArray(new_hash, new_data)
-  new_array.payload.vec = new_vec
+  let new_vec = a.payload.vec.set(i, v)
+  array_from_vec(new_vec)
   return new_array
 template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
   if i.is_num: set_impl(a, i.as_f64.int, v)
   else:
-    # TODO - raise exception
-    discard
+    raise newException(TypeException, &"Cannot set with index of {$i} of type {i.type_label}")
 template set_impl*(a: ImArray, i: float64, v: ImValue) =
   if i.is_num: set_impl(a, i.as_f64.int, v)
   else:
-    # TODO - raise exception
-    discard
+    raise newException(TypeException, &"Cannot set with index of {$i} of type {i.type_label}")
 
 ## TODO
 ## - ImValue indices
@@ -956,49 +934,38 @@ proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
 proc add*(a: ImArray, v: ImValue): ImArray =
-  let derefed = a.payload
-  let new_vec = derefed.vec.append(v)
-  # hash the previous version's hash with the new value and the old value
-  let new_hash = calc_hash(derefed.hash, v.hash)
-  var new_data = derefed.data
-  new_data.add(v)
-  buildImArray(new_hash, new_data)
-  new_array.payload.vec = new_vec
+  let new_vec = a.payload.vec.append(v)
+  array_from_vec(new_vec)
   return new_array
 template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
 
 proc pop*(a: ImArray): (ImValue, ImArray) =
   case a.size:
     of 0: return (Nil.v, a)
-    of 1: return (a.payload.data[0], empty_array)
+    of 1: return (a.payload.vec[0], empty_array)
     else:
-      let derefed = a.payload
-      var new_data = derefed.data
-      var popped = new_data.pop
-      # hash the previous version's hash with the new value and the old value
-      let new_hash = calc_hash(derefed.hash, popped.hash)
-      buildImArray(new_hash, new_data)
-      return (popped, new_array)
+      let (new_vec, datum) = a.payload.vec.pop()
+      array_from_vec(new_vec)
+      return (datum, new_array)
 
 proc merge*(a1, a2: ImArray): ImArray =
-  let new_a = a1.payload.data & a2.payload.data
-  return init_array(new_a)
+  let new_vec = a1.payload.vec & a2.payload.vec
+  array_from_vec(new_vec)
+  return new_array
 template concat*(a1, a2: ImArray): ImArray = a1.merge(a2)
 template `&`*(a1, a2: ImArray): ImArray = a1.merge(a2)
 
 proc `<`*(v1, v2: ImArray): bool =
-  let l = min(v1.size, v2.size)
-  for i in 0..<l:
-    if v1[i] < v2[i]: return true
-    if v1[i] > v2[i]: return false
+  for (it1, it2) in zip_iter(v1.payload.vec, v2.payload.vec):
+    if it1 < it2: return true
+    if it2 < it1: return false
   if v1.size < v2.size: return true
   return false
 proc `<=`*(v1, v2: ImArray): bool =
   let l = min(v1.size, v2.size)
-  for i in 0..<l:
-    if v1[i] < v2[i]: return true
-    if v1[i] > v2[i]: return false
-  if v1.size < v2.size: return true
+  for (it1, it2) in zip_iter(v1.payload.vec, v2.payload.vec):
+    if it1 < it2: return true
+    if it2 < it1: return false
   if v1.size > v2.size: return false
   return true
 
@@ -1395,7 +1362,7 @@ iterator values*(coll: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
   case coll_sig:
     of MASK_SIG_ARR:
-      for v in coll.as_arr.payload.data.items:
+      for v in coll.as_arr.payload.vec.items:
         yield v
     of MASK_SIG_MAP:
       for v in coll.as_map.payload.data.values:
@@ -1408,7 +1375,7 @@ iterator items*(coll: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
   case coll_sig:
     of MASK_SIG_ARR:
-      for v in coll.as_arr.payload.data.items:
+      for v in coll.as_arr.payload.vec.items:
         yield v
     of MASK_SIG_MAP:
       for v in coll.as_map.payload.data.values:

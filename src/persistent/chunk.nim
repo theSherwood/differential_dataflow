@@ -45,6 +45,10 @@ template set*[Count, T](c: var Chunk[Count, T], i: int, v: T) = set_unsafe(c, i,
 template `[]`*[Count, T](c: Chunk[Count, T], i: int): T = get(c, i)
 template `[]=`*[Count, T](c: var Chunk[Count, T], i: int, v: T) = set(c, i, v)
 
+func `[]`*[Count, T](c: Chunk[Count, T], slice: Slice[int]): Chunk[Count, T] =
+  for i in slice.a..slice.b:
+    result.add(c.buf[i])
+
 proc getOrDefault*[Count, T](c: Chunk[Count, T], i: int, d: T): T =
   if i < 0 or not(i < len): return d
   return c.buf[i]
@@ -56,18 +60,6 @@ template pop_multiple*[Count, T](c: var Chunk[Count, T], n: int) =
 proc pop*[Count, T](c: var Chunk[Count, T]): T =
   c.len -= 1
   return c.buf[c.len]
-
-proc get_run*[Count, T](c: Chunk[Count, T], idx: int, length: int): Chunk[Count, T] =
-  var
-    len = 0
-    target = min(idx + length, c.len)
-  while idx + len < target:
-    result.buf[len] = c.buf[idx + len]
-    len += 1
-  result.len = len
-# TODO - add support for negative indices
-template get_slice*[Count, T](c: Chunk[Count, T], idx1: int, idx2: int): Chunk[Count, T] =
-  c.get_run(idx1, max(0, idx2 - idx1))
 
 template delete_run*[Count, T](c: var Chunk[Count, T], idx: int, length: int) =
   if idx + length < c.len:

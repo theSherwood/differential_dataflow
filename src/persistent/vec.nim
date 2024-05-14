@@ -84,7 +84,7 @@ func clone*[T](s: PVecRef[T]): PVecRef[T]
 func im_delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T]
 func im_delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T]
 
-proc pairs_closure[T](s: PVecRef[T]): iterator(): (int, T)
+func pairs_closure[T](s: PVecRef[T]): iterator(): (int, T)
 
 
 # #endregion ==========================================================
@@ -511,17 +511,19 @@ template size*[T](s: PVecRef[T]): Natural = s.summary.size
 template low*[T](s: PVecRef[T]): Natural = 0
 template high*[T](s: PVecRef[T]): Natural = s.summary.size - 1
 
-proc `==`*[T](v1, v2: PVecRef[T]): bool =
+func `==`*[T](v1, v2: PVecRef[T]): bool  =
   if v1.summary != v2.summary: return false
-  var
-    t1 = v1.pairs_closure()
-    t2 = v2.pairs_closure()
-    fin: bool
-  while true:
-    fin = finished(t1)
-    if fin != finished(t2): return false
-    if t1() != t2(): return false
-    if fin: return true
+  # TODO - figure out how to get rid of this
+  {.cast(noSideEffect).}:
+    var
+      t1 = v1.pairs_closure()
+      t2 = v2.pairs_closure()
+      fin: bool
+    while true:
+      fin = finished(t1)
+      if fin != finished(t2): return false
+      if t1() != t2(): return false
+      if fin: return true
 
 # #endregion ==========================================================
 #            ITERATORS
@@ -675,7 +677,7 @@ iterator items*[T](s: PVecRef[T]): T =
 iterator items_reverse*[T](s: PVecRef[T]): T =
   for (idx, d) in s.pairs_reverse:
     yield d
-proc pairs_closure[T](s: PVecRef[T]): iterator(): (int, T) =
+func pairs_closure[T](s: PVecRef[T]): iterator(): (int, T) =
   return iterator(): (int, T) =
     iterate_pairs(s)
 
