@@ -436,17 +436,14 @@ func to_sumtree*[T](its: openArray[T]): PVecRef[T] =
     return init_sumtree[T](kLeaf)
   var
     i = 0
-    adj_size = its.len
     n: PVecRef[T]
     leaves: seq[PVecRef[T]]
   # build the leaves
-  while adj_size >= 0:
+  while i < its.len:
     n = init_sumtree[T](kLeaf)
-    for idx in 0..<min(adj_size, BUFFER_WIDTH):
-      n.mut_append_to_leaf_with_room(its[i + idx])
+    n.mut_append_to_leaf_with_room(i, min(i + BUFFER_WIDTH, its.len), its)
     leaves.add(n)
     i += BUFFER_WIDTH
-    adj_size -= BUFFER_WIDTH
   return tree_from_leaves(leaves)
 
 ## We use this for getting a sumtree from an iterator
