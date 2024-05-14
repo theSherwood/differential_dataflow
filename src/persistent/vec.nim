@@ -21,8 +21,8 @@ type
   IndexError* = object of CatchableError
 
   NodeKind* = enum
-    kInterior
     kLeaf
+    kInterior
 
   PVecSummary[T] = object
     size*: Natural
@@ -993,6 +993,7 @@ template to_vec*[T](iter: iterator): PVecRef[T] = to_sumtree[T](iter)
 
 template append*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 template push*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
+template add*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_append(item)
 
 template prepend*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)
 template push_front*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(item)

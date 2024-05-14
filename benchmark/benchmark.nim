@@ -4,9 +4,11 @@ import ./src/nim/[common, map, arr, rules]
 import ./src/nim/parazoa/arr as p_arr
 import ./src/nim/parazoa/map as p_map
 import ./src/nim/nim_persistent_vector/arr as pers_arr
+import ./src/nim/pvec/arr as pvec_arr
 
-const RUN_PARAZOA = true
+const RUN_PARAZOA    = true
 const RUN_PERSVECTOR = true
+const RUN_PVEC       = true
 
 proc sanity_check(tr: TaskResult, sz, n: int) =
   var s = 0.0
@@ -23,6 +25,7 @@ proc output_results() =
     tr.to_row.write_row
 
 const IMMUTABLE  = "immutable"
+const PVEC       = "pvec"
 const PARAZOA    = "parazoa"
 const PERSVECTOR = "persvector"
 const IMPERATIVE = "imperative"
@@ -39,6 +42,8 @@ proc run_benchmarks() =
     for it in [10, 100, 1000]:
       bench("arr_create", IMMUTABLE, arr_create, 0, it)
       bench("map_create", IMMUTABLE, map_create, 0, it)
+      if RUN_PVEC:
+        bench("arr_create", PVEC, pvec_arr_create, 0, it)
       if RUN_PERSVECTOR:
         bench("arr_create", PERSVECTOR, persvector_arr_create, 0, it)
       if RUN_PARAZOA:
@@ -75,6 +80,17 @@ proc run_benchmarks() =
           bench("map_iter_entries", IMMUTABLE, map_iter_entries, sz, it)
           bench("map_equal_true", IMMUTABLE, map_equal_true, sz, it)
           bench("map_equal_false", IMMUTABLE, map_equal_false, sz, it)
+
+        if RUN_PVEC:
+          block arr:
+            bench("arr_push", PVEC, pvec_arr_push, sz, it)
+            bench("arr_pop", PVEC, pvec_arr_pop, sz, it)
+            bench("arr_get_existing", PVEC, pvec_arr_get_existing, sz, it)
+            bench("arr_get_non_existing", PVEC, pvec_arr_get_non_existing, sz, it)
+            bench("arr_set", PVEC, pvec_arr_set, sz, it)
+            bench("arr_iter", PVEC, pvec_arr_iter, sz, it)
+            bench("arr_equal_true", PVEC, pvec_arr_equal_true, sz, it)
+            bench("arr_equal_false", PVEC, pvec_arr_equal_false, sz, it)
 
         if RUN_PERSVECTOR:
           block arr:
