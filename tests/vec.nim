@@ -41,6 +41,7 @@ import ../src/persistent/[vec]
 
 proc main* =
   suite "persistent vec":
+# #[
     test "clone":
       var v1 = init_vec[int]()
       var v2 = v1.clone()
@@ -169,7 +170,7 @@ proc main* =
       for sz in sizes:
         get_test(sz)
 
-    test "set":
+    test "set by index":
       proc set_test(sz: int) =
         var
           offset = 5
@@ -180,6 +181,43 @@ proc main* =
           check v.valid
         check toSeq(v.items) == offset_seq
       var sizes = [1, 10, 100, 1_000, 10_000]
+      for sz in sizes:
+        set_test(sz)
+# ]#
+
+    test "set by slice":
+      # var sizes = [1]
+      var sizes = [1, 10, 100, 1_000, 10_000]
+      proc set_test(sz: int) =
+        var
+          offset = 77
+          basic_seq = toSeq(0..<sz)
+          seq_copy: seq[int]
+          v1 = to_vec(basic_seq)
+          v2: type(v1)
+          v3: type(v1)
+          slices = [
+            (sz div 2)..<sz,
+            0..<(sz div 2),
+            (sz div 3)..<((sz div 3) shl 1),
+            (sz div 3)..(sz div 3),
+          ]
+          to_insert_seq: seq[int]
+          to_insert_vec: PVecRef[int]
+        for size in sizes:
+          to_insert_seq = toSeq(offset..<(sz + offset))
+          to_insert_vec = to_insert_seq.to_vec
+          for slice in slices:
+            seq_copy = toSeq(basic_seq)
+            seq_copy.delete(slice)
+            seq_copy.insert(to_insert_seq, slice.a)
+            v2 = v1.set(slice, to_insert_seq)
+            v3 = v1.set(slice, to_insert_vec)
+            check v2.valid
+            check v3.valid
+            check v2 == v3
+            check toSeq(v2) == seq_copy
+            check toSeq(v3) == seq_copy
       for sz in sizes:
         set_test(sz)
 
@@ -285,7 +323,7 @@ proc main* =
         for slice in slices:
           v2 = v.delete(slice)
           check v2.valid
-          seq_copy = toSeq[offset_seq]
+          seq_copy = toSeq(offset_seq)
           seq_copy.delete(slice)
           check toSeq(v2) == seq_copy
       var sizes = [1, 10, 100, 1_000, 10_000]
@@ -314,7 +352,7 @@ proc main* =
             check v2.valid
             check v3.valid
             check v2 == v3
-            seq_copy = toSeq[offset_seq]
+            seq_copy = toSeq(offset_seq)
             seq_copy.insert(to_insert_seq, idx)
             check toSeq(v2) == seq_copy
             check toSeq(v3) == seq_copy
@@ -333,7 +371,7 @@ proc main* =
         for new_len in sizes:
           v2 = v.set_len(new_len)
           check v2.valid
-          seq_copy = toSeq[offset_seq]
+          seq_copy = toSeq(offset_seq)
           seq_copy.setLen(new_len)
           check toSeq(v2) == seq_copy
       for sz in sizes:

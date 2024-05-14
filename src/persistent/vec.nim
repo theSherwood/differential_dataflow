@@ -1,7 +1,11 @@
 ## TODO
 ## - [x] simplify mutations
-## - [ ] put `size` in summary
-## - [ ] put summary in the parent
+## - [x] put `size` in summary
+## - [x] put summary in the parent
+## - [ ] more efficient splice for small insertions/deletions
+## - [x] splice that uses slices
+## - [-] `[]=`
+## - [-] `[]=` that uses a slice and splice
 
 import std/[strformat, sequtils, strutils, sugar]
 import hashes
@@ -25,8 +29,6 @@ type
     hash*: Hash
 
   PVec*[T] = object
-    # total count of T items in the tree
-    size*: Natural
     summary*: PVecSummary[T]
     case kind*: NodeKind
       of kInterior:
@@ -42,7 +44,7 @@ type
 
 func debug_json*[T](s: PVecRef[T]): string =
   result.add("{\n")
-  result.add(&"  \"size\": {s.size},\n")
+  result.add(&"  \"size\": {s.summary.size},\n")
   result.add(&"  \"kind\": \"{s.kind}\",\n")
   if s.kind == kLeaf:
     result.add(&"  \"data_len\": {s.data.len}")
@@ -60,7 +62,7 @@ func debug_json*[T](s: PVecRef[T]): string =
 
 func `$`*[T](s: PVecRef[T]): string =
   result.add(&"ST(\n")
-  result.add(&"  size: {s.size},\n")
+  result.add(&"  size: {s.summary.size},\n")
   result.add(&"  kind: {s.kind},\n")
   if s.kind == kLeaf:
     result.add(&"  data.len: {s.data.len}")
@@ -132,9 +134,9 @@ template find_local_node_index_by_total_idx_template*(s, idx: untyped) {.dirty.}
     node_idx: int
     adj_idx = idx
   block:
-    var candidate: PVecRef[T]
-    for i in 0..<s.nodes.len:
-      candidate = s.nodes[i]
+    var candidate: PVecSummary[T]
+    for i in 0..<s.node_summaries.len:
+      candidate = s.node_summaries[i]
       if adj_idx >= candidate.size:
         adj_idx -= candidate.size
       else:
@@ -149,15 +151,15 @@ template find_leaf_node_at_index_template*(s, idx: untyped) {.dirty.} =
     n = s
     adj_idx = idx
   block:
-    var candidate: PVecRef[T]
+    var candidate: PVecSummary[T]
     while n.kind == kInterior:
       block inner:
         for i in 0..<n.nodes.len:
-          candidate = n.nodes[i]
+          candidate = n.node_summaries[i]
           if adj_idx >= candidate.size:
             adj_idx = adj_idx - candidate.size
           else:
-            n = candidate
+            n = n.nodes[i]
             break inner
 
 func find_leaf_node_at_index*[T](s: PVecRef[T], idx: int): (PVecRef[T], int) =
@@ -172,16 +174,16 @@ func get_stack_to_leaf_at_index*[T](s: PVecRef[T], idx: int): PathStack[T] =
     var
       n = s
       adj_idx = idx
-      candidate: PVecRef[T]
+      candidate: PVecSummary[T]
     while n.kind == kInterior:
       block inner:
         for i in 0..<n.nodes.len:
-          candidate = n.nodes[i]
+          candidate = n.node_summaries[i]
           if adj_idx >= candidate.size:
             adj_idx -= candidate.size
           else:
             stack.add((n, n.nodes.len, i))
-            n = candidate
+            n = n.nodes[i]
             break inner
     stack.add((n, n.data.len, adj_idx))
   return stack
@@ -197,7 +199,6 @@ func shadow*[T](stack: var PathStack[T], child: PVecRef[T]): PVecRef[T] =
     (n, l, i) = stack.pop()
     n_clone = n.clone()
     n_clone.summary = (n_clone.summary - n_clone.nodes[i].summary) + ch.summary
-    n_clone.size = n_clone.size - n_clone.nodes[i].size + ch.size
     n_clone.depth = max(n_clone.depth, ch.depth_safe)
     n_clone.nodes[i] = ch
     n_clone.node_summaries[i] = ch.summary
@@ -213,7 +214,6 @@ func get_minimum_root*[T](s: PVecRef[T]): PVecRef[T] =
 ## Does not change the Node kind
 proc reset*[T](s: PVecRef[T]) =
   s.summary = PVecSummary[T].zero()
-  s.size = 0
   if s.kind == kInterior:
     s.depth = 1
     s.nodes.len = 0
@@ -244,7 +244,7 @@ func compute_local_size[T](s: PVecRef[T]): int =
   else:
     var computed_size = 0
     for i in 0..<s.nodes.len:
-      computed_size += s.nodes[i].size
+      computed_size += s.node_summaries[i].size
     return computed_size
 
 func compute_local_depth[T](s: PVecRef[T]): uint8 =
@@ -281,7 +281,6 @@ func tree_from_leaves[T](leaves: seq[PVecRef[T]]): PVecRef[T] =
 
 template mut_append_to_leaf_with_room*[T](s: PVecRef[T], d: T) =
   s.data.add(d)
-  s.size += 1
   s.summary = s.summary + d
 proc mut_append_to_leaf_with_room*[T](s: PVecRef[T], start_idx, end_idx: int, data: openArray[T]) =
   var datum: T
@@ -289,7 +288,6 @@ proc mut_append_to_leaf_with_room*[T](s: PVecRef[T], start_idx, end_idx: int, da
     datum = data[i]
     s.data.add(datum)
     s.summary = s.summary + datum
-  s.size += end_idx - start_idx
 template mut_append_to_leaf_with_room*[T](s: PVecRef[T], len: int, data: openArray[T]) =
   mut_append_to_leaf_with_room(s, 0, len, data)
 template mut_append_to_leaf_with_room*[T](s: PVecRef[T], data: openArray[T]) =
@@ -297,11 +295,9 @@ template mut_append_to_leaf_with_room*[T](s: PVecRef[T], data: openArray[T]) =
 
 template mut_insert_in_leaf_with_room*[T](s: PVecRef[T], idx: int, d: T) =
   s.data.insert(idx, d)
-  s.size += 1
   s.summary = s.summary + d
 proc mut_insert_in_leaf_with_room*[T](s: PVecRef[T], idx: int, data: openArray[T]) =
   s.data.insert(idx, data)
-  s.size += data.len
   for d in data:
     s.summary = s.summary + d
 
@@ -312,7 +308,6 @@ proc mut_append_to_interior_with_room*[T](s, child: PVecRef[T]) =
   s.nodes.add(child)
   s.node_summaries.add(child.summary)
   s.summary = s.summary + child.summary
-  s.size += child.size
   s.depth = max(s.depth, child.depth_safe + 1)
 proc mut_append_to_interior_with_room*[T](s: PVecRef[T], start_idx, end_idx: int, children: openArray[PVecRef[T]]) =
   var child: PVecRef[T]
@@ -321,7 +316,6 @@ proc mut_append_to_interior_with_room*[T](s: PVecRef[T], start_idx, end_idx: int
     s.nodes.add(child)
     s.node_summaries.add(child.summary)
     s.summary = s.summary + child.summary
-    s.size += child.size
     s.depth = max(s.depth, child.depth_safe + 1)
 template mut_append_to_interior_with_room*[T](s: PVecRef[T], len: int, children: openArray[PVecRef[T]]) =
   mut_append_to_interior_with_room(s, 0, len, children)
@@ -332,14 +326,12 @@ proc mut_insert_in_interior_with_room*[T](s: PVecRef[T], idx: int, child: PVecRe
   s.nodes.insert(idx, child)
   s.node_summaries.insert(idx, child.summary)
   s.summary = s.summary + child.summary
-  s.size += child.size
   s.depth = max(s.depth, child.depth_safe + 1)
 proc mut_insert_in_interior_with_room*[T](s: PVecRef[T], idx: int, children: openArray[PVecRef[T]]) =
   s.nodes.insert(idx, children)
   var summaries: seq[PVecSummary[T]]
   for child in children:
     summaries.add(child.summary)
-    s.size += child.size
     s.depth = max(s.depth, child.depth_safe + 1)
     s.summary = s.summary + child.summary
   s.node_summaries.insert(idx, summaries)
@@ -350,14 +342,12 @@ template mut_prepend_to_interior_with_room*[T](s, child: PVecRef[T]) =
 proc mut_pop_leaf*[T](s: PVecRef[T]): T =
   var d = s.data.pop()
   s.summary = s.summary - d
-  s.size -= 1
   return d
 
 proc mut_pop_interior*[T](s: PVecRef[T]): PVecRef[T] =
   let child = s.nodes.pop()
   discard s.node_summaries.pop()
   s.summary = s.summary - child.summary
-  s.size -= child.size
   if s.depth == child.depth_safe + 1:
     s.depth = s.compute_local_depth
   return child
@@ -401,7 +391,6 @@ func init_sumtree*[T](kind: NodeKind): PVecRef[T] =
 
 func clone*[T](s: PVecRef[T]): PVecRef[T] =
   result = PVecRef[T]()
-  result.size = s.size
   result.kind = s.kind
   result.summary = s.summary
   if result.kind == kLeaf:
@@ -455,14 +444,12 @@ template to_sumtree*(T: typedesc, iter: untyped): untyped =
   # build the leaves
   for it in iter:
     if i == BUFFER_WIDTH:
-      n.size = BUFFER_WIDTH
       leaves.add(n)
       n = init_sumtree[T](kLeaf)
       i = 0
     n.data.add(it)
     n.summary = n.summary + it
     i += 1
-  n.size = n.data.len
   leaves.add(n)
   result = tree_from_leaves(leaves)
 
@@ -474,12 +461,11 @@ func get*[T](s: PVecRef[T], idx: int): T =
   find_leaf_node_at_index_template(s, idx)
   return n.data[adj_idx]
 func get*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
-  if slice.a > s.size:
+  if slice.a > s.summary.size:
     result = init_sumtree[T](kLeaf)
   elif s.kind == kLeaf:
     result = init_sumtree[T](kLeaf)
     result.data = s.data[slice]
-    result.size = result.data.len
     result.resummarize
   else:
     result = s.im_delete_before(slice.a).im_delete_after(slice.b - slice.a)
@@ -495,16 +481,19 @@ template getOrDefault*[T](s: PVecRef[T], idx: int): T = getOrDefault[T](s, idx, 
 
 func valid*[T](s: PVecRef[T]): bool =
   for n in s.nodes_post_order:
-    if n.size != n.compute_local_size:
+    if n.summary.size != n.compute_local_size:
       debugEcho "size"
       return false
     if n.summary != n.compute_local_summary:
       debugEcho "summary"
       return false
     if n.kind == kInterior:
+      if n.nodes.len != n.node_summaries.len:
+        debugEcho "inline summaries length"
+        return false
       for i in 0..<n.nodes.len:
         if n.nodes[i].summary != n.node_summaries[i]:
-          debugEcho "inline summaries"
+          debugEcho "inline summaries do not match"
           return false
       if n.depth == 0:
         debugEcho "depth == 0"
@@ -517,13 +506,13 @@ func valid*[T](s: PVecRef[T]): bool =
         return false
   return true
 
-template len*[T](s: PVecRef[T]): Natural = s.size
+template len*[T](s: PVecRef[T]): Natural = s.summary.size
+template size*[T](s: PVecRef[T]): Natural = s.summary.size
 template low*[T](s: PVecRef[T]): Natural = 0
-template high*[T](s: PVecRef[T]): Natural = s.size - 1
+template high*[T](s: PVecRef[T]): Natural = s.summary.size - 1
 
 proc `==`*[T](v1, v2: PVecRef[T]): bool =
-  if v1.size != v2.size: return false
-  if v1.summary.hash != v2.summary.hash: return false
+  if v1.summary != v2.summary: return false
   var
     t1 = v1.pairs_closure()
     t2 = v2.pairs_closure()
@@ -670,7 +659,7 @@ template iterate_pairs*[T](s: PVecRef[T]) {.dirty.} =
       total_idx += 1
 
 template iterate_pairs_reverse*[T](s: PVecRef[T]) {.dirty.} =
-  var total_idx = s.size
+  var total_idx = s.len
   for n in s.leaves_reverse:
     for i in countdown(n.data.len - 1, 0):
       total_idx -= 1
@@ -706,7 +695,7 @@ iterator zip_iter*[T, U](s1: PVecRef[T], s2: PVecRef[U]): (T, U) =
   var
     t1 = s1.pairs_closure()
     t2 = s2.pairs_closure()
-  for i in 0..<min(s1.size, s2.size):
+  for i in 0..<min(s1.len, s2.len):
     yield (t1()[1], t2()[1])
 
 # TODO - figure out how to deal with iterables for flat_map
@@ -759,7 +748,7 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
 
 func im_delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   if idx <= 0: return s
-  if idx >= s.size: return init_sumtree[T](kLeaf)
+  if idx >= s.len: return init_sumtree[T](kLeaf)
   var stack = get_stack_to_leaf_at_index(s, idx)
   var (n, l, i) = stack.pop()
   var n_clone: PVecRef[T]
@@ -779,7 +768,7 @@ template im_drop*[T](s: PVecRef[T], idx: int): PVecRef[T] = s.im_delete_before(i
 
 func im_delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   if idx < 0: return init_sumtree[T](kLeaf)
-  if idx >= s.size: return s
+  if idx >= s.len: return s
   var stack = get_stack_to_leaf_at_index(s, idx)
   var (n, l, i) = stack.pop()
   var n_clone: PVecRef[T]
@@ -797,20 +786,9 @@ func im_delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   result = result.get_minimum_root
 template im_take*[T](s: PVecRef[T], idx: int): PVecRef[T] = s.im_delete_after(idx - 1)
 
-proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
-  ## TODO - handle indices that don't yet exist.
-  if idx < 0 or idx > s.size:
-    raise newException(IndexError, "Index is out of bounds")
-  var stack = get_stack_to_leaf_at_index[T](s, idx)
-  var (n, l, i) = stack.pop()
-  var n_clone = n.clone()
-  n_clone.summary = n_clone.summary - n_clone.data[i] + d
-  n_clone.data[i] = d
-  return shadow[T](stack, n_clone)
-
 func im_concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
-  if s2.size == 0: return s1
-  if s1.size == 0: return s2
+  if s2.len == 0: return s1
+  if s1.len == 0: return s2
   # TODO - take depth into account to try not to be too imbalanced
   let kinds = (s1.kind, s2.kind)
   if kinds == (kLeaf, kLeaf):
@@ -845,7 +823,7 @@ func im_concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
         (n, l, i) = stack.pop()
   elif kinds == (kInterior, kLeaf):
     var
-      stack = get_stack_to_leaf_at_index[T](s1, s1.size - 1)
+      stack = get_stack_to_leaf_at_index[T](s1, s1.len - 1)
       child: PVecRef[T] 
       (n, l, i) = stack.pop()
     if n.data.len + s2.data.len <= BUFFER_WIDTH:
@@ -874,7 +852,7 @@ func im_concat*[T](s1, s2: PVecRef[T]): PVecRef[T] =
       result.mut_append_to_interior_with_room([s1, s2])
 
 func im_append*[T](s: PVecRef[T], d: T): PVecRef[T] =
-  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
+  var stack = get_stack_to_leaf_at_index[T](s, s.len - 1)
   var stack_len = stack.len
   var (n, l, i) = stack.pop()
   if i < BUFFER_WIDTH - 1:
@@ -932,30 +910,52 @@ func im_prepend*[T](s: PVecRef[T], d: T): PVecRef[T] =
   return n.im_prepend_to_leaf_no_room(d)
 
 func im_splice*[T](s: PVecRef[T], idx, length: int, items: openArray[T]): PVecRef[T] =
-  doAssert length >= 0
-  doAssert idx >= 0 and idx < s.size
+  var l = max(0, length)
+  doAssert idx >= 0 and idx < s.len
   return im_concat(
     im_concat(s.take(idx), to_sumtree[T](items)),
-    s.drop(idx + length)
+    s.drop(idx + l)
   )
 func im_splice*[T](s: PVecRef[T], idx, length: int, vec: PVecRef[T]): PVecRef[T] =
-  doAssert length >= 0
-  doAssert idx >= 0 and idx < s.size
+  var l = max(0, length)
+  doAssert idx >= 0 and idx < s.len
   return im_concat(
     im_concat(s.take(idx), vec),
-    s.drop(idx + length)
+    s.drop(idx + l)
   )
 func im_splice*[T](s: PVecRef[T], idx, length: int): PVecRef[T] =
-  doAssert length >= 0
-  doAssert idx >= 0 and idx < s.size
+  if length < 1: return s
+  doAssert idx >= 0 and idx < s.len
   return im_concat(s.take(idx), s.drop(idx + length))
 
-template im_delete*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
+template im_splice*[T](s: PVecRef[T], slice: Slice[int], items: openArray[T]): PVecRef[T] =
+  s.im_splice(slice.a, slice.b + 1 - slice.a, items)
+template im_splice*[T](s: PVecRef[T], slice: Slice[int], vec: PVecRef[T]): PVecRef[T] =
+  s.im_splice(slice.a, slice.b + 1 - slice.a, vec)
+template im_splice*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
   s.im_splice(slice.a, slice.b + 1 - slice.a)
+
+template im_delete*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
+  s.im_splice(slice)
 template im_insert*[T](s: PVecRef[T], items: openArray[T], idx: int): PVecRef[T] =
   s.im_splice(idx, 0, items)
 template im_insert*[T](s: PVecRef[T], vec: PVecRef[T], idx: int): PVecRef[T] =
   s.im_splice(idx, 0, vec)
+
+proc im_set*[T](s: PVecRef[T], idx: int, d: T): PVecRef[T] =
+  ## TODO - handle indices that don't yet exist.
+  if idx < 0 or idx > s.len:
+    raise newException(IndexError, "Index is out of bounds")
+  var stack = get_stack_to_leaf_at_index[T](s, idx)
+  var (n, l, i) = stack.pop()
+  var n_clone = n.clone()
+  n_clone.summary = n_clone.summary - n_clone.data[i] + d
+  n_clone.data[i] = d
+  return shadow[T](stack, n_clone)
+template im_set*[T](s: PVecRef[T], slice: Slice[int], data: openArray[T]): PVecRef[T] =
+  s.im_splice(slice, data)
+template im_set*[T](s: PVecRef[T], slice: Slice[int], vec: PVecRef[T]): PVecRef[T] =
+  s.im_splice(slice, vec)
 
 func im_set_len*[T](s: PVecRef[T], len: int): PVecRef[T] =
   if len == s.len: return s
@@ -963,7 +963,7 @@ func im_set_len*[T](s: PVecRef[T], len: int): PVecRef[T] =
   return im_concat(s, fill_sumtree_of_len[T](len - s.len, default(T)))
 
 func im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
-  var stack = get_stack_to_leaf_at_index[T](s, s.size - 1)
+  var stack = get_stack_to_leaf_at_index[T](s, s.len - 1)
   var (n, l, i) = stack.pop()
   var datum: T
   if l == 1:
@@ -998,6 +998,8 @@ template push_front*[T](vec: PVecRef[T], item: T): PVecRef[T] = vec.im_prepend(i
 template pop*[T](vec: PVecRef[T]): (PVecRef[T], T) = vec.im_pop()
 
 template set*[T](vec: PVecRef[T], idx: int, item: T): PVecRef[T] = vec.im_set(idx, item)
+template set*[T](vec: PVecRef[T], slice: Slice[int], data: openArray[T]): PVecRef[T] = vec.im_set(slice, data)
+template set*[T](vec: PVecRef[T], slice: Slice[int], data: PVecRef[T]): PVecRef[T] = vec.im_set(slice, data)
 
 template set_len*[T](vec: PVecRef[T], len: int): PVecRef[T] = vec.im_set_len(len)
 
