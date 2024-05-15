@@ -16,3 +16,5 @@ nimcache
 tmp
 node_modules
 dist
+
+profile_results.*
