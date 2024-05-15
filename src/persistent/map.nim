@@ -68,9 +68,15 @@ type
   PathStack[K, V] = seq[tuple[parent: MapNodeRef[K, V], index: int]]
 
 func copyRef[T](thing: T): T =
-  new result
+  result = T()
   if thing != nil:
     result[] = thing[]
+
+func copy*[K, V](m: MapRef[K, V]): MapRef[K, V] =
+  result = MapRef[K, V]()
+  result.node = m.node
+  result.hash = m.hash
+  result.size = m.size
 
 func from_value[T](v: T): ref T =
   result = new T
@@ -90,7 +96,7 @@ template entry_hash*[K, V](h_entry: HashedEntryRef[K, V]): Hash =
 template entry_hash*[K, V](h_entry: HashedEntry[K, V]): Hash =
   h_entry.hash + hash(h_entry.value)
 
-func initMap*[K, V](): MapRef[K, V]  =
+func init_map*[K, V](): MapRef[K, V]  =
   ## Returns a new `Map`
   result = MapRef[K, V]()
   result.node = MapNode[K, V](kind: Array)
@@ -183,7 +189,6 @@ template shadow*[K, V](stack: PathStack[K, V], node_list_entry: NodeListEntry[K,
   shadow(stack, stack.len, node_list_entry)
 
 template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): untyped =
-
   var
     h = h_entry.hash
     bits = 0
@@ -287,20 +292,20 @@ template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, 
           )
           break outer
 
-# func to_interior_map[K, V](entries: openArray[HashedEntry[K, V]]): MapRef[K, V] =
-#   result.node = MapNode[K, V](kind: Interior)
-#   for e in entries:
-#     mut_add_to_interior_map(result, e)
-# func to_interior_map[K, V](entries: openArray[HashedEntryRef[K, V]]): MapRef[K, V] =
-#   result.node = MapNode[K, V](kind: Interior)
-#   for e in entries:
-#     var e_ref = e[]
-#     mut_add_to_interior_map(result, e_ref)
-func to_interior_map[K, V](m: MapRef[K, V]): MapRef[K, V] =
+func to_interior_map[K, V](pairs: openArray[(K, V)]): MapRef[K, V] =
+  result = MapRef[K, V]()
   result.node = MapNode[K, V](kind: Interior)
-  for e in m.hashed_entries:
-    # var e_ref = e[]
-    # mut_add_to_interior_map(result, e_ref)
+  for p in pairs:
+    mut_add_to_interior_map(result, HashedEntry[K, V](hash: hash(p[0]), entry: p))
+func to_interior_map[K, V](entries: openArray[HashedEntry[K, V]]): MapRef[K, V] =
+  result = MapRef[K, V]()
+  result.node = MapNode[K, V](kind: Interior)
+  for e in entries:
+    mut_add_to_interior_map(result, e)
+func to_interior_map[K, V](map: MapRef[K, V]): MapRef[K, V] =
+  result = MapRef[K, V]()
+  result.node = MapNode[K, V](kind: Interior)
+  for e in map.hashed_entries:
     mut_add_to_interior_map(result, e)
 
 template add_to_array_map*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): untyped  =
@@ -331,7 +336,7 @@ func add*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): MapRef[K, V]  =
       ## TODO - don't do an immutable add here
       result = result.add(h_entry)
   elif m.node.kind == Interior:
-    result = m.copyRef
+    result = copy(m)
     result.hash = m.hash xor entry_hash(h_entry)
     result.size = m.size + 1
     var
@@ -441,8 +446,9 @@ template add*[K, V](m: MapRef[K, V], h: Hash, pair: (K, V)): MapRef[K, V] =
 
 func delete*[K, V](m: MapRef[K, V], h: Hash, key: K): MapRef[K, V] =
   ## Deletes the key-value pair at `key` from the `Map`
+  result = MapRef[K, V]()
   if m.node.kind == Array:
-    result.node = new MapNode(kind: Array)
+    result.node = MapNode[K, V](kind: Array)
     result.hash = m.hash
     result.size = m.size
     for e in m.hashed_entries:
@@ -450,7 +456,7 @@ func delete*[K, V](m: MapRef[K, V], h: Hash, key: K): MapRef[K, V] =
         result.hash = result.hash xor entry_hash(e)
         result.size -= 1
       else:
-        result.entries.add(e)
+        result.node.entries.add(e)
     if result.size < m.size: return result
     else: return m
   else:
@@ -466,47 +472,48 @@ func delete*[K, V](m: MapRef[K, V], h: Hash, key: K): MapRef[K, V] =
         if e_entry.hash == h and e_entry.key == key:
           result.hash = m.hash xor entry_hash(e_entry)
           if m.size == ARRAY_WIDTH + 1:
-            result.node = new MapNode(kind: Array)
+            result.node = MapNode[K, V](kind: Array)
             result.size = ARRAY_WIDTH
             for e in m.hashed_entries:
               if e.hash == h and e_entry.key == key:
                 discard
               else:
-                result.entries.add(e)
+                result.node.entries.add(e)
             return result
           elif parent.count == 1:
             var idx = stack.len - 2
             while parent.count == 1:
               (parent, index) = stack[idx]
               idx -= 1
-            result.node = shadow(stack, idx + 1, NodeListEntry[K, V](kind: kEmpty))
-            result.size - 1
+            result.node = shadow(stack, idx + 1, NodeListEntry[K, V](kind: kEmpty))[]
+            result.size -= 1
             return result
           else:
-            result.node = shadow(stack, NodeListEntry[K, V](kind: kEmpty))
-            result.size - 1
+            result.node = shadow(stack, NodeListEntry[K, V](kind: kEmpty))[]
+            result.size -= 1
         else:
           return m
       of kCollision:
-        var new_entries = @[]
+        var new_entries: seq[HashedEntry[K, V]]
         for e in node_list_entry.hashed_entries:
           if e.key == key:
             result.hash = result.hash xor entry_hash(e)
             result.size -= 1
           else:
-            new_entries.add(e.key)
+            new_entries.add(e)
         if new_entries.len > 1:
           result.node = shadow(stack, NodeListEntry[K, V](
             kind: kCollision,
             hashed_entries: new_entries
-          ))
+          ))[]
         else:
           let entry_ref = from_value(new_entries[0])
           result.node = shadow(stack, NodeListEntry[K, V](
             kind: kLeaf,
             hashed_entry: entry_ref
-          ))
-        return result
+          ))[]
+      of kInterior:
+        doAssert node_list_entry.kind != kInterior
 template delete*[K, V](m: MapRef[K, V], key: K): MapRef[K, V] =
   delete(m, hash(key), key)
 
@@ -587,9 +594,9 @@ proc `==`*[K, V](m1: MapRef[K, V], m2: MapRef[K, V]): bool  =
         return false
     return true
 
-func toMap*[K, V](arr: openArray[(K, V)]): Map[K, V] =
+func to_map*[K, V](arr: openArray[(K, V)]): MapRef[K, V] =
   ## Returns a `Map` containing the key-value pairs in `arr`
-  var m = initMap[K, V]()
+  var m = init_map[K, V]()
   for (k, v) in arr:
     m = m.add(k, v)
   m
