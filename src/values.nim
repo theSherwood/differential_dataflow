@@ -275,13 +275,14 @@ template v*(x: ImArray): ImValue = x.as_v
 template v*(x: ImMap): ImValue = x.as_v
 template v*(x: ImNil): ImValue = x.as_v
 template v*(x: ImBool): ImValue = x.as_v
-template v*(x: float64): ImValue = x.as_v
-template v*(x: int): ImValue = x.float64.v
 
 # A couple of forward declarations for the conversions
 proc init_string*(s: string = ""): ImString
 proc init_array*(new_data: seq[ImValue]): ImArray
 
+template v*(x: float64): ImValue = x.as_v
+template v*(x: int): ImValue = x.float64.v
+template v*(x: bool): ImValue = (if x: True.v else: False.v)
 template v*(x: string): ImValue = x.init_string.v
 template v*(x: openArray[int]): ImValue = toSeq(x).map(x => x.v).init_array.v
 template v*(x: openArray[float64]): ImValue = toSeq(x).map(x => x.v).init_array.v
@@ -541,6 +542,7 @@ converter toImValue(x: ImSet): ImValue = x.v
 
 converter toImValue(f: float64): ImValue = f.v
 converter toImValue(i: int): ImValue = i.v
+converter toImValue(b: bool): ImValue = b.v
 
 converter toBool(b: ImBool): bool = b == True
 converter toBool(n: ImNil): bool = false

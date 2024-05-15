@@ -5,13 +5,15 @@ import ./common
 
 proc setup_seq_of_arrs*(sz, it, offset: int): seq[ImValue] =
   var i_off, k: int
-  var a: ImArray
+  var
+    a: ImArray
+    s: seq[ImValue]
   for i in 0..<it:
     i_off = i + offset
-    a = Arr [i_off]
-    for j in 1..<sz:
-      k = i_off + (j * 17)
-      a = a.push(k.v)
+    s = newSeq[ImValue](sz)
+    for j in 0..<sz:
+      s[j] = (i_off + (j * 17)).v
+    a = Arr(s)
     result.add(a.v)
 template setup_seq_of_arrs*(sz, it: int): seq[ImValue] = setup_seq_of_arrs(sz, it, 0)
 
