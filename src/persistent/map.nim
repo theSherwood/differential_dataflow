@@ -15,24 +15,19 @@ import chunk
 export chunk
 
 const
-  parazoaBits* {.intdefine.} = 5
-  branchWidth = 1 shl parazoaBits
-  mask = branchWidth - 1
-  array_capacity = branchWdith shr 1
+  INDEX_BITS* {.intdefine.} = 5
+  BRANCH_WIDTH = 1 shl INDEX_BITS
+  MASK = BRANCH_WIDTH - 1
+  ARRAY_WIDTH = BRANCH_WIDTH shr 1
 
 type
-  NodeKind = enum
-    Array,
-    Interior,
   KeyError* = object of CatchableError
   IndexError* = object of CatchableError
 
-func copyRef[T](thing: T): T =
-  new result
-  if thing != nil:
-    result[] = thing[]
+  NodeKind = enum
+    Array,
+    Interior,
 
-type
   HashedEntry[K, V] = object
     hash: Hash
     entry: tuple[key: K, value: V]
@@ -44,7 +39,7 @@ type
     kCollision
     kLeaf
 
-  NodeListEntry = object
+  NodeListEntry[K, V] = object
     case kind: NodeListEntryKind:
       of kEmpty:
         discard
@@ -58,9 +53,10 @@ type
   MapNode*[K, V] = object
     case kind: NodeKind:
       of Array:
-        entries: Chunk[array_capacity, HashedEntry[K, V]]
+        entries: Chunk[ARRAY_WIDTH, HashedEntry[K, V]]
       of Interior:
-        nodes: array[branchWidth, NodeListEntry[K, V]]
+        count: uint8
+        nodes: array[BRANCH_WIDTH, NodeListEntry[K, V]]
   MapNodeRef*[K, V] = ref MapNode[K, V]
 
   Map*[K, V] = object
@@ -69,13 +65,24 @@ type
     size: Natural
   MapRef*[K, V] = ref Map[K, V]
 
+  PathStack[K, V] = seq[tuple[parent: MapNodeRef[K, V], index: int]]
+
+func copyRef[T](thing: T): T =
+  new result
+  if thing != nil:
+    result[] = thing[]
+
+func from_value[T](v: T): ref T =
+  result = new T
+  result[] = v
+
 template key*[K, V](h_entry_ref: HashedEntryRef[K, V]): K =
   h_entry_ref.entry.key
 template value*[K, V](h_entry_ref: HashedEntryRef[K, V]): V =
   h_entry_ref.entry.value
-template key*[K, V](h_entry_ref: HashedEntry[K, V]): K =
+template key*[K, V](h_entry: HashedEntry[K, V]): K =
   h_entry.entry.key
-template value*[K, V](h_entry_ref: HashedEntry[K, V]): V =
+template value*[K, V](h_entry: HashedEntry[K, V]): V =
   h_entry.entry.value
 
 template entry_hash*[K, V](h_entry: HashedEntryRef[K, V]): Hash =
@@ -85,11 +92,25 @@ template entry_hash*[K, V](h_entry: HashedEntry[K, V]): Hash =
 
 func initMap*[K, V](): MapRef[K, V]  =
   ## Returns a new `Map`
+  result = MapRef[K, V]()
   result.node = MapNode[K, V](kind: Array)
 
 func len*[K, V](m: MapRef[K, V]): Natural =
   ## Returns the number of key-value pairs in the `Map`
   m.size
+
+func get_path_stack[K, V](m: MapRef[K, V], h: Hash): PathStack[K, V] =
+  var
+    bits = 0
+    stack: PathStack[K, V] = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
+  while true:
+    var
+      (parent, index) = stack[stack.len - 1]
+      node_list_entry = parent.nodes[index]
+    if node_list_entry.kind == kInterior:
+      bits += INDEX_BITS
+      stack.add((node_list_entry.node, (h shr bits) and MASK))
+    return stack
 
 iterator hashed_entries*[K, V](m: MapRef[K, V]): HashedEntry[K, V] =
   ## Iterates over the hash-key-value triples in the `Map`
@@ -98,9 +119,9 @@ iterator hashed_entries*[K, V](m: MapRef[K, V]): HashedEntry[K, V] =
       yield h_entry
   else:
     var
-      node = ref n.node
-      node_list_entry: NodeListEntry
-      stack: seq[tuple[parent: MapNodeRef[K, V], index: int]] = @[(node, 0)]
+      node = cast[MapNodeRef[K, V]](m.node.addr)
+      node_list_entry: NodeListEntry[K, V]
+      stack: PathStack[K, V] = @[(node, 0)]
     while stack.len > 0:
       let (parent, index) = stack[stack.len-1]
       if index == parent.nodes.len:
@@ -113,7 +134,7 @@ iterator hashed_entries*[K, V](m: MapRef[K, V]): HashedEntry[K, V] =
           of kEmpty:
             stack[stack.len-1].index += 1
           of kLeaf:
-            yield node_list_entry.hash_entry[]
+            yield node_list_entry.hashed_entry[]
             stack[stack.len-1].index += 1
           of kCollision:
             for h_entry in node_list_entry.hashed_entries:
@@ -139,31 +160,35 @@ iterator items*[K, V](m: MapRef[K, V]): V =
   for h_entry in m.hashed_entries:
     yield h_entry.value
 
-func shadow*[K, V](
-    stack: seq[tuple[parent: MapNodeRef[K, V], index: int]],
-    node_list_entry: NodeListEntry[K, V]
-  ): MapNodeRef[K, V] =
+func shadow*[K, V](stack: PathStack[K, V], count: int, node_list_entry: NodeListEntry[K, V]): MapNodeRef[K, V] =
   var
     parent: MapNodeRef[K, V]
     p_copy: MapNodeRef[K, V]
     idx: int
     n_l_entry = node_list_entry
-  for i in countdown(stack.len - 1, 0):
+  for i in countdown(count - 1, 0):
     (parent, idx) = stack[i]
-    p_copy = cloneRef(parent)
-    p_copy.nodes[i] = n_l_entry
-    n_l_entry = NodeListEntry(
+    p_copy = copyRef(parent)
+    if node_list_entry.kind == kEmpty:
+      p_copy.count -= 1
+    elif p_copy.nodes[idx].kind == kEmpty:
+      p_copy.count += 1
+    p_copy.nodes[idx] = n_l_entry
+    n_l_entry = NodeListEntry[K, V](
       kind: kInterior,
       node: p_copy
     )
   return p_copy
+template shadow*[K, V](stack: PathStack[K, V], node_list_entry: NodeListEntry[K, V]): MapNodeRef[K, V] =
+  shadow(stack, stack.len, node_list_entry)
 
 template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): untyped =
+
   var
     h = h_entry.hash
     bits = 0
-    parent = ref m.node
-    index = (h shr bits) and mask
+    parent = cast[MapNodeRef[K, V]](m.node.addr)
+    index = (h shr bits) and MASK
     node_list_entry: NodeListEntry[K, V]
   m.size += 1
   m.hash = m.hash xor entry_hash(h_entry)
@@ -171,11 +196,17 @@ template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, 
     while true:
       node_list_entry = parent.nodes[index]
       case node_list_entry.kind:
+        of kInterior:
+          parent = node_list_entry.node
+          bits += INDEX_BITS
+          index = (h shr bits) and MASK
         of kEmpty:
-          parent.nodes[index] = NodeListEntry(
-            kind: kLeaf
-            hashed_entry: ref h_entry
+          let h_entry_ref = from_value(h_entry)
+          parent.nodes[index] = NodeListEntry[K, V](
+            kind: kLeaf,
+            hashed_entry: h_entry_ref
           )
+          parent.count += 1
           break outer
         of kLeaf:
           let existing_entry = node_list_entry.hashed_entry
@@ -189,53 +220,56 @@ template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, 
                 break outer
               else:
                 # overwrite the existing entry
-                parent.nodes[index] = NodeListEntry(kind: kLeaf, hashed_entry: h_entry)
+                let h_entry_ref = from_value(h_entry)
+                parent.nodes[index] = NodeListEntry[K, V](kind: kLeaf, hashed_entry: h_entry_ref)
                 break outer
             else:
-              parent.nodes[index] = NodeListEntry(
+              parent.nodes[index] = NodeListEntry[K, V](
                 kind: kCollision,
-                hashed_entries: @[h_entry, existing_entry[]]
-                hashed_entry: h_entry
+                hashed_entries: @[h_entry, existing_entry[]],
               )
               break outer
           else:
             # we have to expand to an Interior node because our leaf was a shortcut
             # and we don't create collisions at shortcuts
-            bits += parazoaBits
+            bits += INDEX_BITS
             var
-              new_node = new MapNode[K, V](kind: Interior)
+              new_node = MapNodeRef[K, V](kind: Interior)
               curr_node = new_node
-              new_idx_for_h_entry = (h shr bits) and mask
-              new_idx_for_existing_entry = (existing_entry.hash shr bits) and mask
+              new_idx_for_h_entry = (h shr bits) and MASK
+              new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
             block inner:
               while true:
                 if new_idx_for_h_entry == new_idx_for_existing_entry:
-                  if bits < branch_width:
+                  if bits < BRANCH_WIDTH:
                     # keep building deeper
-                    var new_node = new MapNode[K, V](kind: Interior)
-                    curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(kind: kInterior, node: new_node)
+                    var new_node = MapNodeRef[K, V](kind: Interior)
+                    curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](kind: kInterior, node: new_node)
                     curr_node = new_node
-                    bits += parazoaBits
-                    new_idx_for_h_entry = (h shr bits) and mask
-                    new_idx_for_existing_entry = (existing_entry.hash shr bits) and mask
+                    bits += INDEX_BITS
+                    new_idx_for_h_entry = (h shr bits) and MASK
+                    new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
                   else:
                     # build collision
-                    curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(
+                    curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                       kind: kCollision,
                       hashed_entries: @[h_entry, existing_entry[]]
                     )
+                    curr_node.count = 1
                     break inner
                 else:
-                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(
+                  let h_entry_ref = from_value(h_entry)
+                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                     kind: kLeaf,
-                    hashed_entry: ref h_entry
+                    hashed_entry: h_entry_ref
                   )
-                  curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry(
+                  curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry[K, V](
                     kind: kLeaf,
                     hashed_entry: existing_entry
                   )
+                  curr_node.count = 2
                   break inner
-            parent.nodes[index] = NodeListEntry(kind: kInterior, node: new_node)
+            parent.nodes[index] = NodeListEntry[K, V](kind: kInterior, node: new_node)
             break outer
         of kCollision:
           var new_entries = @[h_entry]
@@ -246,24 +280,27 @@ template mut_add_to_interior_map[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, 
               if e.value == h_entry.value:
                 break outer
             else:
-              new_entries.add(e.key)
-          parent.nodes[index] = NodeListEntry(
+              new_entries.add(e)
+          parent.nodes[index] = NodeListEntry[K, V](
             kind: kCollision,
             hashed_entries: new_entries
           )
           break outer
-        of kInterior:
-          parent = node_list_entry.node
-          bits += parazoaBits
-          index = (h shr bits) and mask
 
-func to_interior_map[K, V](entries: openArray[HashedEntry[K, V]]): MapRef[K, V] =
-  result.node = MapNode[K, V](kind: Interior)
-  for e in entries:
-    mut_add_to_interior_map(result, e)
+# func to_interior_map[K, V](entries: openArray[HashedEntry[K, V]]): MapRef[K, V] =
+#   result.node = MapNode[K, V](kind: Interior)
+#   for e in entries:
+#     mut_add_to_interior_map(result, e)
+# func to_interior_map[K, V](entries: openArray[HashedEntryRef[K, V]]): MapRef[K, V] =
+#   result.node = MapNode[K, V](kind: Interior)
+#   for e in entries:
+#     var e_ref = e[]
+#     mut_add_to_interior_map(result, e_ref)
 func to_interior_map[K, V](m: MapRef[K, V]): MapRef[K, V] =
   result.node = MapNode[K, V](kind: Interior)
   for e in m.hashed_entries:
+    # var e_ref = e[]
+    # mut_add_to_interior_map(result, e_ref)
     mut_add_to_interior_map(result, e)
 
 template add_to_array_map*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): untyped  =
@@ -271,7 +308,7 @@ template add_to_array_map*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): u
   result.hash = m.hash xor entry_hash(h_entry)
   result.node.entries.add(h_entry)
   for e in m.hashed_entries:
-    if e.hash == h_entry.hash && e.key == h_entry.key:
+    if e.hash == h_entry.hash and e.key == h_entry.key:
       if e.value == h_entry.value:
         # bail because the entry is an exact copy of an existing entry
         return m
@@ -282,33 +319,35 @@ template add_to_array_map*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): u
   result.size = result.node.entries.len
 
 func add*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): MapRef[K, V]  =
-  if m.size < array_capacity:
+  if m.size < ARRAY_WIDTH:
     add_to_array_map[K, V](m, h_entry)
-  elif m.kind == Array:
+  elif m.node.kind == Array:
     # We have an array but are at the size limit
     if m.contains(h_entry.hash, h_entry.key):
       add_to_array_map[K, V](m, h_entry)
     else:
       result = to_interior_map(m)
-      result.add(h_entry)
-  elif m.kind == Interior:
+      ## TODO - don't do an immutable add here
+      result = result.add(h_entry)
+  elif m.node.kind == Interior:
     result = m.copyRef
     result.hash = m.hash xor entry_hash(h_entry)
     result.size = m.size + 1
     var
       h = h_entry.hash
       bits = 0
-      stack: seq[tuple[parent: MapNodeRef[K, V], index: int]] = @[(ref map.node, (h shr bits) and mask)]
+      stack: PathStack[K, V] = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
     while true:
       var
         (parent, index) = stack[stack.len - 1]
         node_list_entry = parent.nodes[index]
       case node_list_entry.kind:
         of kEmpty:
-          result.node = shadow(stack, NodeListEntry(
-            kind: kLeaf
-            hashed_entry: ref h_entry
-          ))
+          let h_entry_ref = from_value(h_entry)
+          result.node = shadow(stack, NodeListEntry[K, V](
+            kind: kLeaf,
+            hashed_entry: h_entry_ref
+          ))[]
           return result
         of kLeaf:
           let existing_entry = node_list_entry.hashed_entry
@@ -320,53 +359,57 @@ func add*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): MapRef[K, V]  =
                 return m
               else:
                 # overwrite the existing entry
-                result.node = shadow(stack, NodeListEntry(kind: kLeaf, hashed_entry: h_entry))
+                let h_entry_ref = from_value(h_entry)
+                result.node = shadow(stack, NodeListEntry[K, V](kind: kLeaf, hashed_entry: h_entry_ref))[]
                 result.hash = result.hash xor entry_hash(existing_entry)
                 result.size -= 1
                 return result
             else:
-              result.node = shadow(stack, NodeListEntry(
+              result.node = shadow(stack, NodeListEntry[K, V](
                 kind: kCollision,
                 hashed_entries: @[h_entry, existing_entry[]]
-              ))
+              ))[]
               return result
           else:
             # we have to expand to an Interior node because our leaf was a shortcut
             # and we don't create collisions at shortcuts
-            bits += parazoaBits
+            bits += INDEX_BITS
             var
-              new_node = new MapNode[K, V](kind: Interior)
+              new_node = MapNodeRef[K, V](kind: Interior)
               curr_node = new_node
-              new_idx_for_h_entry = (h shr bits) and mask
-              new_idx_for_existing_entry = (existing_entry.hash shr bits) and mask
+              new_idx_for_h_entry = (h shr bits) and MASK
+              new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
             while true:
               if new_idx_for_h_entry == new_idx_for_existing_entry:
-                if bits < branch_width:
+                if bits < BRANCH_WIDTH:
                   # keep building deeper
-                  var new_node = new MapNode[K, V](kind: Interior)
-                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(kind: kInterior, node: new_node)
+                  var new_node = MapNodeRef[K, V](kind: Interior)
+                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](kind: kInterior, node: new_node)
                   curr_node = new_node
-                  bits += parazoaBits
-                  new_idx_for_h_entry = (h shr bits) and mask
-                  new_idx_for_existing_entry = (existing_entry.hash shr bits) and mask
+                  bits += INDEX_BITS
+                  new_idx_for_h_entry = (h shr bits) and MASK
+                  new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
                 else:
                   # build collision
-                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(
+                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                     kind: kCollision,
                     hashed_entries: @[h_entry, existing_entry[]]
                   )
+                  curr_node.count = 1
                   break
               else:
-                curr_node.nodes[new_idx_for_h_entry] = NodeListEntry(
+                let h_entry_ref = from_value(h_entry)
+                curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                   kind: kLeaf,
-                  hashed_entry: ref h_entry
+                  hashed_entry: h_entry_ref
                 )
-                curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry(
+                curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry[K, V](
                   kind: kLeaf,
                   hashed_entry: existing_entry
                 )
+                curr_node.count = 2
                 break
-            result.node = shadow(stack, NodeListEntry(kind: kInterior, node: new_node))
+            result.node = shadow(stack, NodeListEntry[K, V](kind: kInterior, node: new_node))[]
             return result
         of kCollision:
           var new_entries = @[h_entry]
@@ -375,87 +418,131 @@ func add*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): MapRef[K, V]  =
               result.hash = result.hash xor entry_hash(e)
               result.size -= 1
               if e.value == h_entry.value:
-                break outer
+                break
             else:
-              new_entries.add(e.key)
-          result.node = shadow(stack, NodeListEntry(
-            kind: kCollision
+              new_entries.add(e)
+          result.node = shadow(stack, NodeListEntry[K, V](
+            kind: kCollision,
             hashed_entries: new_entries
-          ))
+          ))[]
           return result
         of kInterior:
-          bits += parazoaBits
-          stack.add((node_list_entry.node, (h shr bits) and mask))
+          bits += INDEX_BITS
+          stack.add((node_list_entry.node, (h shr bits) and MASK))
 template add*[K, V](m: MapRef[K, V], key: K, value: V): MapRef[K, V] =
-  add(m, HashedEntry(hash(key), (key, value)))
-template add*[K, V](m: MapRef[K, V], entry: (K, V)): MapRef[K, V] =
-  add(m, HashedEntry(hash(entry[0]), entry))
+  add(m, HashedEntry[K, V](hash: hash(key), entry: (key, value)))
+template add*[K, V](m: MapRef[K, V], pair: (K, V)): MapRef[K, V] =
+  add(m, HashedEntry[K, V](hash: hash(pair[0]), entry: pair))
 template add*[K, V](m: MapRef[K, V], h: Hash, key: K, value: V): MapRef[K, V] =
-  add(m, HashedEntry(h, (key, value)))
-template add*[K, V](m: MapRef[K, V], h: Hash, entry: (K, V)): MapRef[K, V] =
-  add(m, HashedEntry(h, entry))
+  add(m, HashedEntry[K, V](hash: h, entry: (key, value)))
+template add*[K, V](m: MapRef[K, V], h: Hash, pair: (K, V)): MapRef[K, V] =
+  add(m, HashedEntry[K, V](hash: h, entry: pair))
 
-func del[K, V](res: var MapRef[K, V], node: MapNode[K, V], level: int, keyHash: Hash)  =
-  let
-    index = (keyHash shr level) and mask
-    child = node.nodes[index]
-  if child == nil:
-    discard
-  else:
-    case child.kind:
-    of Branch:
-      let newChild = copyRef(child)
-      node.nodes[index] = newChild
-      del(res, newChild, level + parazoaBits, keyHash)
-    of Leaf:
-      if child.keyHash == keyHash:
-        node.nodes[index] = nil
-        res.size -= 1
-
-func del_by_hash[K, V](m: MapRef[K, V], keyHash: Hash): MapRef[K, V]  =
-  var res = m
-  res.root = copyRef(m.root)
-  del(res, res.root, 0, keyHash)
-  res
-
-func del*[K, V](m: MapRef[K, V], key: K): MapRef[K, V] =
+func delete*[K, V](m: MapRef[K, V], h: Hash, key: K): MapRef[K, V] =
   ## Deletes the key-value pair at `key` from the `Map`
-  del_by_hash(m, hash(key))
+  if m.node.kind == Array:
+    result.node = new MapNode(kind: Array)
+    result.hash = m.hash
+    result.size = m.size
+    for e in m.hashed_entries:
+      if e.hash == h and e.key == key:
+        result.hash = result.hash xor entry_hash(e)
+        result.size -= 1
+      else:
+        result.entries.add(e)
+    if result.size < m.size: return result
+    else: return m
+  else:
+    var
+      stack = m.get_path_stack(h)
+      (parent, index) = stack[stack.len - 1]
+      node_list_entry = parent.nodes[index]
+    case node_list_entry.kind:
+      of kEmpty:
+        return m
+      of kLeaf:
+        let e_entry = node_list_entry.hashed_entry
+        if e_entry.hash == h and e_entry.key == key:
+          result.hash = m.hash xor entry_hash(e_entry)
+          if m.size == ARRAY_WIDTH + 1:
+            result.node = new MapNode(kind: Array)
+            result.size = ARRAY_WIDTH
+            for e in m.hashed_entries:
+              if e.hash == h and e_entry.key == key:
+                discard
+              else:
+                result.entries.add(e)
+            return result
+          elif parent.count == 1:
+            var idx = stack.len - 2
+            while parent.count == 1:
+              (parent, index) = stack[idx]
+              idx -= 1
+            result.node = shadow(stack, idx + 1, NodeListEntry[K, V](kind: kEmpty))
+            result.size - 1
+            return result
+          else:
+            result.node = shadow(stack, NodeListEntry[K, V](kind: kEmpty))
+            result.size - 1
+        else:
+          return m
+      of kCollision:
+        var new_entries = @[]
+        for e in node_list_entry.hashed_entries:
+          if e.key == key:
+            result.hash = result.hash xor entry_hash(e)
+            result.size -= 1
+          else:
+            new_entries.add(e.key)
+        if new_entries.len > 1:
+          result.node = shadow(stack, NodeListEntry[K, V](
+            kind: kCollision,
+            hashed_entries: new_entries
+          ))
+        else:
+          let entry_ref = from_value(new_entries[0])
+          result.node = shadow(stack, NodeListEntry[K, V](
+            kind: kLeaf,
+            hashed_entry: entry_ref
+          ))
+        return result
+template delete*[K, V](m: MapRef[K, V], key: K): MapRef[K, V] =
+  delete(m, hash(key), key)
 
 template get_impl*[K, V](m: MapRef[K, V], h: Hash, key: K, SUCCESS, FAILURE: untyped): untyped =
-  if map.node.kind == Array:
-    for h_entry in map.node.entries:
-      if h_entry.hash == h and h_entry.entry.key == key:
-        SUCCESS
+  if m.node.kind == Array:
+    for h_entry in m.node.entries:
+      if h_entry.hash == h and h_entry.key == key:
+        SUCCESS(h_entry)
     FAILURE
   else:
     var
       bits = 0
-      node = ref map.node
+      node = cast[MapNodeRef[K, V]](m.node.addr)
     while true:
       var
-        index = (h shr bits) and mask
+        index = (h shr bits) and MASK
         node_list_entry = node.nodes[index]
       case node_list_entry.kind:
         of kEmpty: discard
         of kLeaf:
           let h_entry = node_list_entry.hashed_entry
-          if h_entry.hash == h and h_entry.entry.key == key:
-            SUCCESS
+          if h_entry.hash == h and h_entry.key == key:
+            SUCCESS(h_entry)
           break
         of kCollision:
           for h_entry in node_list_entry.hashed_entries:
-            if h_entry.hash == h and h_entry.entry.key == key:
-              SUCCESS
+            if h_entry.hash == h and h_entry.key == key:
+              SUCCESS(h_entry)
           break
         of kInterior:
           node = node_list_entry.node
-          bits += parazoaBits
+          bits += INDEX_BITS
     FAILURE
 
-template get_success(): untyped =
-  return h_entry.entry.value
-template get_failure(): untyped =
+template get_success(h_entry: untyped): untyped {.dirty.} =
+  return h_entry.value
+template get_failure(): untyped {.dirty.} =
   raise newException(KeyError, "Key not found")
 func get*[K, V](m: MapRef[K, V], key: K): V =
   let h = hash(key)
@@ -472,7 +559,7 @@ func get_or_default*[K, V](m: MapRef[K, V], key: K): V =
 func get_or_default*[K, V](m: MapRef[K, V], h: Hash, key: K): V =
   get_impl[K, V](m, h, key, get_success, get_or_default_failure)
 
-template contains_success(): untyped =
+template contains_success(h_entry: untyped): untyped =
   return true
 template contains_failure(): untyped =
   return false

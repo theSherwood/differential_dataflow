@@ -1,6 +1,6 @@
 import std/[tables, strutils, sequtils, algorithm]
-import ../src/[test_utils]
-import ../src/persistent/[vec]
+import ../../src/[test_utils]
+import ../../src/persistent/[vec]
 # import ../src/persistent/[sumtree]
 
 ## 
