@@ -7,16 +7,16 @@ proc main* =
     test "maps":
       let m1 = initMap[string, string]()
       let m2 = m1.add("hello", "world")
-      # expect(KeyError):
-      #   discard m1.get("hello")
-      # check m2.get("hello") == "world"
-      # check m1.getOrDefault("hello", "") == ""
-      # check m2.getOrDefault("hello", "") == "world"
-      # check m2.contains("hello")
-      # let m3 = m2.add("hello", "goodbye")
-      # check m3.get("hello") == "goodbye"
+      expect(map.KeyError):
+        discard m1.get("hello")
+      check m2.get("hello") == "world"
+      check m1.getOrDefault("hello", "") == ""
+      check m2.getOrDefault("hello", "") == "world"
+      check m2.contains("hello")
+      let m3 = m2.add("hello", "goodbye")
+      check m3.get("hello") == "goodbye"
       # let m4 = m3.add("what's", "up")
-      # let m5 = m3.del("what's").del("asdf")
+      # let m5 = m3.delete("what's").delete("asdf")
       # check m5.get("hello") == "goodbye"
       # expect(KeyError):
       #   discard m5.get("what's")

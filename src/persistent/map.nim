@@ -319,6 +319,7 @@ template add_to_array_map*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): u
   result.size = result.node.entries.len
 
 func add*[K, V](m: MapRef[K, V], h_entry: HashedEntry[K, V]): MapRef[K, V]  =
+  result = MapRef[K, V]()
   if m.size < ARRAY_WIDTH:
     add_to_array_map[K, V](m, h_entry)
   elif m.node.kind == Array:
@@ -540,9 +541,9 @@ template get_impl*[K, V](m: MapRef[K, V], h: Hash, key: K, SUCCESS, FAILURE: unt
           bits += INDEX_BITS
     FAILURE
 
-template get_success(h_entry: untyped): untyped {.dirty.} =
+template get_success(h_entry: untyped): untyped =
   return h_entry.value
-template get_failure(): untyped {.dirty.} =
+template get_failure(): untyped =
   raise newException(KeyError, "Key not found")
 func get*[K, V](m: MapRef[K, V], key: K): V =
   let h = hash(key)
@@ -551,13 +552,17 @@ template `[]`*[K, V](m: MapRef[K, V], key: K): V = m.get(k)
 func get*[K, V](m: MapRef[K, V], h: Hash, key: K): V =
   get_impl[K, V](m, h, key, get_success, get_failure)
 
-template get_or_default_failure(): untyped =
-  return default(V)
-func get_or_default*[K, V](m: MapRef[K, V], key: K): V =
+template get_or_default_failure() {.dirty.} =
+  return def
+func get_or_default*[K, V](m: MapRef[K, V], key: K, def: V): V =
   let h = hash(key)
   get_impl[K, V](m, h, key, get_success, get_or_default_failure)
-func get_or_default*[K, V](m: MapRef[K, V], h: Hash, key: K): V =
+template get_or_default*[K, V](m: MapRef[K, V], key: K): V =
+  get_or_default[K, V](m, key, default(V))
+func get_or_default*[K, V](m: MapRef[K, V], h: Hash, key: K, def: V): V =
   get_impl[K, V](m, h, key, get_success, get_or_default_failure)
+template get_or_default*[K, V](m: MapRef[K, V], h: Hash, key: K): V =
+  get_or_default[K, V](m, h, key, default(V))
 
 template contains_success(h_entry: untyped): untyped =
   return true
