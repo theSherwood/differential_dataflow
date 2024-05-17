@@ -1,9 +1,33 @@
 import std/[tables, strutils, sequtils, algorithm]
 import ../../src/[test_utils]
 import ../../src/persistent/[map]
+import ../../src/values
 
 proc main* =
   suite "persistent map":
+    
+    test "integer keys":
+      var m1 = {3: 5}.to_map()
+      check m1.len == 1
+      check m1.get(3) == 5
+      check m1.getOrDefault(5) == 0
+      check m1.getOrDefault(5, 10) == 10
+      var m2 = m1.add(7, 13)
+      check m2.len == 2
+      check m2 != m1
+      check m2.get(7) == 13
+      var m3 = m1.add(3, 23)
+      check m3.get(3) == 23
+      check m3.len == 1
+      var m4 = m2.delete(7)
+      check m4.len == 1
+      check m4.getOrDefault(7) == 0
+      check m4 == m1
+      var m5 = m4.delete(7)
+      check m5 == m4
+      discard m4.delete(0)
+
+    # if false:
     test "from parazoa":
       let m1 = init_map[string, string]()
       let m2 = m1.add("hello", "world")
@@ -52,5 +76,5 @@ proc main* =
       check m1 != m2
       check m2 != m3
       check m8 == m9
-  
+
   echo "done"
