@@ -66,26 +66,12 @@ type
     size: Natural
   PMapRef*[K, V] = ref PMap[K, V]
 
-  PathStack[K, V] = seq[tuple[parent: MapNodeRef[K, V], index: int]]
+  PathStack[K, V] = Chunk[32, tuple[parent: MapNodeRef[K, V], index: int]]
 
-func copyRef[T](thing: T): T =
-  result = T()
-  if thing != nil:
-    result[] = thing[]
-
-func copy*[K, V](m: PMapRef[K, V]): PMapRef[K, V] =
-  result = PMapRef[K, V]()
-  result.node = m.node
-  result.hash = m.hash
-  result.size = m.size
 func copy_interior_node*[K, V](m: MapNodeRef[K, V]): MapNodeRef[K, V] =
   result = MapNodeRef[K, V](kind: Interior)
   result.count = m.count
   result.nodes = m.nodes
-
-func from_value[T](v: T): ref T =
-  result = new T
-  result[] = v
 
 func `$`[K, V](n: MapNodeRef[K, V]): string =
   return $(n[])
@@ -125,26 +111,13 @@ func len*[K, V](m: PMapRef[K, V]): Natural =
   ## Returns the number of key-value pairs in the `PMap`
   m.size
 
-func get_path_stack[K, V](m: PMapRef[K, V], h: Hash): PathStack[K, V] =
-  var
-    bits = 0
-    stack: PathStack[K, V] = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
-  while true:
-    var
-      (parent, index) = stack[stack.len - 1]
-      node_list_entry = parent.nodes[index]
-    if node_list_entry.kind == kInterior:
-      bits += INDEX_BITS
-      stack.add((node_list_entry.node, (h shr bits) and MASK))
-    else:
-      return stack
-
 iterator interior_nodes*[K, V](m: PMapRef[K, V]): MapNodeRef[K, V] =
   if m.node.kind == Interior:
     var
       node = cast[MapNodeRef[K, V]](m.node.addr)
       node_list_entry: NodeListEntry[K, V]
-      stack: PathStack[K, V] = @[(node, 0)]
+      stack: PathStack[K, V]
+    stack.add((node, 0))
     yield node
     while stack.len > 0:
       let (parent, index) = stack[stack.len-1]
@@ -169,7 +142,8 @@ iterator hashed_entries*[K, V](m: PMapRef[K, V]): HashedEntry[K, V] =
     var
       node = cast[MapNodeRef[K, V]](m.node.addr)
       node_list_entry: NodeListEntry[K, V]
-      stack: PathStack[K, V] = @[(node, 0)]
+      stack: PathStack[K, V]
+    stack.add((node, 0))
     while stack.len > 0:
       let (parent, index) = stack[stack.len-1]
       if index == parent.nodes.len:
@@ -207,28 +181,6 @@ iterator items*[K, V](m: PMapRef[K, V]): V =
   ## Iterates over the values in the `PMap`
   for h_entry in m.hashed_entries:
     yield h_entry.value
-
-proc shadow*[K, V](m: var PMapRef[K, V], stack: PathStack[K, V], count: int, node_list_entry: NodeListEntry[K, V]) =
-  var
-    parent: MapNodeRef[K, V]
-    p_copy: MapNodeRef[K, V]
-    idx: int
-    n_l_entry = node_list_entry
-  for i in countdown(count - 1, 0):
-    (parent, idx) = stack[i]
-    p_copy = copy_interior_node[K, V](parent)
-    if n_l_entry.kind == kEmpty:
-      p_copy.count -= 1
-    elif p_copy.nodes[idx].kind == kEmpty:
-      p_copy.count += 1
-    p_copy.nodes[idx] = n_l_entry
-    n_l_entry = NodeListEntry[K, V](
-      kind: kInterior,
-      node: p_copy
-    )
-  m.node = p_copy[]
-template shadow*[K, V](m: var PMapRef[K, V], stack: PathStack[K, V], node_list_entry: NodeListEntry[K, V]) =
-  shadow(m, stack, stack.len, node_list_entry)
 
 template mut_add_to_interior_map[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): untyped =
   var
@@ -526,7 +478,7 @@ func delete_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): PMapRef[K, V] =
       # We have to have this stack in the case that we have a chain of single
       # interior nodes and we clip the value at the very end. That way we walk
       # back up the stack and clip off the interior nodes.
-      stack: Chunk[32, (MapNodeRef[K, V], int)]
+      stack: PathStack[K, V]
     while true:
       stack.add((parent, index))
       case node_list_entry.kind:
@@ -769,6 +721,5 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
     hash = hash xor entry_hash(he)
   if m.hash != hash:
     debugEcho "hash should be: ", hash, " but got: ", m.hash
-    debugEcho ""
     return false
   return true
