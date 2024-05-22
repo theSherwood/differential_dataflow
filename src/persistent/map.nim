@@ -61,12 +61,14 @@ type
   MapNodeRef*[K, V] = ref MapNode[K, V]
 
   PMap*[K, V] = object
-    node: MapNode[K, V]
-    hash: Hash
-    size: Natural
+    node*: MapNode[K, V]
+    hash*: Hash
+    size*: Natural
   PMapRef*[K, V] = ref PMap[K, V]
 
   PathStack[K, V] = Chunk[32, tuple[parent: MapNodeRef[K, V], index: int]]
+  
+  UpdateFn[V] = proc(v: V, exists: bool): (V, bool)
 
 func copy_interior_node*[K, V](m: MapNodeRef[K, V]): MapNodeRef[K, V] =
   result = MapNodeRef[K, V](kind: Interior)
@@ -601,6 +603,13 @@ func get_or_default_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K, def: V): V
 template get_or_default_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): V =
   get_or_default_by_hash[K, V](m, h, key, V.default)
 
+template get_tuple_success(h_entry: untyped): untyped =
+  return (h_entry.value, true)
+template get_tuple_failure(): untyped =
+  return (default[V](V), false)
+func get_tuple_by_hash[K, V](m: PMapRef[K, V], h: Hash, key: K): (V, bool) =
+  get_impl[K, V](m, h, key, get_tuple_success, get_tuple_failure)
+
 template contains_success(h_entry: untyped): untyped =
   return true
 template contains_failure(): untyped =
@@ -610,6 +619,18 @@ func contains*[K, V](m: PMapRef[K, V], key: K): bool =
   get_impl[K, V](m, h, key, contains_success, contains_failure)
 func contains*[K, V](m: PMapRef[K, V], h: Hash, key: K): bool =
   get_impl[K, V](m, h, key, contains_success, contains_failure)
+
+func update_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K, update_fn: UpdateFn[V]): PMapRef[K, V] =
+  let (old_val, exists) = m.get_tuple_by_hash(h, key)
+  let (new_val, should_exist) = update_fn(old_val, exists)
+  if should_exist:
+    return m.add_by_hash(h, key, new_val)
+  elif exists:
+    return m.delete_by_hash(h, key)
+  else:
+    return m
+template update*[K, V](m: PMapRef[K, V], key: K, update_fn: UpdateFn[V]): PMapRef[K, V] =
+  update_by_hash(m, hash(key), key, update_fn)
 
 proc `==`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): bool  =
   ## Returns whether the `PMap`s are equal
@@ -647,6 +668,15 @@ func `&`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): PMapRef[K, V] =
   for (k, v) in m2.pairs:
     res = res.add(k, v)
   res
+
+func to_json*[K, V](m: PMapRef[K, V]): string =
+  result.add("{\n")
+  block:
+    for he in m.hashed_entries:
+      result.add(&"  \"{he.key}\": \"{he.value}\",\n")
+    # trim off the last comma because json doesn't allow trailing commas
+    result.delete((result.len - 2)..<result.len)
+  result.add("\n}")
 
 func debug_json*[K, V](he: HashedEntry[K, V]): string =
   result.add(&"{he.key}: {he.value} [{he.hash.to_hex}]")
@@ -723,3 +753,58 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
     debugEcho "hash should be: ", hash, " but got: ", m.hash
     return false
   return true
+
+type
+  EmptyValue = object
+  # PSetRef*[K] {.borrow: `.`.} = distinct PMapRef[K, uint8]
+  PSetRef*[K] = object
+    re*: PMapRef[K, EmptyValue]
+
+const empty = EmptyValue()
+
+func init_set*[K](): PSetRef[K] =
+  result.re = init_map[K, EmptyValue]()
+  # result = cast[PSetRef[K]](init_map[K, uint8]())
+  # result = PSetRef[K]()
+  # result = default(PSetRef[K])
+  # new result
+  # result.node = MapNode[K, uint8](kind: Array)
+
+template hash*[K](s: PSetRef[K]): Hash =
+  s.re.hash
+template incl*[K](s: PSetRef[K], key: K): PSetRef[K] =
+  PSetRef[K](re: s.re.add(key, empty))
+template excl*[K](s: PSetRef[K], key: K): PSetRef[K] =
+  PSetRef[K](re: s.re.delete(key))
+template contains*[K](s: PSetRef[K], key: K): bool =
+  s.re.contains(key)
+template len*[K](s: PSetRef[K]): Natural =
+  s.re.len
+func to_set*[K](arr: openArray[K]): PSetRef[K] =
+  var m = init_map[K, EmptyValue]()
+  for k in arr:
+    m = m.add(k, empty)
+  return PSetRef[K](re: m)
+iterator items*[K](s: PSetRef[K]): K =
+  for k in s.re.keys:
+    yield k
+iterator values*[K](s: PSetRef[K]): K =
+  for k in s.re.keys:
+    yield k
+iterator keys*[K](s: PSetRef[K]): K =
+  for k in s.re.keys:
+    yield k
+func `==`*[K](s1, s2: PSetRef[K]): bool  =
+  if s1.len != s2.len: return false
+  if s1.re.hash != s2.re.hash: return false
+  else:
+    for k in s1.items:
+      if k notin s2:
+        return false
+    return true
+template valid*[K](s: PSetRef[K]): bool =
+  s.re.valid
+
+type
+  PMultisetRef*[K] = object
+    re: PMapRef[K, int]

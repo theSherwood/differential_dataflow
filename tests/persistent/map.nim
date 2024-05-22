@@ -94,7 +94,6 @@ proc main* =
       check m2.valid
       check m3.valid
 
-    # if false:
     test "from parazoa":
       let m1 = init_map[string, string]()
       let m2 = m1.add("hello", "world")
