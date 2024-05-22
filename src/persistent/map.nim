@@ -756,7 +756,6 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
 
 type
   EmptyValue = object
-  # PSetRef*[K] {.borrow: `.`.} = distinct PMapRef[K, uint8]
   PSetRef*[K] = object
     re*: PMapRef[K, EmptyValue]
 
@@ -764,11 +763,11 @@ const empty = EmptyValue()
 
 func init_set*[K](): PSetRef[K] =
   result.re = init_map[K, EmptyValue]()
-  # result = cast[PSetRef[K]](init_map[K, uint8]())
-  # result = PSetRef[K]()
-  # result = default(PSetRef[K])
-  # new result
-  # result.node = MapNode[K, uint8](kind: Array)
+func to_set*[K](arr: openArray[K]): PSetRef[K] =
+  var m = init_map[K, EmptyValue]()
+  for k in arr:
+    m = m.add(k, empty)
+  return PSetRef[K](re: m)
 
 template hash*[K](s: PSetRef[K]): Hash =
   s.re.hash
@@ -780,11 +779,6 @@ template contains*[K](s: PSetRef[K], key: K): bool =
   s.re.contains(key)
 template len*[K](s: PSetRef[K]): Natural =
   s.re.len
-func to_set*[K](arr: openArray[K]): PSetRef[K] =
-  var m = init_map[K, EmptyValue]()
-  for k in arr:
-    m = m.add(k, empty)
-  return PSetRef[K](re: m)
 iterator items*[K](s: PSetRef[K]): K =
   for k in s.re.keys:
     yield k
@@ -794,7 +788,7 @@ iterator values*[K](s: PSetRef[K]): K =
 iterator keys*[K](s: PSetRef[K]): K =
   for k in s.re.keys:
     yield k
-func `==`*[K](s1, s2: PSetRef[K]): bool  =
+func `==`*[K](s1, s2: PSetRef[K]): bool =
   if s1.len != s2.len: return false
   if s1.re.hash != s2.re.hash: return false
   else:
@@ -804,7 +798,86 @@ func `==`*[K](s1, s2: PSetRef[K]): bool  =
     return true
 template valid*[K](s: PSetRef[K]): bool =
   s.re.valid
+func to_json*[K](s: PSetRef[K]): string =
+  result.add("[ ")
+  block:
+    for k in s.keys:
+      result.add(&"\"{k}\", ")
+    # trim off the last comma because json doesn't allow trailing commas
+    result.delete((result.len - 2)..<result.len)
+  result.add(" ]")
 
 type
   PMultisetRef*[K] = object
     re: PMapRef[K, int]
+
+func multiset_incl_update*[V](v: V, exists: bool): (V, bool) =
+  if v == -1: return (0, false)
+  return (v + 1, true)
+func multiset_excl_update*[V](v: V, exists: bool): (V, bool) =
+  if v == 1: return (0, false)
+  return (v - 1, true)
+template incl*[K](s: PMultisetRef[K], key: K): PMultisetRef[K] =
+  PMultisetRef[K](re: update(s.re, key, multiset_incl_update))
+template excl*[K](s: PMultisetRef[K], key: K): PMultisetRef[K] =
+  PMultisetRef[K](re: update(s.re, key, multiset_excl_update))
+
+var multiset_update_count = 1
+proc multiset_incl_update_count*[V](v: V, exists: bool): (V, bool) =
+  let new_v = v + multiset_update_count
+  if new_v == 0: return (0, false)
+  return (new_v, true)
+proc multiset_excl_update_count*[V](v: V, exists: bool): (V, bool) =
+  let new_v = v - multiset_update_count
+  if new_v == 0: return (0, false)
+  return (new_v, true)
+proc incl*[K](s: PMultisetRef[K], key: K, count: int): PMultisetRef[K] =
+  multiset_update_count = count
+  result = PMultisetRef[K](re: update(s.re, key, multiset_incl_update_count))
+  multiset_excl_update_count = 1
+proc excl*[K](s: PMultisetRef[K], key: K, count: int): PMultisetRef[K] =
+  multiset_update_count = count
+  result = PMultisetRef[K](re: update(s.re, key, multiset_excl_update_cont))
+  multiset_excl_update_count = 1
+
+func init_multiset*[K](): PMultisetRef[K] =
+  result.re = init_map[K, int]()
+func to_multiset*[K](arr: openArray[K]): PMultisetRef[K] =
+  var m = init_multiset[K]()
+  for k in arr:
+    m = m.incl(k)
+  return m
+func to_multiset*[K](arr: openArray[(K, int)]): PMultisetRef[K] =
+  var m = init_multiset[K]()
+  for (k, i) in arr:
+    m = m.incl(k, i)
+  return m
+template hash*[K](m: PMultisetRef[K]): Hash =
+  m.re.hash
+template contains*[K](m: PMultisetRef[K], key: K): bool =
+  m.re.contains(key)
+template get_count*[K](m: PMultisetRef[K], key: K): int =
+  m.re.get_or_default(key, 0)
+template natural_count*[K](m: PMultisetRef[K], key: K): bool =
+  m.re.get_or_default(key, 0) >= 0
+template positive_count*[K](m: PMultisetRef[K], key: K): bool =
+  m.re.get_or_default(key, 0) > 0
+template negative_count*[K](m: PMultisetRef[K], key: K): bool =
+  m.re.get_or_default(key, 0) < 0
+template len*[K](m: PMultisetRef[K]): Natural =
+  m.re.len
+iterator items*[K](m: PMultisetRef[K]): K =
+  for k in m.re.keys:
+    yield k
+iterator keys*[K](m: PMultisetRef[K]): K =
+  for k in m.re.keys:
+    yield k
+iterator pairs*[K](m: PMultisetRef[K]): K =
+  for p in m.re.pairs:
+    yield p
+template `==`*[K](m1, m2: PMultisetRef[K]): bool =
+  m1.re == m2.re
+template valid*[K](m: PMultisetRef[K]): bool =
+  m.re.valid
+template to_json*[K](m: PMultisetRef[K]): string =
+  m.re.to_json
