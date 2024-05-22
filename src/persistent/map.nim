@@ -513,61 +513,84 @@ func delete_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): PMapRef[K, V] =
     if result.size < m.size: return result
     else: return m
   else:
+    result = PMapRef[K, V]()
+    result.node = m.node
+    result.hash = m.hash
+    result.size = m.size + 1
     var
-      stack = m.get_path_stack(h)
-      (parent, index) = stack[stack.len - 1]
+      bits = 0
+      node: MapNodeRef[K, V]
+      parent = cast[MapNodeRef[K, V]](result.node.addr)
+      index = (h shr bits) and MASK
       node_list_entry = parent.nodes[index]
-    case node_list_entry.kind:
-      of kEmpty:
-        return m
-      of kLeaf:
-        result.size = m.size
-        let e_entry = node_list_entry.hashed_entry
-        if e_entry.hash == h and e_entry.key == key:
-          result.hash = m.hash xor entry_hash(e_entry)
-          if m.size == ARRAY_WIDTH + 1:
-            result.node = MapNode[K, V](kind: Array)
-            result.size = ARRAY_WIDTH
-            for e in m.hashed_entries:
-              if e.hash == h and e_entry.key == key:
-                discard
-              else:
-                result.node.entries.add(e)
-            return result
-          elif parent.count == 1:
-            var idx = stack.len - 2
-            while parent.count == 1:
-              (parent, index) = stack[idx]
-              idx -= 1
-            shadow(result, stack, idx + 2, NodeListEntry[K, V](kind: kEmpty))
-            result.size -= 1
-            return result
-          else:
-            shadow(result, stack, NodeListEntry[K, V](kind: kEmpty))
-            result.size -= 1
-            return result
-        else:
+      # We have to have this stack in the case that we have a chain of single
+      # interior nodes and we clip the value at the very end. That way we walk
+      # back up the stack and clip off the interior nodes.
+      stack: Chunk[32, (MapNodeRef[K, V], int)]
+    while true:
+      stack.add((parent, index))
+      case node_list_entry.kind:
+        of kEmpty:
           return m
-      of kCollision:
-        var new_entries: seq[HashedEntry[K, V]]
-        for e in node_list_entry.hashed_entries:
-          if e.key == key:
-            result.hash = result.hash xor entry_hash(e)
-            result.size -= 1
+        of kLeaf:
+          result.size = m.size
+          let e_entry = node_list_entry.hashed_entry
+          if e_entry.hash == h and e_entry.key == key:
+            result.hash = m.hash xor entry_hash(e_entry)
+            if m.size == ARRAY_WIDTH + 1:
+              result.node = MapNode[K, V](kind: Array)
+              result.size = ARRAY_WIDTH
+              for e in m.hashed_entries:
+                if e.hash == h and e_entry.key == key:
+                  discard
+                else:
+                  result.node.entries.add(e)
+              return result
+            elif parent.count == 1:
+              var idx = stack.len - 2
+              while parent.count == 1:
+                (parent, index) = stack[idx]
+                idx -= 1
+              parent.nodes[index] = NodeListEntry[K, V](kind: kEmpty)
+              parent.count -= 1
+              result.size -= 1
+              return result
+            else:
+              parent.nodes[index] = NodeListEntry[K, V](kind: kEmpty)
+              parent.count -= 1
+              result.size -= 1
+              return result
           else:
-            new_entries.add(e)
-        if new_entries.len > 1:
-          shadow(result, stack, NodeListEntry[K, V](
-            kind: kCollision,
-            hashed_entries: new_entries
-          ))
-        else:
-          shadow(result, stack, NodeListEntry[K, V](
-            kind: kLeaf,
-            hashed_entry: HashedEntryBox[K, V](hashed_entry: new_entries[0])
-          ))
-      of kInterior:
-        doAssert node_list_entry.kind != kInterior
+            return m
+        of kCollision:
+          var new_entries: seq[HashedEntry[K, V]]
+          for e in node_list_entry.hashed_entries:
+            if e.key == key:
+              result.hash = result.hash xor entry_hash(e)
+              result.size -= 1
+            else:
+              new_entries.add(e)
+          if new_entries.len > 1:
+            parent.nodes[index] = NodeListEntry[K, V](
+              kind: kCollision,
+              hashed_entries: new_entries
+            )
+          else:
+            parent.nodes[index] = NodeListEntry[K, V](
+              kind: kLeaf,
+              hashed_entry: HashedEntryBox[K, V](hashed_entry: new_entries[0])
+            )
+          return result
+        of kInterior:
+          bits += INDEX_BITS
+          node = copy_interior_node(node_list_entry.node)
+          parent.nodes[index] = NodeListEntry[K, V](
+            kind: kInterior,
+            node: node
+          )
+          parent = node
+          index = (h shr bits) and MASK
+          node_list_entry = parent.nodes[index]
 template delete*[K, V](m: PMapRef[K, V], key: K): PMapRef[K, V] =
   delete_by_hash(m, hash(key), key)
 
@@ -739,6 +762,13 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
   if size != m.len:
     debugEcho "size should be: ", size, " but got: ", m.len
     debugEcho m.debug_json
+    debugEcho ""
+    return false
+  var hash: Hash = 0
+  for he in m.hashed_entries:
+    hash = hash xor entry_hash(he)
+  if m.hash != hash:
+    debugEcho "hash should be: ", hash, " but got: ", m.hash
     debugEcho ""
     return false
   return true
