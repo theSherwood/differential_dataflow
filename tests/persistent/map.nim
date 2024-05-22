@@ -1,7 +1,7 @@
 import std/[tables, strutils, sequtils, algorithm]
 import ../../src/[test_utils]
 import ../../src/persistent/[map]
-import ../../src/values
+# import ../../src/values
 
 proc main* =
   suite "persistent map":
@@ -26,6 +26,73 @@ proc main* =
       var m5 = m4.delete(7)
       check m5 == m4
       discard m4.delete(0)
+
+    test "to_map":
+      proc to_map_test(sz: int) =
+        var 
+          m1 = toSeq(toSeq(0..<sz).pairs).to_map
+        check m1.len == sz
+        check m1.valid
+        for i in 0..<sz:
+          check i == m1[i]
+      for sz in [0, 1, 10, 100, 1000, 10000]:
+        to_map_test(sz)
+
+    test "add":
+      proc add_test(sz: int, check_validity = true) =
+        var
+          m1 = init_map[int, int]()
+        for i in 0..<sz:
+          m1 = m1.add(i, i)
+          check m1.len == i + 1
+          if check_validity:
+            check m1.valid
+        check m1.len == sz
+        check m1.valid
+        for i in 0..<sz:
+          check i == m1[i]
+      for sz in [1, 10, 100, 1000, 10000]:
+        # validity checks are a little expensive so we don't check validity on
+        # big runs
+        if sz > 1000:
+          add_test(sz, false)
+        else:
+          add_test(sz)
+
+    test "delete":
+      proc delete_test(sz: int, check_validity = true) =
+        var 
+          m1 = toSeq(toSeq(0..<sz).pairs).to_map
+        for i in 0..<sz:
+          m1 = m1.delete(i)
+          check m1.len == sz - i - 1
+          if check_validity:
+            check m1.valid
+        check m1.len == 0
+        check m1.valid
+        for i in 0..<sz:
+          check m1.get_or_default(i, -1) == -1
+          check i in m1 == false
+      for sz in [1, 10, 100, 1000, 10000]:
+        # validity checks are a little expensive so we don't check validity on
+        # big runs
+        if sz > 1000:
+          delete_test(sz, false)
+        else:
+          delete_test(sz)
+    
+    test "big":
+      var
+        sz = 100_000
+        m1 = toSeq(toSeq(0..<sz).pairs).to_map
+        m2 = m1.delete(sz div 2)
+        m3 = m2.add(sz div 2, sz div 2)
+      check m1 == m3
+      check m2 != m1
+      check m1.len == m2.len + 1
+      check m1.valid
+      check m2.valid
+      check m3.valid
 
     # if false:
     test "from parazoa":

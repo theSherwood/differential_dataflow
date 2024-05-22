@@ -31,7 +31,8 @@ type
   HashedEntry[K, V] = object
     hash: Hash
     entry: tuple[key: K, value: V]
-  HashedEntryRef[K, V] = ref HashedEntry[K, V]
+  HashedEntryBox[K, V] = ref object
+    hashed_entry: HashedEntry[K, V]
   
   NodeListEntryKind = enum
     kEmpty    # If we implement HAMT, get rid of this
@@ -48,7 +49,7 @@ type
       of kCollision:
         hashed_entries: seq[HashedEntry[K, V]]
       of kLeaf:
-        hashed_entry: HashedEntryRef[K, V]
+        hashed_entry: HashedEntryBox[K, V]
 
   MapNode*[K, V] = object
     case kind: NodeKind:
@@ -89,18 +90,20 @@ func from_value[T](v: T): ref T =
 func `$`[K, V](n: MapNodeRef[K, V]): string =
   return $(n[])
 func `$`[K, V](s: PathStack[K, V]): string =
-  # return "{" & s.map() & "}"
-  # return $(s[0])
-
   var x = newSeq[string]()
   for t in s:
     x.add($t.parent & "\n||| " & $t.index)
   "{" & strutils.join(x, " \n\n ") & "}"
 
-template key*[K, V](h_entry_ref: HashedEntryRef[K, V]): K =
-  h_entry_ref.entry.key
-template value*[K, V](h_entry_ref: HashedEntryRef[K, V]): V =
-  h_entry_ref.entry.value
+template hash*[K, V](h_entry: HashedEntryBox[K, V]): Hash =
+  h_entry.hashed_entry.hash
+template unbox*[K, V](h_entry: HashedEntryBox[K, V]): HashedEntry[K, V] =
+  h_entry.hashed_entry
+
+template key*[K, V](h_entry: HashedEntryBox[K, V]): K =
+  h_entry.hashed_entry.entry.key
+template value*[K, V](h_entry: HashedEntryBox[K, V]): V =
+  h_entry.hashed_entry.entry.value
 template key*[K, V](h_entry: HashedEntry[K, V]): K =
   h_entry.entry.key
 template value*[K, V](h_entry: HashedEntry[K, V]): V =
@@ -108,7 +111,7 @@ template value*[K, V](h_entry: HashedEntry[K, V]): V =
 
 const TOP_BIT_MASK = cast[Hash](0x3fffffffffffffff'u64)
 
-template entry_hash*[K, V](h_entry: HashedEntryRef[K, V]): Hash =
+template entry_hash*[K, V](h_entry: HashedEntryBox[K, V]): Hash =
   (h_entry.hash and TOP_BIT_MASK) + (hash(h_entry.value) and TOP_BIT_MASK)
 template entry_hash*[K, V](h_entry: HashedEntry[K, V]): Hash =
   (h_entry.hash and TOP_BIT_MASK) + (hash(h_entry.value) and TOP_BIT_MASK)
@@ -136,6 +139,27 @@ func get_path_stack[K, V](m: PMapRef[K, V], h: Hash): PathStack[K, V] =
     else:
       return stack
 
+iterator interior_nodes*[K, V](m: PMapRef[K, V]): MapNodeRef[K, V] =
+  if m.node.kind == Interior:
+    var
+      node = cast[MapNodeRef[K, V]](m.node.addr)
+      node_list_entry: NodeListEntry[K, V]
+      stack: PathStack[K, V] = @[(node, 0)]
+    yield node
+    while stack.len > 0:
+      let (parent, index) = stack[stack.len-1]
+      if index == parent.nodes.len:
+        discard stack.pop()
+        if stack.len > 0:
+          stack[stack.len-1].index += 1
+      else:
+        node_list_entry = parent.nodes[index]
+        if node_list_entry.kind == kInterior:
+          yield node_list_entry.node
+          stack.add((node_list_entry.node, 0))
+        else:
+          stack[stack.len-1].index += 1
+
 iterator hashed_entries*[K, V](m: PMapRef[K, V]): HashedEntry[K, V] =
   ## Iterates over the hash-key-value triples in the `PMap`
   if m.node.kind == Array:
@@ -158,7 +182,7 @@ iterator hashed_entries*[K, V](m: PMapRef[K, V]): HashedEntry[K, V] =
           of kEmpty:
             stack[stack.len-1].index += 1
           of kLeaf:
-            yield node_list_entry.hashed_entry[]
+            yield node_list_entry.hashed_entry.hashed_entry
             stack[stack.len-1].index += 1
           of kCollision:
             for h_entry in node_list_entry.hashed_entries:
@@ -184,7 +208,7 @@ iterator items*[K, V](m: PMapRef[K, V]): V =
   for h_entry in m.hashed_entries:
     yield h_entry.value
 
-func shadow*[K, V](stack: PathStack[K, V], count: int, node_list_entry: NodeListEntry[K, V]): MapNodeRef[K, V] =
+proc shadow*[K, V](m: var PMapRef[K, V], stack: PathStack[K, V], count: int, node_list_entry: NodeListEntry[K, V]) =
   var
     parent: MapNodeRef[K, V]
     p_copy: MapNodeRef[K, V]
@@ -193,7 +217,7 @@ func shadow*[K, V](stack: PathStack[K, V], count: int, node_list_entry: NodeList
   for i in countdown(count - 1, 0):
     (parent, idx) = stack[i]
     p_copy = copy_interior_node[K, V](parent)
-    if node_list_entry.kind == kEmpty:
+    if n_l_entry.kind == kEmpty:
       p_copy.count -= 1
     elif p_copy.nodes[idx].kind == kEmpty:
       p_copy.count += 1
@@ -202,9 +226,9 @@ func shadow*[K, V](stack: PathStack[K, V], count: int, node_list_entry: NodeList
       kind: kInterior,
       node: p_copy
     )
-  return p_copy
-template shadow*[K, V](stack: PathStack[K, V], node_list_entry: NodeListEntry[K, V]): MapNodeRef[K, V] =
-  shadow(stack, stack.len, node_list_entry)
+  m.node = p_copy[]
+template shadow*[K, V](m: var PMapRef[K, V], stack: PathStack[K, V], node_list_entry: NodeListEntry[K, V]) =
+  shadow(m, stack, stack.len, node_list_entry)
 
 template mut_add_to_interior_map[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): untyped =
   var
@@ -224,10 +248,9 @@ template mut_add_to_interior_map[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K,
           bits += INDEX_BITS
           index = (h shr bits) and MASK
         of kEmpty:
-          let h_entry_ref = from_value(h_entry)
           parent.nodes[index] = NodeListEntry[K, V](
             kind: kLeaf,
-            hashed_entry: h_entry_ref
+            hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
           )
           parent.count += 1
           break outer
@@ -243,13 +266,15 @@ template mut_add_to_interior_map[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K,
                 break outer
               else:
                 # overwrite the existing entry
-                let h_entry_ref = from_value(h_entry)
-                parent.nodes[index] = NodeListEntry[K, V](kind: kLeaf, hashed_entry: h_entry_ref)
+                parent.nodes[index] = NodeListEntry[K, V](
+                  kind: kLeaf,
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+                )
                 break outer
             else:
               parent.nodes[index] = NodeListEntry[K, V](
                 kind: kCollision,
-                hashed_entries: @[h_entry, existing_entry[]],
+                hashed_entries: @[h_entry, existing_entry.unbox],
               )
               break outer
           else:
@@ -276,19 +301,18 @@ template mut_add_to_interior_map[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K,
                     # build collision
                     curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                       kind: kCollision,
-                      hashed_entries: @[h_entry, existing_entry[]]
+                      hashed_entries: @[h_entry, existing_entry.unbox]
                     )
                     curr_node.count = 1
                     break inner
                 else:
-                  let h_entry_ref = from_value(h_entry)
                   curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                     kind: kLeaf,
-                    hashed_entry: h_entry_ref
+                    hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
                   )
                   curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry[K, V](
                     kind: kLeaf,
-                    hashed_entry: existing_entry
+                    hashed_entry: HashedEntryBox[K, V](hashed_entry: existing_entry.unbox)
                   )
                   curr_node.count = 2
                   break inner
@@ -354,24 +378,27 @@ func add_impl*[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): PMapRef[K, V
       ## TODO - don't do an immutable add here
       result = result.add_impl(h_entry)
   elif m.node.kind == Interior:
-    result = copy(m)
+    result = PMapRef[K, V]()
+    result.node = m.node
     result.hash = m.hash xor entry_hash(h_entry)
     result.size = m.size + 1
     var
       h = h_entry.hash
       bits = 0
-      stack: PathStack[K, V] = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
+      # stack: PathStack[K, V] = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
+      stack: PathStack[K, V] # = @[(cast[MapNodeRef[K, V]](m.node.addr), (h shr bits) and MASK)]
+      node: MapNodeRef[K, V]
+      parent = cast[MapNodeRef[K, V]](result.node.addr)
+      index = (h shr bits) and MASK
+      node_list_entry = parent.nodes[index]
     while true:
-      var
-        (parent, index) = stack[stack.len - 1]
-        node_list_entry = parent.nodes[index]
       case node_list_entry.kind:
         of kEmpty:
-          let h_entry_ref = from_value(h_entry)
-          result.node = shadow(stack, NodeListEntry[K, V](
+          parent.nodes[index] = NodeListEntry[K, V](
             kind: kLeaf,
-            hashed_entry: h_entry_ref
-          ))[]
+            hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+          )
+          parent.count += 1
           return result
         of kLeaf:
           let existing_entry = node_list_entry.hashed_entry
@@ -383,16 +410,121 @@ func add_impl*[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): PMapRef[K, V
                 return m
               else:
                 # overwrite the existing entry
-                let h_entry_ref = from_value(h_entry)
-                result.node = shadow(stack, NodeListEntry[K, V](kind: kLeaf, hashed_entry: h_entry_ref))[]
+                parent.nodes[index] = NodeListEntry[K, V](
+                  kind: kLeaf,
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+                )
                 result.hash = result.hash xor entry_hash(existing_entry)
                 result.size -= 1
                 return result
             else:
-              result.node = shadow(stack, NodeListEntry[K, V](
+              parent.nodes[index] = NodeListEntry[K, V](
                 kind: kCollision,
-                hashed_entries: @[h_entry, existing_entry[]]
-              ))[]
+                hashed_entries: @[h_entry, existing_entry.unbox]
+              )
+              return result
+          else:
+            # we have to expand to an Interior node because our leaf was a shortcut
+            # and we don't create collisions at shortcuts
+            bits += INDEX_BITS
+            var
+              new_node = MapNodeRef[K, V](kind: Interior)
+              curr_node = new_node
+              new_idx_for_h_entry = (h shr bits) and MASK
+              new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
+            while true:
+              if new_idx_for_h_entry == new_idx_for_existing_entry:
+                if bits < BRANCH_WIDTH:
+                  # keep building deeper
+                  var new_node = MapNodeRef[K, V](kind: Interior)
+                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](kind: kInterior, node: new_node)
+                  curr_node.count = 1
+                  curr_node = new_node
+                  bits += INDEX_BITS
+                  new_idx_for_h_entry = (h shr bits) and MASK
+                  new_idx_for_existing_entry = (existing_entry.hash shr bits) and MASK
+                else:
+                  # build collision
+                  curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
+                    kind: kCollision,
+                    hashed_entries: @[h_entry, existing_entry.unbox]
+                  )
+                  curr_node.count = 1
+                  break
+              else:
+                curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
+                  kind: kLeaf,
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+                )
+                curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry[K, V](
+                  kind: kLeaf,
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: existing_entry.unbox)
+                )
+                curr_node.count = 2
+                break
+            parent.nodes[index] = NodeListEntry[K, V](kind: kInterior, node: new_node)
+            return result
+        of kCollision:
+          discard
+          var new_entries = @[h_entry]
+          for e in node_list_entry.hashed_entries:
+            if e.key == h_entry.key:
+              result.hash = result.hash xor entry_hash(e)
+              result.size -= 1
+              if e.value == h_entry.value:
+                break
+            else:
+              new_entries.add(e)
+          parent.nodes[index] = NodeListEntry[K, V](
+            kind: kCollision,
+            hashed_entries: new_entries
+          )
+          return result
+        of kInterior:
+          bits += INDEX_BITS
+          node = copy_interior_node(node_list_entry.node)
+          parent.nodes[index] = NodeListEntry[K, V](
+            kind: kInterior,
+            node: node
+          )
+          parent = node
+          index = (h shr bits) and MASK
+          node_list_entry = parent.nodes[index]
+
+
+    while false:
+      var
+        (parent, index) = stack[stack.len - 1]
+        node_list_entry = parent.nodes[index]
+      case node_list_entry.kind:
+        of kEmpty:
+          shadow(result, stack, NodeListEntry[K, V](
+            kind: kLeaf,
+            hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+          ))
+          return result
+        of kLeaf:
+          let existing_entry = node_list_entry.hashed_entry
+          if h_entry.hash == existing_entry.hash:
+            # we have a hash collision
+            if h_entry.key == existing_entry.key:
+              if h_entry.value == existing_entry.value:
+                # bail early because we have an exact match
+                return m
+              else:
+                # overwrite the existing entry
+                shadow(result, stack, NodeListEntry[K, V](
+                  kind: kLeaf,
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
+                ))
+                result.hash = result.hash xor entry_hash(existing_entry)
+                result.size -= 1
+                return result
+            else:
+              shadow(result, stack, NodeListEntry[K, V](
+                kind: kCollision,
+                hashed_entries: @[h_entry, existing_entry.unbox]
+              ))
               return result
           else:
             # we have to expand to an Interior node because our leaf was a shortcut
@@ -417,23 +549,22 @@ func add_impl*[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): PMapRef[K, V
                   # build collision
                   curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                     kind: kCollision,
-                    hashed_entries: @[h_entry, existing_entry[]]
+                    hashed_entries: @[h_entry, existing_entry.unbox]
                   )
                   curr_node.count = 1
                   break
               else:
-                let h_entry_ref = from_value(h_entry)
                 curr_node.nodes[new_idx_for_h_entry] = NodeListEntry[K, V](
                   kind: kLeaf,
-                  hashed_entry: h_entry_ref
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: h_entry)
                 )
                 curr_node.nodes[new_idx_for_existing_entry] = NodeListEntry[K, V](
                   kind: kLeaf,
-                  hashed_entry: existing_entry
+                  hashed_entry: HashedEntryBox[K, V](hashed_entry: existing_entry.unbox)
                 )
                 curr_node.count = 2
                 break
-            result.node = shadow(stack, NodeListEntry[K, V](kind: kInterior, node: new_node))[]
+            shadow(result, stack, NodeListEntry[K, V](kind: kInterior, node: new_node))
             return result
         of kCollision:
           var new_entries = @[h_entry]
@@ -445,10 +576,10 @@ func add_impl*[K, V](m: PMapRef[K, V], h_entry: HashedEntry[K, V]): PMapRef[K, V
                 break
             else:
               new_entries.add(e)
-          result.node = shadow(stack, NodeListEntry[K, V](
+          shadow(result, stack, NodeListEntry[K, V](
             kind: kCollision,
             hashed_entries: new_entries
-          ))[]
+          ))
           return result
         of kInterior:
           bits += INDEX_BITS
@@ -504,11 +635,11 @@ func delete_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): PMapRef[K, V] =
             while parent.count == 1:
               (parent, index) = stack[idx]
               idx -= 1
-            result.node = shadow(stack, idx + 1, NodeListEntry[K, V](kind: kEmpty))[]
+            shadow(result, stack, idx + 2, NodeListEntry[K, V](kind: kEmpty))
             result.size -= 1
             return result
           else:
-            result.node = shadow(stack, NodeListEntry[K, V](kind: kEmpty))[]
+            shadow(result, stack, NodeListEntry[K, V](kind: kEmpty))
             result.size -= 1
             return result
         else:
@@ -522,16 +653,15 @@ func delete_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): PMapRef[K, V] =
           else:
             new_entries.add(e)
         if new_entries.len > 1:
-          result.node = shadow(stack, NodeListEntry[K, V](
+          shadow(result, stack, NodeListEntry[K, V](
             kind: kCollision,
             hashed_entries: new_entries
-          ))[]
+          ))
         else:
-          let entry_ref = from_value(new_entries[0])
-          result.node = shadow(stack, NodeListEntry[K, V](
+          shadow(result, stack, NodeListEntry[K, V](
             kind: kLeaf,
-            hashed_entry: entry_ref
-          ))[]
+            hashed_entry: HashedEntryBox[K, V](hashed_entry: new_entries[0])
+          ))
       of kInterior:
         doAssert node_list_entry.kind != kInterior
 template delete*[K, V](m: PMapRef[K, V], key: K): PMapRef[K, V] =
@@ -552,7 +682,8 @@ template get_impl*[K, V](m: PMapRef[K, V], h: Hash, key: K, SUCCESS, FAILURE: un
         index = (h shr bits) and MASK
         node_list_entry = node.nodes[index]
       case node_list_entry.kind:
-        of kEmpty: discard
+        of kEmpty:
+          break
         of kLeaf:
           let h_entry = node_list_entry.hashed_entry
           if h_entry.hash == h and h_entry.key == key:
@@ -575,7 +706,7 @@ template get_failure(): untyped =
 func get*[K, V](m: PMapRef[K, V], key: K): V =
   let h = hash(key)
   get_impl[K, V](m, h, key, get_success, get_failure)
-template `[]`*[K, V](m: PMapRef[K, V], key: K): V = m.get(k)
+template `[]`*[K, V](m: PMapRef[K, V], key: K): V = m.get(key)
 func get_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K): V =
   get_impl[K, V](m, h, key, get_success, get_failure)
 
@@ -637,3 +768,73 @@ func `&`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): PMapRef[K, V] =
   for (k, v) in m2.pairs:
     res = res.add(k, v)
   res
+
+func debug_json*[K, V](he: HashedEntry[K, V]): string =
+  result.add(&"{he.key}: {he.value} [{he.hash.to_hex}]")
+
+func debug_json*[K, V](nle: NodeListEntry[K, V]): string =
+  if nle.kind == kEmpty:
+    result.add("{ ")
+    result.add(&"\"kind\": \"{nle.kind}\"")
+    result.add(" }")
+    return result
+  result.add("{\n")
+  result.add(&"  \"kind\": \"{nle.kind}\",\n")
+  case nle.kind:
+    of kEmpty: discard
+    of kLeaf:
+      result.add(&"  \"hashed_entry\": \"{nle.hashed_entry.unbox.debug_json}\"\n")
+    of kCollision:
+      let entries = nle.hashed_entries
+        .map(proc (he: HashedEntry[K, V]): string = &"\"{he.debug_json}\"")
+        .join(", ")
+      result.add(&"  \"hashed_entries\": [{entries}]\n")
+    of kInterior:
+      result.add(&"  \"node\": {nle.node.debug_json}\n")
+  result.add("}")
+
+func debug_json*[K, V](n: MapNodeRef[K, V]): string =
+  result.add("{\n")
+  result.add(&"  \"kind\": \"{n.kind}\",\n")
+  if n.kind == Array:
+    result.add(&"  \"entries\": \"{n.entries}\"")
+  else:
+    result.add(&"  \"count\": {n.count},\n")
+    let nodes = n.nodes.map(debug_json).join(", ")
+    result.add(&"  \"nodes\": [{nodes}]")
+  result.add("}")
+
+func debug_json*[K, V](m: PMapRef[K, V]): string =
+  result.add("{\n")
+  result.add(&"  \"size\": {m.size},\n")
+  result.add(&"  \"hash\": {m.hash},\n")
+  let node = cast[MapNodeRef[K, V]](m.node.addr)
+  result.add(&"  \"node\": {debug_json[K, V](node)}\n")
+  result.add("}")
+
+func valid*[K, V](m: PMapRef[K, V]): bool =
+  var size = 0
+  if m.node.kind == Array:
+    size = m.node.entries.len
+  else:
+    var c: uint8 = 0
+    for n in m.interior_nodes:
+      c = 0
+      for n_l_entry in n.nodes:
+        if n_l_entry.kind != kEmpty:
+          c += 1
+        if n_l_entry.kind == kLeaf:
+          size += 1
+        if n_l_entry.kind == kCollision:
+          size += n_l_entry.hashed_entries.len
+      if c != n.count:
+        debugEcho "node.count should be: ", c, " but got: ", n.count
+        debugEcho m.debug_json
+        debugEcho ""
+        return false
+  if size != m.len:
+    debugEcho "size should be: ", size, " but got: ", m.len
+    debugEcho m.debug_json
+    debugEcho ""
+    return false
+  return true
