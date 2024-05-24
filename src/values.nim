@@ -204,7 +204,7 @@ type
     data: HashSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
-  ImMapPayloadRef*    = PMapRef[ImValue, ImValue]
+  ImMapPayloadRef*    = ref ImMapPayload
   ImSetPayloadRef*    = ref ImSetPayload
 
   ImNaN*    = distinct uint64
