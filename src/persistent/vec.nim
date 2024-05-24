@@ -512,6 +512,10 @@ template low*[T](s: PVecRef[T]): Natural = 0
 template high*[T](s: PVecRef[T]): Natural = s.summary.size - 1
 
 func `==`*[T](v1, v2: PVecRef[T]): bool  =
+  if v1.isNil:
+    if v2.isNil: return true
+    return false
+  if v2.isNil: return false
   if v1.summary != v2.summary: return false
   # TODO - figure out how to get rid of this
   {.cast(noSideEffect).}:

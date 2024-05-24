@@ -196,8 +196,7 @@ type
   ImStringPayload* = object
     hash: Hash
     data: string
-  ImArrayPayload* = object
-    vec: PVecRef[ImValue]
+  ImArrayPayload* = PVec[ImValue]
   ImMapPayload* = PMap[ImValue, ImValue]
   ImSetPayload* = object
     hash: Hash
@@ -350,18 +349,18 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 # ---------------------------------------------------------------------
 
 when c32:
-  template payload*(v: ImString): ref ImStringPayload = v.tail
-  template payload*(v: ImMap): ImMapPayloadRef        = v.tail
-  template payload*(v: ImArray): ref ImArrayPayload   = v.tail
-  template payload*(v: ImSet): ref ImSetPayload       = v.tail
+  template payload*(v: ImString): ImStringPayloadRef = v.tail
+  template payload*(v: ImMap): ImMapPayloadRef       = v.tail
+  template payload*(v: ImArray): ImArrayPayloadRef   = v.tail
+  template payload*(v: ImSet): ImSetPayloadRef       = v.tail
 else:
   template to_clean_ptr(v: typed): pointer =
     cast[pointer](bitand((v).as_u64, MASK_POINTER))
 
-  template payload*(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](to_clean_ptr(v.p))
-  template payload*(v: ImMap): ImMapPayloadRef        = cast[ImMapPayloadRef](to_clean_ptr(v.p))
-  template payload*(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](to_clean_ptr(v.p))
-  template payload*(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](to_clean_ptr(v.p))
+  template payload*(v: ImString): ImStringPayloadRef = cast[ImStringPayloadRef](to_clean_ptr(v.p))
+  template payload*(v: ImMap): ImMapPayloadRef       = cast[ImMapPayloadRef](to_clean_ptr(v.p))
+  template payload*(v: ImArray): ImArrayPayloadRef   = cast[ImArrayPayloadRef](to_clean_ptr(v.p))
+  template payload*(v: ImSet): ImSetPayloadRef       = cast[ImSetPayloadRef](to_clean_ptr(v.p))
 
 # Type Detection #
 # ---------------------------------------------------------------------
@@ -491,7 +490,7 @@ template eq_heap_value_generic*(v1, v2: typed) =
     case signature:
       of MASK_SIG_STR:    eq_heap_payload(v1.as_str.payload, v2.as_str.payload)
       of MASK_SIG_ARR:
-        result = v1.as_arr.payload.vec == v2.as_arr.payload.vec
+        result = v1.as_arr.payload == v2.as_arr.payload
       of MASK_SIG_MAP:
         result = v1.as_map.payload == v2.as_map.payload
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
@@ -507,7 +506,7 @@ func `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImMap): bool =
   return v1.payload == v2.payload
 func `==`*(v1, v2: ImArray): bool =
-  return v1.payload.vec == v2.payload.vec
+  return v1.payload == v2.payload
 func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
@@ -582,7 +581,7 @@ proc `$`*(v: ImValue): string =
       # TODO - type error
     of kString:           return $(v.as_str.payload.data)
     of kMap:              return $(v.as_map.payload)
-    of kArray:            return $(v.as_arr.payload.vec)
+    of kArray:            return $(v.as_arr.payload)
     of kSet:              return $(v.as_set.payload.data) 
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
     # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
@@ -626,7 +625,7 @@ func hash*(v: ImValue): Hash =
     if is_map(v):
       result = v.as_map.payload.hash
     if is_array(v):
-      result = v.as_arr.payload.vec.summary.hash
+      result = v.as_arr.payload.summary.hash
     else:
       # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
       let vh = cast[ImString](v)
@@ -788,18 +787,15 @@ template `&`*(m1, m2: ImMap): ImMap = m1.merge(m2)
 # ImArray Impl #
 # ---------------------------------------------------------------------
 
-template array_from_vec(new_vec: typed) {.dirty} =
-  var re = new ImArrayPayload
-  block:
-    re.vec = new_vec
+template array_from_vec(pvec: typed) {.dirty} =
   when c32:
     var new_array = ImArray(
       head: update_head(MASK_SIG_ARR, 0),
-      tail: re
+      tail: pvec
     )
   else:
-    GC_ref(re)
-    var new_array = ImArray(p: bitor(MASK_SIG_ARR, re.as_p.as_u64).as_p)
+    GC_ref(pvec)
+    var new_array = ImArray(p: bitor(MASK_SIG_ARR, pvec.as_u64).as_p)
 
 proc init_array_empty(): ImArray =
   let vec = init_vec[ImValue]()
@@ -816,14 +812,14 @@ proc init_array*(init_data: openArray[ImValue]): ImArray =
   return new_array
 
 proc size*(a: ImArray): int =
-  return a.payload.vec.len
+  return a.payload.len
 
 ## TODO
 ## - ImValue indices
 ## - Negative indices
 ## - range indices
 template get_impl(a: ImArray, i: int) =
-  return a.payload.vec.getOrDefault(i, Nil.v)
+  return a.payload.getOrDefault(i, Nil.v)
 template get_impl(a: ImArray, i: ImValue) =
   if i.is_num:
     get_impl(a, i.as_f64.int)
@@ -843,11 +839,11 @@ proc get*(a: ImArray, i: ImValue): ImValue  = get_impl(a, i)
 proc get*(a: ImArray, i: float64): ImValue  = get_impl(a, i)
 
 iterator items*(a: ImArray): ImValue =
-  for v in a.payload.vec.items:
+  for v in a.payload.items:
     yield v
 
 proc slice*(a: ImArray, i1, i2: int): ImArray =
-  let new_vec = a.payload.vec.get(i1..<i2)
+  let new_vec = a.payload.get(i1..<i2)
   array_from_vec(new_vec)
   return new_array
 proc slice*(a: ImArray, i1, i2: ImValue): ImArray =
@@ -858,7 +854,7 @@ proc slice*(a: ImArray, i1, i2: ImValue): ImArray =
 template slice*(a: ImArray, i1, i2: typed): ImArray = a.slice(i1.v, i2.v)
 
 template set_impl*(a: ImArray, i: int, v: ImValue) =
-  let new_vec = a.payload.vec.set(i, v)
+  let new_vec = a.payload.set(i, v)
   array_from_vec(new_vec)
   return new_array
 template set_impl*(a: ImArray, i: ImValue, v: ImValue) =
@@ -880,7 +876,7 @@ proc set*(a: ImArray, i: ImValue, v: ImValue): ImArray = set_impl(a, i, v)
 proc set*(a: ImArray, i: float64, v: ImValue): ImArray = set_impl(a, i, v)
 
 proc add*(a: ImArray, v: ImValue): ImArray =
-  let new_vec = a.payload.vec.append(v)
+  let new_vec = a.payload.append(v)
   array_from_vec(new_vec)
   return new_array
 template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
@@ -888,28 +884,28 @@ template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
 proc pop*(a: ImArray): (ImValue, ImArray) =
   case a.size:
     of 0: return (Nil.v, a)
-    of 1: return (a.payload.vec[0], empty_array)
+    of 1: return (a.payload[0], empty_array)
     else:
-      let (new_vec, datum) = a.payload.vec.pop()
+      let (new_vec, datum) = a.payload.pop()
       array_from_vec(new_vec)
       return (datum, new_array)
 
 proc merge*(a1, a2: ImArray): ImArray =
-  let new_vec = a1.payload.vec & a2.payload.vec
+  let new_vec = a1.payload & a2.payload
   array_from_vec(new_vec)
   return new_array
 template concat*(a1, a2: ImArray): ImArray = a1.merge(a2)
 template `&`*(a1, a2: ImArray): ImArray = a1.merge(a2)
 
 proc `<`*(v1, v2: ImArray): bool =
-  for (it1, it2) in zip_iter(v1.payload.vec, v2.payload.vec):
+  for (it1, it2) in zip_iter(v1.payload, v2.payload):
     if it1 < it2: return true
     if it2 < it1: return false
   if v1.size < v2.size: return true
   return false
 proc `<=`*(v1, v2: ImArray): bool =
   let l = min(v1.size, v2.size)
-  for (it1, it2) in zip_iter(v1.payload.vec, v2.payload.vec):
+  for (it1, it2) in zip_iter(v1.payload, v2.payload):
     if it1 < it2: return true
     if it2 < it1: return false
   if v1.size > v2.size: return false

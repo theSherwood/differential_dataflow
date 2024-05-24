@@ -41,6 +41,12 @@ import ../../src/persistent/[vec]
 
 proc main* =
   suite "persistent vec":
+
+    test "GC_ref and GC_unref":
+      var v1 = init_vec[int]()
+      GC_ref(v1)
+      GC_unref(v1)
+
 # #[
     test "clone":
       var v1 = init_vec[int]()
