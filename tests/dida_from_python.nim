@@ -546,8 +546,6 @@ proc main* =
         (V [1, 3], 1), (V [3, 3], 1),
         (V [2, 4], 1),
       ].COL
-      
-
 
       #[
       # Rete-like approaches
@@ -649,68 +647,92 @@ proc main* =
       ]#
           
 
-    #[
-    test "task: send more money":
-      var
-        initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, toSeq(0..<10).map(i => (V i, 1)).COL)
-        ]
-        correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [(V 2, 1)].COL),
-        ]
-        flat_map_fn = proc (e: Entry): ImArray =
-          return Arr([e])
-        # sendmory
-        input = init_builder()
-        s = input.filter(e => e != 0.0)
-          .map(e => V({"s": e}))
-          .product(input)
-        e = s.filter(e => e["s"] != e[1])
-          .map(e => e[0].set("e", e[1]))
-          .product(input)
-        n = e.filter(e => e["s"] != e[1] and e["e"] != e[1])
-          .map(e => e[0].set("n", e[1]))
-          .product(input)
-        # d = n.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1])
-        #   .map(e => e[0].set("d", e[1]))
-        #   .product(input)
-        # m = d.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e[1] != 0.0)
-        #   .map(e => e[0].set("m", e[1]))
-        #   .product(input)
-        # o = m.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1])
-        #   .map(e => e[0].set("o", e[1]))
-        #   .product(input)
-        # r = o.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1] and e["o"] != e[1])
-        #   .map(e => e[0].set("r", e[1]))
-        #   .product(input)
-        # y = r.filter(e => e["s"] != e[1] and e["e"] != e[1] and e["n"] != e[1] and e["d"] != e[1] and e["m"] != e[1] and e["o"] != e[1] and e["r"] != e[1])
-        #   .map(e => e[0].set("y", e[1]))
-        #   .print("AFTER Y")
-        # let res =
-        #         $s * 1000 + $e * 100 + $n * 10 + $d + $m * 1000 + $o * 100 + $r * 10 + $e ===
-        #         $m * 10000 + $o * 1000 + $n * 100 + $e * 10 + $y;
-        final = n.filter(proc (e: Entry): bool =
-          return e["s"].as_f64 * 1000.0 + 
-            e["e"].as_f64 * 100.0 + 
-            e["n"].as_f64 * 10.0 + 
-            e["d"].as_f64 + 
-            e["m"].as_f64 * 1000.0 + 
-            e["o"].as_f64 * 100.0 + 
-            e["r"].as_f64 * 10.0 + 
-            e["e"].as_f64 ==
-            e["m"].as_f64 * 10000.0 + 
-            e["o"].as_f64 * 1000.0 + 
-            e["n"].as_f64 * 100.0 + 
-            e["e"].as_f64 * 10.0 +
-            e["y"].as_f64
-        )
-        results = final.accumulate_results
-        g = input.graph
-      for (v, c) in initial_data: g.send(v, c)
-      g.send([[1].VER].FTR)
-      g.step
-      check 1 == 1
-      check results.node.results == correct_data
-]#
+    if true:
+      test "task: send more money":
+        var
+          S = "s".v
+          E = "e".v
+          N = "n".v
+          D = "d".v
+          M = "m".v
+          O = "o".v
+          R = "r".v
+          Y = "y".v
+          initial_data: seq[(Version, Collection)] = @[
+            ([0].VER, toSeq(0..<10).map(i => (V i, 1)).COL)
+          ]
+          correct_data: seq[(Version, Collection)] = @[
+            ([0].VER, [(V {S: 9, E: 5, N: 6, D: 7, M: 1, O: 0, R: 8, Y: 2}, 1)].COL),
+          ]
+          input = init_builder()
+          s = input.flat_map_seq(proc (e: Entry): seq[Entry] =
+              if e != 0: result.add(V {S: e}))
+            .product(input)
+          e = s.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              if m[S] != n: return @[m.set(E, n)])
+            .product(input)
+          n = e.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              if m[S] != n and m[E] != n: return @[m.set(N, n)])
+            .product(input)
+          d = n.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              for v in m.values:
+                if v == n: return
+              return @[m.set(D, n)])
+            .product(input)
+          m = d.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              if n == 0: return
+              for v in m.values:
+                if v == n: return
+              return @[m.set(M, n)])
+            .product(input)
+          o = m.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              for v in m.values:
+                if v == n: return
+              return @[m.set(O, n)])
+            .product(input)
+          r = o.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              for v in m.values:
+                if v == n: return
+              return @[m.set(R, n)])
+            .product(input)
+          y = r.flat_map_seq(proc (e: Entry): seq[Entry] =
+              let m = e[0]
+              let n = e[1]
+              for v in m.values:
+                if v == n: return
+              return @[m.set(Y, n)])
+          final = y.filter(proc (e: Entry): bool =
+            let
+              map = e
+              s = map[S].as_f64
+              e = map[E].as_f64
+              n = map[N].as_f64
+              d = map[D].as_f64
+              m = map[M].as_f64
+              o = map[O].as_f64
+              r = map[R].as_f64
+              y = map[Y].as_f64
+            return             s * 1000 + e * 100 + n * 10 + d +
+                               m * 1000 + o * 100 + r * 10 + e ==
+                   m * 10000 + o * 1000 + n * 100 + e * 10 + y
+          )
+          results = final.accumulate_results
+          g = input.graph
+        for (v, c) in initial_data: g.send(v, c)
+        g.send([[1].VER].FTR)
+        g.step
+        check results.node.results == correct_data
 
   echo "\nok"

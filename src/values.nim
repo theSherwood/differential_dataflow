@@ -542,6 +542,7 @@ converter toImValue(x: ImSet): ImValue = x.v
 converter toImValue(f: float64): ImValue = f.v
 converter toImValue(i: int): ImValue = i.v
 converter toImValue(b: bool): ImValue = b.v
+converter toImValue(s: string): ImValue = s.v
 
 converter toBool(b: ImBool): bool = b == True
 converter toBool(n: ImNil): bool = false

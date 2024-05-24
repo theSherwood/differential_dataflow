@@ -16,9 +16,12 @@ type
 
   MapFn* = proc (e: Entry): Entry {.closure.}
   FilterFn* = proc (e: Entry): bool {.closure.}
-  FlatMapFn* = proc (e: Entry): ImArray {.closure.}
   ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
   CollIterateFn* = proc (c: Collection): Collection {.closure.}
+  # TODO - figure out some stream or iterator concept so we don't have a bunch
+  # of different versions of this.
+  FlatMapFn* = proc (e: Entry): ImArray {.closure.}
+  FlatMapSeqFn* = proc (e: Entry): seq[Entry] {.closure.}
 
 func size*(c: Collection): int = return c.rows.len
 
@@ -64,6 +67,10 @@ func filter*(c: Collection, f: FilterFn): Collection =
     if f(r.entry): result.add(r)
 
 func flat_map*(c: Collection, f: FlatMapFn): Collection =
+  for r in c:
+    for e in f(r.entry):
+      result.add((e, r.multiplicity))
+func flat_map_seq*(c: Collection, f: FlatMapSeqFn): Collection =
   for r in c:
     for e in f(r.entry):
       result.add((e, r.multiplicity))
@@ -520,6 +527,8 @@ proc semijoin(i1, i2: Index): seq[(Version, Collection)] =
   for (v, rows) in version_to_rows.pairs:
     if rows.len > 0: result.add((v, Collection(rows: rows)))
 
+## TODO - make this faster
+## It is currently so slow as to be completely unusable.
 proc compact(i: var Index, compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
   for (key, versions) in i.key_to_versions.pairs:
@@ -580,6 +589,7 @@ type
     tMap
     tFilter
     tFlatMap
+    tFlatMapSeq
     tReduce
     tDistinct
     tCount
@@ -628,6 +638,8 @@ type
         filter_fn*: FilterFn
       of tFlatMap:
         flat_map_fn*: FlatMapFn
+      of tFlatMapSeq:
+        flat_map_seq_fn*: FlatMapSeqFn
       of tReduce:
         index*: Index
         index_out*: Index
@@ -827,6 +839,9 @@ proc filter*(b: Builder, fn: FilterFn): Builder =
 proc flat_map*(b: Builder, fn: FlatMapFn): Builder =
   build_unary(b, tFlatMap)
   n.flat_map_fn = fn
+proc flat_map_seq*(b: Builder, fn: FlatMapSeqFn): Builder =
+  build_unary(b, tFlatMapSeq)
+  n.flat_map_seq_fn = fn
 
 proc reduce*(b: Builder, fn: ReduceFn): Builder =
   build_unary(b, tReduce)
@@ -1187,6 +1202,16 @@ proc step(n: Node) =
             frontier_change = true
             n.handle_frontier_message_unary(m)
       n.inputs[0].clear
+    of tFlatMapSeq:
+      for m in n.inputs[0].queue:
+        case m.tag:
+          of tData:
+            let new_coll = m.collection.flat_map_seq(n.flat_map_seq_fn)
+            if new_coll.size > 0: n.send(m.version, new_coll)
+          of tFrontier:
+            frontier_change = true
+            n.handle_frontier_message_unary(m)
+      n.inputs[0].clear
     of tIngress:
       for m in n.inputs[0].queue:
         case m.tag:
@@ -1356,8 +1381,8 @@ proc step(n: Node) =
       n.indexes[1].mut_concat(deltas[1])
       if frontier_change:
         n.output_frontier_message
-        n.indexes[0].compact(n.output_frontier)
-        n.indexes[1].compact(n.output_frontier)
+        # n.indexes[0].compact(n.output_frontier)
+        # n.indexes[1].compact(n.output_frontier)
       frontier_change = false
     of tJoin:
       var deltas = [Index(), Index()]
@@ -1379,8 +1404,8 @@ proc step(n: Node) =
       n.indexes[1].mut_concat(deltas[1])
       if frontier_change:
         n.output_frontier_message
-        n.indexes[0].compact(n.output_frontier)
-        n.indexes[1].compact(n.output_frontier)
+        # n.indexes[0].compact(n.output_frontier)
+        # n.indexes[1].compact(n.output_frontier)
       frontier_change = false
     of tSemijoin:
       var deltas = [Index(), Index()]
@@ -1400,8 +1425,8 @@ proc step(n: Node) =
       n.indexes[1].mut_concat(deltas[1])
       if frontier_change:
         n.output_frontier_message
-        n.indexes[0].compact(n.output_frontier)
-        n.indexes[1].compact(n.output_frontier)
+        # n.indexes[0].compact(n.output_frontier)
+        # n.indexes[1].compact(n.output_frontier)
       frontier_change = false
     of tConsolidate:
       for m in n.inputs[0].queue:

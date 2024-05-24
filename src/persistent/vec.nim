@@ -61,16 +61,12 @@ func debug_json*[T](s: PVecRef[T]): string =
   result.add("}")
 
 func `$`*[T](s: PVecRef[T]): string =
-  result.add(&"ST(\n")
-  result.add(&"  size: {s.summary.size},\n")
-  result.add(&"  kind: {s.kind},\n")
-  if s.kind == kLeaf:
-    result.add(&"  data.len: {s.data.len}")
-  else:
-    result.add(&"  depth: {s.depth},\n")
-    result.add(&"  nodes.len: {s.nodes.len},\n")
-    result.add(&"  nodes: {s.nodes}\n")
-  result.add(&")")
+  var res = "["
+  for it in s.items:
+    res.add(&"{it}, ")
+  res.delete((res.len - 2)..<(res.len.int))
+  res.add("]")
+  return res
 
 # #endregion ==========================================================
 #            FORWARD DECLARATIONS
@@ -423,6 +419,10 @@ template init_empty_sumtree_of_len*[T](len: int): PVecRef[T] =
 func to_sumtree*[T](its: openArray[T]): PVecRef[T] =
   if its.len == 0:
     return init_sumtree[T](kLeaf)
+  if its.len <= BUFFER_WIDTH:
+    var leaf = init_sumtree[T](kLeaf)
+    leaf.mut_append_to_leaf_with_room(its)
+    return leaf
   var
     i = 0
     n: PVecRef[T]
@@ -473,11 +473,11 @@ func get*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] =
 template `[]`*[T](s: PVecRef[T], idx: int): T = s.get(idx)
 template `[]`*[T](s: PVecRef[T], slice: Slice[int]): PVecRef[T] = s.get(slice)
 
-func getOrDefault*[T](s: PVecRef[T], idx: int, d: T): T =
+func get_or_default*[T](s: PVecRef[T], idx: int, d: T): T =
   if idx < 0 or idx >= s.len: return d
   find_leaf_node_at_index_template(s, idx)
   return n.data[adj_idx]
-template getOrDefault*[T](s: PVecRef[T], idx: int): T = getOrDefault[T](s, idx, default(T))
+template get_or_default*[T](s: PVecRef[T], idx: int): T = get_or_default[T](s, idx, default(T))
 
 func valid*[T](s: PVecRef[T]): bool =
   for n in s.nodes_post_order:
