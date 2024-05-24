@@ -81,6 +81,14 @@ proc main* =
         else:
           delete_test(sz)
     
+    test "init with duplicates":
+      var
+        m1 = {1: 3, 2: 3, 1: 4, 2: 4}.to_map()
+      check m1.valid
+      check m1.size == 2
+      check m1[1] == 4
+      check m1[2] == 4
+    
     test "big":
       var
         sz = 100_000

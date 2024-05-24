@@ -446,6 +446,8 @@ template add*[K, V](m: PMapRef[K, V], key: K, value: V): PMapRef[K, V] =
   add_impl(m, HashedEntry[K, V](hash: hash(key), entry: (key, value)))
 template add*[K, V](m: PMapRef[K, V], pair: (K, V)): PMapRef[K, V] =
   add_impl(m, HashedEntry[K, V](hash: hash(pair[0]), entry: pair))
+template add*[K, V](m: PMapRef[K, V], he: HashedEntry[K, V]): PMapRef[K, V] =
+  add_impl(m, he)
 template add_by_hash*[K, V](m: PMapRef[K, V], h: Hash, key: K, value: V): PMapRef[K, V] =
   add_impl(m, HashedEntry[K, V](hash: h, entry: (key, value)))
 template add_by_hash*[K, V](m: PMapRef[K, V], h: Hash, pair: (K, V)): PMapRef[K, V] =
@@ -638,11 +640,8 @@ proc `==`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): bool  =
   if m1.hash != m2.hash: return false
   else:
     for (k, v) in m1.pairs:
-      try:
-        if m2.get(k) != v:
-          return false
-      except:
-        return false
+      let (m2_v, exists) = m2.get_tuple_by_hash(hash(k), k)
+      if not(exists) or v != m2_v: return false
     return true
 
 func to_map*[K, V](arr: openArray[(K, V)]): PMapRef[K, V] =
@@ -678,10 +677,10 @@ func to_json*[K, V](m: PMapRef[K, V]): string =
     result.delete((result.len - 2)..<result.len)
   result.add("\n}")
 
-func debug_json*[K, V](he: HashedEntry[K, V]): string =
+proc debug_json*[K, V](he: HashedEntry[K, V]): string =
   result.add(&"{he.key}: {he.value} [{he.hash.to_hex}]")
 
-func debug_json*[K, V](nle: NodeListEntry[K, V]): string =
+proc debug_json*[K, V](nle: NodeListEntry[K, V]): string =
   if nle.kind == kEmpty:
     result.add("{ ")
     result.add(&"\"kind\": \"{nle.kind}\"")
@@ -702,7 +701,7 @@ func debug_json*[K, V](nle: NodeListEntry[K, V]): string =
       result.add(&"  \"node\": {nle.node.debug_json}\n")
   result.add("}")
 
-func debug_json*[K, V](n: MapNodeRef[K, V]): string =
+proc debug_json*[K, V](n: MapNodeRef[K, V]): string =
   result.add("{\n")
   result.add(&"  \"kind\": \"{n.kind}\",\n")
   if n.kind == Array:
@@ -713,7 +712,7 @@ func debug_json*[K, V](n: MapNodeRef[K, V]): string =
     result.add(&"  \"nodes\": [{nodes}]")
   result.add("}")
 
-func debug_json*[K, V](m: PMapRef[K, V]): string =
+proc debug_json*[K, V](m: PMapRef[K, V]): string =
   result.add("{\n")
   result.add(&"  \"size\": {m.size},\n")
   result.add(&"  \"hash\": {m.hash},\n")
@@ -753,6 +752,17 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
     debugEcho "hash should be: ", hash, " but got: ", m.hash
     return false
   return true
+
+func concat*[K, V](m1, m2: PMapRef[K, V]): PMapRef[K, V] =
+  ## This is shamefully inneficient
+  ## TODO - implements transients so that this can be faster.
+  result = m1
+  for he in m2.hashed_entries:
+    result = result.add(he)
+
+# #endregion ==========================================================
+#            Set
+# #region =============================================================
 
 type
   EmptyValue = object
@@ -806,6 +816,10 @@ func to_json*[K](s: PSetRef[K]): string =
     # trim off the last comma because json doesn't allow trailing commas
     result.delete((result.len - 2)..<result.len)
   result.add(" ]")
+
+# #endregion ==========================================================
+#            Multiset
+# #region =============================================================
 
 type
   PMultisetRef*[K] = object
