@@ -636,13 +636,16 @@ template update*[K, V](m: PMapRef[K, V], key: K, update_fn: UpdateFn[V]): PMapRe
 
 proc `==`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): bool  =
   ## Returns whether the `PMap`s are equal
+  if m1.isNil:
+    if m2.isNil: return true
+    return false
+  if m2.isNil: return false
   if m1.len != m2.len: return false
   if m1.hash != m2.hash: return false
-  else:
-    for (k, v) in m1.pairs:
-      let (m2_v, exists) = m2.get_tuple_by_hash(hash(k), k)
-      if not(exists) or v != m2_v: return false
-    return true
+  for (k, v) in m1.pairs:
+    let (m2_v, exists) = m2.get_tuple_by_hash(hash(k), k)
+    if not(exists) or v != m2_v: return false
+  return true
 
 func to_map*[K, V](arr: openArray[(K, V)]): PMapRef[K, V] =
   ## Returns a `PMap` containing the key-value pairs in `arr`
@@ -660,13 +663,6 @@ func `$`*[K, V](m: PMapRef[K, V]): string =
 
 func hash*[K, V](m: PMapRef[K, V]): Hash  =
   return m.hash
-
-func `&`*[K, V](m1: PMapRef[K, V], m2: PMapRef[K, V]): PMapRef[K, V] =
-  ## Returns a merge of the `PMap`s
-  var res = m1
-  for (k, v) in m2.pairs:
-    res = res.add(k, v)
-  res
 
 func to_json*[K, V](m: PMapRef[K, V]): string =
   result.add("{\n")
@@ -755,10 +751,12 @@ func valid*[K, V](m: PMapRef[K, V]): bool =
 
 func concat*[K, V](m1, m2: PMapRef[K, V]): PMapRef[K, V] =
   ## This is shamefully inneficient
-  ## TODO - implements transients so that this can be faster.
+  ## TODO - implement transients so that this can be faster.
   result = m1
   for he in m2.hashed_entries:
     result = result.add(he)
+template `&`*[K, V](m1, m2: PMapRef[K, V]): PMapRef[K, V] =
+  concat(m1, m2)
 
 # #endregion ==========================================================
 #            Set

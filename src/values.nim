@@ -198,14 +198,13 @@ type
     data: string
   ImArrayPayload* = object
     vec: PVecRef[ImValue]
-  ImMapPayload* = object
-    map: PMapRef[ImValue, ImValue]
+  ImMapPayload* = PMap[ImValue, ImValue]
   ImSetPayload* = object
     hash: Hash
     data: HashSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
-  ImMapPayloadRef*    = ref ImMapPayload
+  ImMapPayloadRef*    = PMapRef[ImValue, ImValue]
   ImSetPayloadRef*    = ref ImSetPayload
 
   ImNaN*    = distinct uint64
@@ -352,7 +351,7 @@ const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
 
 when c32:
   template payload*(v: ImString): ref ImStringPayload = v.tail
-  template payload*(v: ImMap): ref ImMapPayload       = v.tail
+  template payload*(v: ImMap): ImMapPayloadRef        = v.tail
   template payload*(v: ImArray): ref ImArrayPayload   = v.tail
   template payload*(v: ImSet): ref ImSetPayload       = v.tail
 else:
@@ -360,7 +359,7 @@ else:
     cast[pointer](bitand((v).as_u64, MASK_POINTER))
 
   template payload*(v: ImString): ref ImStringPayload = cast[ref ImStringPayload](to_clean_ptr(v.p))
-  template payload*(v: ImMap): ref ImMapPayload       = cast[ref ImMapPayload](to_clean_ptr(v.p))
+  template payload*(v: ImMap): ImMapPayloadRef        = cast[ImMapPayloadRef](to_clean_ptr(v.p))
   template payload*(v: ImArray): ref ImArrayPayload   = cast[ref ImArrayPayload](to_clean_ptr(v.p))
   template payload*(v: ImSet): ref ImSetPayload       = cast[ref ImSetPayload](to_clean_ptr(v.p))
 
@@ -494,7 +493,7 @@ template eq_heap_value_generic*(v1, v2: typed) =
       of MASK_SIG_ARR:
         result = v1.as_arr.payload.vec == v2.as_arr.payload.vec
       of MASK_SIG_MAP:
-        result = v1.as_map.payload.map == v2.as_map.payload.map
+        result = v1.as_map.payload == v2.as_map.payload
       of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
       else:               discard
 
@@ -506,7 +505,7 @@ func `==`*(f: float64, v: ImValue): bool = return v == f.as_v
     
 func `==`*(v1, v2: ImString): bool = eq_heap_value_specific(v1, v2)
 func `==`*(v1, v2: ImMap): bool =
-  return v1.payload.map == v2.payload.map
+  return v1.payload == v2.payload
 func `==`*(v1, v2: ImArray): bool =
   return v1.payload.vec == v2.payload.vec
 func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
@@ -582,7 +581,7 @@ proc `$`*(v: ImValue): string =
       if v == False.as_v: return "False"
       # TODO - type error
     of kString:           return $(v.as_str.payload.data)
-    of kMap:              return $(v.as_map.payload.map)
+    of kMap:              return $(v.as_map.payload)
     of kArray:            return $(v.as_arr.payload.vec)
     of kSet:              return $(v.as_set.payload.data) 
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
@@ -625,7 +624,7 @@ else:
 func hash*(v: ImValue): Hash =
   if is_heap(v):
     if is_map(v):
-      result = v.as_map.payload.map.hash
+      result = v.as_map.payload.hash
     if is_array(v):
       result = v.as_arr.payload.vec.summary.hash
     else:
@@ -708,17 +707,14 @@ func `<=`*(v1, v2: ImString): bool = return v1.payload.data <= v2.payload.data
 # ---------------------------------------------------------------------
 
 template map_from_pmap(pmap: typed) {.dirty.} =
-  var re = ImMapPayloadRef()
-  block:
-    re.map = pmap
   when c32:
     var new_map = ImMap(
       head: update_head(MASK_SIG_MAP, 0),
-      tail: re
+      tail: pmap
     )
   else:
-    GC_ref(re)
-    var new_map = ImMap(p: bitor(MASK_SIG_MAP, re.as_p.as_u64).as_p)
+    GC_ref(pmap)
+    var new_map = ImMap(p: bitor(MASK_SIG_MAP, pmap.as_u64).as_p)
 
 func init_map_empty(): ImMap =
   var pmap = map.init_map[ImValue, ImValue]()
@@ -745,46 +741,46 @@ proc init_map*(init_data: openArray[(ImValue, ImValue)]): ImMap =
 proc clear*(m: ImMap): ImMap =
   return empty_map
 
-proc contains*(m: ImMap, k: ImValue): bool = m.payload.map.contains(k)
-template contains*(m: ImMap, k: typed): bool = m.payload.map.contains(k.v)
+proc contains*(m: ImMap, k: ImValue): bool = m.payload.contains(k)
+template contains*(m: ImMap, k: typed): bool = m.payload.contains(k.v)
 
 proc get_impl(m: ImMap, k: ImValue): ImValue =
-  return m.payload.map.get_or_default(k, Nil.v)
+  return m.payload.get_or_default(k, Nil.v)
 template `[]`*(m: ImMap, k: typed): ImValue = get_impl(m, k.v)
 template get*(m: ImMap, k: typed): ImValue = get_impl(m, k.v)
 
 proc del*(m: ImMap, k: ImValue): ImMap =
   if not(k in m): return m
-  let new_pmap = m.payload.map.delete(k)
+  let new_pmap = m.payload.delete(k)
   map_from_pmap(new_pmap)
   return new_map
 template del*(m: ImMap, key: typed): ImMap = m.del(key.v)
 
 proc set*(m: ImMap, k, v: ImValue): ImMap =
   if v == Nil.as_v: return m.del(k)
-  let new_pmap = m.payload.map.add(k, v)
+  let new_pmap = m.payload.add(k, v)
   map_from_pmap(new_pmap)
   return new_map
 template set*(m: ImMap, key, val: typed): ImMap = set(m, key.v, val.v)
 
 func size*(m: ImMap): int =
-  return m.payload.map.len.int
+  return m.payload.len.int
 
 iterator values*(m: ImMap): ImValue =
-  for v in m.payload.map.values:
+  for v in m.payload.values:
     yield v
 iterator keys*(m: ImMap): ImValue =
-  for k in m.payload.map.keys:
+  for k in m.payload.keys:
     yield k
 iterator pairs*(m: ImMap): (ImValue, ImValue) =
-  for p in m.payload.map.pairs:
+  for p in m.payload.pairs:
     yield p
 
 proc merge*(m1, m2: ImMap): ImMap =
   ## Asymmetric. Entries in m2 overwrite m1
   if m2.size == 0: return m1
   if m1.size == 0: return m2
-  let new_pmap = m1.payload.map.concat(m2.payload.map)
+  let new_pmap = m1.payload.concat(m2.payload)
   map_from_pmap(new_pmap)
   return new_map
 template `&`*(m1, m2: ImMap): ImMap = m1.merge(m2)

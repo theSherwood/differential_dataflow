@@ -1,10 +1,14 @@
-import std/[tables, strutils, sequtils, algorithm]
+import std/[tables, strutils, sequtils, algorithm, hashes]
 import ../../src/[test_utils]
 import ../../src/persistent/[map]
-# import ../../src/values
 
 proc main* =
   suite "persistent map":
+
+    test "can use GC_ref and GC_unref":
+      var m = {3: 5, 7: 9}.to_map
+      GC_ref(m)
+      GC_unref(m)
     
     test "integer keys":
       var m1 = {3: 5}.to_map()
