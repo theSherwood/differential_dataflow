@@ -5,22 +5,22 @@ Usage:
   $(basename $0) -h | --help
   $(basename $0) -f "tests/test.nim" -n test -u     # Compile tests for native
   $(basename $0) -f "tests/test.nim" -n test -uw    # Compile tests for wasm
-  $(basename $0) -f "tests/test.nim" -n test -ruwo  # Compile and run tests for wasm with optimizations
-  $(basename $0) -f "tests/test.nim" -n test -ruo   # Compile and run tests for native with optimizations
+  $(basename $0) -f "tests/test.nim" -n test -uwo   # Compile tests for wasm with optimizations
+  $(basename $0) -f "tests/test.nim" -n test -uo    # Compile tests for native with optimizations
   $(basename $0) -f "src/dida.nim"   -n dida -uw    # Compile dida lib for wasm
 
 Options:
   -? -h --help         Print this usage information.
-  -r --run             Run the compiled output.
   -u --user_settings   Use user_settings.sh to setup variables.
   -o --opt             Use compiler optimizations (-Os).
+  -d --debug           Pass debug flags.
   -f FILE              Entry file (.nim).
   -n NAME              Name to use for outputs and C cache files.
 "
 
 echo "Command: $0 $@"
 
-RUN=0
+DEBUG=0
 TARGET=""
 USER_SETTINGS=0
 OPTIMIZE=""
@@ -34,27 +34,27 @@ OPTIND=1         # Reset in case getopts has been used previously in the shell.
 output_file=""
 verbose=0
 
-while getopts "h?rou-t:f:n:" opt; do
+while getopts "h?oud-t:f:n:" opt; do
   case "$opt" in
     \?|h|help)
       echo "$__help_string"
       exit 0
       ;;
-    r|run           ) RUN=1 ;;
     o|opt           ) OPTIMIZE="-Os" ;;
+    u|user_settings ) USER_SETTINGS=1 ;;
+    d|debug         ) DEBUG=1 ;;
     t|target        ) TARGET=${OPTARG} ;;
     f|file          ) FILE=${OPTARG} ;;
     n|name          ) NAME=${OPTARG} ;;
-    u|user_settings ) USER_SETTINGS=1 ;;
     -)
       case "${OPTARG}" in
         help)
           echo "$__help_string"
           exit 0
           ;;
-        run           ) RUN=1 ;;
         opt           ) OPTIMIZE="-0s" ;;
         user_settings ) USER_SETTINGS=1 ;;
+        debug         ) DEBUG=1 ;;
         *)
           echo "Invalid option: --$OPTARG"
           exit 1
@@ -91,6 +91,15 @@ else
   echo "Invalid option argument for -t"
   echo "Valid arguments are 'native', 'wasm32', 'wasm64'"
   exit 1
+fi
+
+NIM_DEBUG_OPTIONS="--d: release --stackTrace: off"
+if [ $DEBUG -eq 1 ]; then
+  NIM_DEBUG_OPTIONS="--d: debug --stackTrace: on"
+fi
+C_DEBUG_OPTIONS=""
+if [ $DEBUG -eq 1 ]; then
+  C_DEBUG_OPTIONS="-g"
 fi
 
 # The user settings exports some variables with paths to be configured per user.
@@ -148,14 +157,13 @@ if [ $WASM32 -eq 1 ]; then
     --opt: speed \
     --noMain: on \
     --threads: off \
-    --stackTrace: off \
     --exceptions: goto \
     --d: cpu32 \
     --d: wasm \
     --d: wasm32 \
-    --d: release \
     --d: useMalloc \
     --d: noSignalHandler \
+    ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
   )
@@ -214,13 +222,12 @@ elif [ $WASM64 -eq 1 ]; then
     --opt: speed \
     --noMain: on \
     --threads: off \
-    --stackTrace: off \
     --exceptions: goto \
     --d: wasm \
     --d: wasm64 \
-    --d: release \
     --d: useMalloc \
     --d: noSignalHandler \
+    ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
   )
@@ -269,12 +276,6 @@ elif [ $NATIVE -eq 1 ]; then
   rm -Rf "./dist/${NAME}_native"
 
   (
-    # --os: any \
-    # --app: lib \
-    # --noMain: on \
-    # --stackTrace: off \
-    # --exceptions: goto \
-
     # Compile Nim to C
     ${NIM} \
     -c \
@@ -283,8 +284,7 @@ elif [ $NATIVE -eq 1 ]; then
     --opt: speed \
     --threads: off \
     --profiler: off \
-    --stackTrace: off \
-    --d: release \
+    ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
   )
@@ -298,6 +298,7 @@ elif [ $NATIVE -eq 1 ]; then
     # Compile C
     ${CC} \
     ${OPTIMIZE} \
+    ${C_DEBUG_OPTIONS} \
     -o "dist/${NAME}_native" \
     $(c_files)
 

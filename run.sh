@@ -14,11 +14,13 @@ Options:
   -u --user_settings   Use user_settings.sh to setup variables.
   -t --test            Test. Accepts positional args [native node browser].
   -b --bench           Benchmark Accepts positional args [native wasm js].
+  -d --debug           Compile with debug flags.
   -o --optimize        (This is done by default for wasm targets).
 "
 
 RUN=0
 TEST=0
+DEBUG=0
 OPTIMIZE=0
 BENCHMARK=0
 USER_SETTINGS=0
@@ -26,7 +28,7 @@ USER_SETTINGS=0
 # A POSIX variable
 OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
-while getopts "h?rtobu" opt; do
+while getopts "h?rtdobu" opt; do
   case "$opt" in
     h|\?)
       echo "$__help_string"
@@ -34,6 +36,7 @@ while getopts "h?rtobu" opt; do
       ;;
     r) RUN=1 ;;
     t) TEST=1 ;;
+    d) DEBUG=1 ;;
     o) OPTIMIZE=1 ;;
     b) BENCHMARK=1 ;;
     u) USER_SETTINGS=1 ;;
@@ -45,6 +48,7 @@ while getopts "h?rtobu" opt; do
           ;;
         run           ) RUN=1 ;;
         test          ) TEST=1 ;;
+        debug         ) DEBUG=1 ;;
         bench         ) BENCHMARK=1 ;;
         optimize      ) OPTIMIZE=1 ;;
         user_settings ) USER_SETTINGS=1 ;;
@@ -108,12 +112,14 @@ build_native() {
     opt_str="-"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
     if [ $OPTIMIZE -eq 1 ]; then opt_str+="o"; fi
+    if [ $DEBUG -eq 1 ]; then opt_str+="d"; fi
     if [[ opt_str = "-" ]]; then opt_str=""; fi
     (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t native "${opt_str}")
   elif [ $BENCHMARK -eq 1 ]; then
     native_built=1
     opt_str="-o"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    if [ $DEBUG -eq 1 ]; then opt_str+="d"; fi
     (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t native "${opt_str}")
   else
     echo "TODO"
@@ -125,6 +131,7 @@ build_wasm32() {
     wasm32_built=1
     opt_str="-o"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    if [ $DEBUG -eq 1 ]; then opt_str+="d"; fi
     (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t wasm32 "${opt_str}")
   else
     echo "TODO"
@@ -136,6 +143,7 @@ build_wasm64() {
     wasm64_built=1
     opt_str="-o"
     if [ $USER_SETTINGS -eq 1 ]; then opt_str+="u"; fi
+    if [ $DEBUG -eq 1 ]; then opt_str+="d"; fi
     (./scripts/build.sh -f "${FILE}" -n "${NAME}" -t wasm64 "${opt_str}")
   else
     echo "TODO"
