@@ -824,8 +824,12 @@ func to_json*[K](s: PSetRef[K]): string =
 # #region =============================================================
 
 type
-  PMultisetRef*[K] = object
-    re: PMapRef[K, int]
+  PMultisetRef*[K] = distinct PMapRef[K, int]
+
+template as_mset*[K](m: PMapRef[K, int]): PMultisetRef[K] =
+  cast[PMultisetRef[K]](m)
+template as_map*[K](s: PMultisetRef[K]): PMapRef[K, int] =
+  cast[PMapRef[K, int]](s)
 
 func multiset_incl_update*[V](v: V, exists: bool): (V, bool) =
   if v == -1: return (0, false)
@@ -834,9 +838,9 @@ func multiset_excl_update*[V](v: V, exists: bool): (V, bool) =
   if v == 1: return (0, false)
   return (v - 1, true)
 template incl*[K](s: PMultisetRef[K], key: K): PMultisetRef[K] =
-  PMultisetRef[K](re: update(s.re, key, multiset_incl_update))
+  s.as_map.update(key, multiset_incl_update).as_mset
 template excl*[K](s: PMultisetRef[K], key: K): PMultisetRef[K] =
-  PMultisetRef[K](re: update(s.re, key, multiset_excl_update))
+  s.as_map.update(key, multiset_excl_update).as_mset
 
 var multiset_update_count = 1
 proc multiset_incl_update_count*[V](v: V, exists: bool): (V, bool) =
@@ -849,15 +853,15 @@ proc multiset_excl_update_count*[V](v: V, exists: bool): (V, bool) =
   return (new_v, true)
 proc incl*[K](s: PMultisetRef[K], key: K, count: int): PMultisetRef[K] =
   multiset_update_count = count
-  result = PMultisetRef[K](re: update(s.re, key, multiset_incl_update_count))
+  result = s.as_map.update(key, multiset_incl_update_count).as_mset
   multiset_excl_update_count = 1
 proc excl*[K](s: PMultisetRef[K], key: K, count: int): PMultisetRef[K] =
   multiset_update_count = count
-  result = PMultisetRef[K](re: update(s.re, key, multiset_excl_update_cont))
+  result = s.as_map.update(key, multiset_excl_update_count).as_mset
   multiset_excl_update_count = 1
 
 func init_multiset*[K](): PMultisetRef[K] =
-  result.re = init_map[K, int]()
+  result = init_map[K, int]().as_mset
 func to_multiset*[K](arr: openArray[K]): PMultisetRef[K] =
   var m = init_multiset[K]()
   for k in arr:
@@ -869,31 +873,31 @@ func to_multiset*[K](arr: openArray[(K, int)]): PMultisetRef[K] =
     m = m.incl(k, i)
   return m
 template hash*[K](m: PMultisetRef[K]): Hash =
-  m.re.hash
+  m.as_map.hash
 template contains*[K](m: PMultisetRef[K], key: K): bool =
-  m.re.contains(key)
+  m.as_map.contains(key)
 template get_count*[K](m: PMultisetRef[K], key: K): int =
-  m.re.get_or_default(key, 0)
+  m.as_map.get_or_default(key, 0)
 template natural_count*[K](m: PMultisetRef[K], key: K): bool =
-  m.re.get_or_default(key, 0) >= 0
+  m.as_map.get_or_default(key, 0) >= 0
 template positive_count*[K](m: PMultisetRef[K], key: K): bool =
-  m.re.get_or_default(key, 0) > 0
+  m.as_map.get_or_default(key, 0) > 0
 template negative_count*[K](m: PMultisetRef[K], key: K): bool =
-  m.re.get_or_default(key, 0) < 0
+  m.as_map.get_or_default(key, 0) < 0
 template len*[K](m: PMultisetRef[K]): Natural =
-  m.re.len
+  m.as_map.len
 iterator items*[K](m: PMultisetRef[K]): K =
-  for k in m.re.keys:
+  for k in m.as_map.keys:
     yield k
 iterator keys*[K](m: PMultisetRef[K]): K =
-  for k in m.re.keys:
+  for k in m.as_map.keys:
     yield k
 iterator pairs*[K](m: PMultisetRef[K]): K =
-  for p in m.re.pairs:
+  for p in m.as_map.pairs:
     yield p
 template `==`*[K](m1, m2: PMultisetRef[K]): bool =
-  m1.re == m2.re
+  m1.as_map == m2.as_map
 template valid*[K](m: PMultisetRef[K]): bool =
-  m.re.valid
+  m.as_map.valid
 template to_json*[K](m: PMultisetRef[K]): string =
-  m.re.to_json
+  m.as_map.to_json
