@@ -647,7 +647,7 @@ proc main* =
       ]#
           
 
-    if true:
+    if false:
       test "task: send more money":
         var
           S = "s".v

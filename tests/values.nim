@@ -197,7 +197,7 @@ proc main* =
         s3 = Set {}
       check s1 == s2
       check s2 == s3
-      check s1.has(1.0) == False
+      check not(s1.contains(1.0))
     test "init":
       var
         s1 = Set {1, 2, 3, 3, 2, 1}

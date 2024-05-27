@@ -198,9 +198,7 @@ type
     data: string
   ImArrayPayload* = PVec[ImValue]
   ImMapPayload* = PMap[ImValue, ImValue]
-  ImSetPayload* = object
-    hash: Hash
-    data: HashSet[ImValue]
+  ImSetPayload* = PSet[ImValue]
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
   ImMapPayloadRef*    = ref ImMapPayload
@@ -493,7 +491,8 @@ template eq_heap_value_generic*(v1, v2: typed) =
         result = v1.as_arr.payload == v2.as_arr.payload
       of MASK_SIG_MAP:
         result = v1.as_map.payload == v2.as_map.payload
-      of MASK_SIG_SET:    eq_heap_payload(v1.as_set.payload, v2.as_set.payload)
+      of MASK_SIG_SET:
+        result = v1.as_set.payload == v2.as_set.payload
       else:               discard
 
 func `==`*(v1, v2: ImValue): bool =
@@ -507,7 +506,8 @@ func `==`*(v1, v2: ImMap): bool =
   return v1.payload == v2.payload
 func `==`*(v1, v2: ImArray): bool =
   return v1.payload == v2.payload
-func `==`*(v1, v2: ImSet): bool = eq_heap_value_specific(v1, v2)
+func `==`*(v1, v2: ImSet): bool =
+  return v1.payload == v2.payload
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
 func `==`*(v1, v2: ImSV): bool = return v1.as_u64 == v2.as_u64
@@ -583,7 +583,7 @@ proc `$`*(v: ImValue): string =
     of kString:           return $(v.as_str.payload.data)
     of kMap:              return $(v.as_map.payload)
     of kArray:            return $(v.as_arr.payload)
-    of kSet:              return $(v.as_set.payload.data) 
+    of kSet:              return $(v.as_set.payload) 
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
     # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
     # of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
@@ -625,8 +625,10 @@ func hash*(v: ImValue): Hash =
   if is_heap(v):
     if is_map(v):
       result = v.as_map.payload.hash
-    if is_array(v):
+    elif is_array(v):
       result = v.as_arr.payload.summary.hash
+    elif is_set(v):
+      result = v.as_set.payload.hash
     else:
       # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
       let vh = cast[ImString](v)
@@ -915,24 +917,19 @@ proc `<=`*(v1, v2: ImArray): bool =
 # ImSet Impl #
 # ---------------------------------------------------------------------
 
-template buildImSet(new_hash, new_data: typed) {.dirty.} =
+template set_from_pset(pset: typed) {.dirty.} =
   when c32:
-    let h = new_hash
     var new_set = ImSet(
-      head: update_head(MASK_SIG_SET, h.as_u32),
-      tail: ImSetPayloadRef(hash: h, data: new_data)
+      head: update_head(MASK_SIG_SET, 0),
+      tail: pset
     )
   else:
-    var re = new ImSetPayload
-    GC_ref(re)
-    re.hash = new_hash
-    re.data = new_data
-    var new_set = ImSet(p: bitor(MASK_SIG_SET, re.as_p.as_u64).as_p)
+    GC_ref(pset)
+    var new_set = ImSet(p: bitor(MASK_SIG_SET, pset.as_u64).as_p)
 
 proc init_set_empty(): ImSet =
-  let new_hash = INITIAL_SET_HASH
-  var new_data: HashSet[ImValue]
-  buildImSet(new_hash, new_data)
+  let pset = map.init_set[ImValue]()
+  set_from_pset(pset)
   return new_set
 
 let empty_set = init_set_empty()
@@ -940,22 +937,19 @@ let empty_set = init_set_empty()
 proc init_set*(): ImSet = return empty_set
 proc init_set*(init_data: openArray[ImValue]): ImSet =
   if init_data.len == 0: return empty_set
-  var new_hash = INITIAL_SET_HASH
-  var new_data = toHashSet(init_data)
-  for v in new_data:
-    new_hash = calc_hash(new_hash, v.hash)
-  buildImSet(new_hash, new_data)
+  let pset = map.to_set[ImValue](init_data)
+  set_from_pset(pset)
   return new_set
 
-proc contains*(s: ImSet, k: ImValue): bool = k.as_v in s.payload.data
-template contains*(s: ImSet, k: typed): bool = k.v in s.payload.data
+proc contains*(s: ImSet, k: ImValue): bool = s.payload.contains(k)
+template contains*(s: ImSet, k: typed): bool = s.payload.contains(k.v)
 
-template has_inner(s: ImSet, k: typed) =
-  let derefed = s.payload
-  if k.as_v in derefed.data: return True
-  return False
-proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
-proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
+# template has_inner(s: ImSet, k: typed) =
+#   let derefed = s.payload
+#   if k.as_v in derefed.data: return True
+#   return False
+# proc has*(s: ImSet, k: ImValue): ImBool = has_inner(s, k)
+# proc has*(s: ImSet, k: float64): ImBool = has_inner(s, k)
 
 proc get*(s: ImSet, k: ImValue): ImValue =
   if k.v in s: return k.v else: return Nil.v
@@ -963,25 +957,17 @@ proc get*(s: ImSet, k: float): ImValue =
   if k.v in s: return k.v else: return Nil.v
 
 proc add*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.payload
-  if k.as_v in derefed.data: return s
-  let new_hash = calc_hash(derefed.hash, k.hash)
-  var new_data = derefed.data
-  new_data.incl(k.as_v)
-  buildImSet(new_hash, new_data)
+  let pset = s.payload.incl(k)
+  set_from_pset(pset)
   return new_set
 
 proc del*(s: ImSet, k: ImValue): ImSet =
-  let derefed = s.payload
-  if not(k.as_v in derefed.data): return s
-  let new_hash = calc_hash(derefed.hash, k.hash)
-  var new_data = derefed.data
-  new_data.excl(k.as_v)
-  buildImSet(new_hash, new_data)
+  let pset = s.payload.excl(k)
+  set_from_pset(pset)
   return new_set
 
 proc size*(s: ImSet): int =
-  return s.payload.data.len.int
+  return s.payload.len.int
 
 # More Conversions #
 # ---------------------------------------------------------------------

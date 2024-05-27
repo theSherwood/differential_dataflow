@@ -665,6 +665,7 @@ func hash*[K, V](m: PMapRef[K, V]): Hash  =
   return m.hash
 
 func to_json*[K, V](m: PMapRef[K, V]): string =
+  if m.len == 0: return "{}"
   result.add("{\n")
   block:
     for he in m.hashed_entries:
@@ -764,7 +765,8 @@ template `&`*[K, V](m1, m2: PMapRef[K, V]): PMapRef[K, V] =
 
 type
   EmptyValue = object
-  PSetRef*[K] = distinct PMapRef[K, EmptyValue]
+  PSet*[K] = distinct PMap[K, EmptyValue]
+  PSetRef*[K] = ref PSet[K]
 
 const empty = EmptyValue()
 
@@ -800,6 +802,10 @@ iterator keys*[K](s: PSetRef[K]): K =
   for k in s.as_map.keys:
     yield k
 func `==`*[K](s1, s2: PSetRef[K]): bool =
+  if s1.isNil:
+    if s2.isNil: return true
+    return false
+  if s2.isNil: return false
   if s1.len != s2.len: return false
   if s1.hash != s2.hash: return false
   else:
@@ -810,6 +816,7 @@ func `==`*[K](s1, s2: PSetRef[K]): bool =
 template valid*[K](s: PSetRef[K]): bool =
   s.as_map.valid
 func to_json*[K](s: PSetRef[K]): string =
+  if s.len == 0: return "[]"
   result.add("[ ")
   block:
     for k in s.keys:
@@ -817,19 +824,31 @@ func to_json*[K](s: PSetRef[K]): string =
     # trim off the last comma because json doesn't allow trailing commas
     result.delete((result.len - 2)..<result.len)
   result.add(" ]")
-
+func `$`*[K](s: PSetRef[K]): string =
+  if s.len == 0: return "{}"
+  result.add("{ ")
+  block:
+    for k in s.keys:
+      result.add(&"{k}, ")
+    # trim off the last comma because json doesn't allow trailing commas
+    result.delete((result.len - 2)..<result.len)
+  result.add(" }")
 
 # #endregion ==========================================================
 #            Multiset
 # #region =============================================================
 
 type
-  PMultisetRef*[K] = distinct PMapRef[K, int]
+  PMultiset*[K] = distinct PMap[K, int]
+  PMultisetRef*[K] = ref PMultiset[K]
 
 template as_mset*[K](m: PMapRef[K, int]): PMultisetRef[K] =
   cast[PMultisetRef[K]](m)
 template as_map*[K](s: PMultisetRef[K]): PMapRef[K, int] =
   cast[PMapRef[K, int]](s)
+
+func `[]`*[K](s: PMultisetRef[K]): PMap[K, int] =
+  return as_map(s)[]
 
 func multiset_incl_update*[V](v: V, exists: bool): (V, bool) =
   if v == -1: return (0, false)
