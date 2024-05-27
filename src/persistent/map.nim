@@ -764,48 +764,51 @@ template `&`*[K, V](m1, m2: PMapRef[K, V]): PMapRef[K, V] =
 
 type
   EmptyValue = object
-  PSetRef*[K] = object
-    re*: PMapRef[K, EmptyValue]
+  PSetRef*[K] = distinct PMapRef[K, EmptyValue]
 
 const empty = EmptyValue()
 
+template as_set*[K](m: PMapRef[K, EmptyValue]): PSetRef[K] =
+  cast[PSetRef[K]](m)
+template as_map*[K](s: PSetRef[K]): PMapRef[K, EmptyValue] =
+  cast[PMapRef[K, EmptyValue]](s)
+
 func init_set*[K](): PSetRef[K] =
-  result.re = init_map[K, EmptyValue]()
+  result = init_map[K, EmptyValue]().as_set
 func to_set*[K](arr: openArray[K]): PSetRef[K] =
   var m = init_map[K, EmptyValue]()
   for k in arr:
     m = m.add(k, empty)
-  return PSetRef[K](re: m)
-
+  return m.as_set
 template hash*[K](s: PSetRef[K]): Hash =
-  s.re.hash
+  s.as_map.hash
 template incl*[K](s: PSetRef[K], key: K): PSetRef[K] =
-  PSetRef[K](re: s.re.add(key, empty))
+  s.as_map.add(key, empty).as_set
 template excl*[K](s: PSetRef[K], key: K): PSetRef[K] =
-  PSetRef[K](re: s.re.delete(key))
+  s.as_map.delete(key).as_set
 template contains*[K](s: PSetRef[K], key: K): bool =
-  s.re.contains(key)
+  s.as_map.contains(key)
 template len*[K](s: PSetRef[K]): Natural =
-  s.re.len
+  s.as_map.len
 iterator items*[K](s: PSetRef[K]): K =
-  for k in s.re.keys:
+  for k in s.as_map.keys:
     yield k
 iterator values*[K](s: PSetRef[K]): K =
-  for k in s.re.keys:
+  for k in s.as_map.keys:
     yield k
 iterator keys*[K](s: PSetRef[K]): K =
-  for k in s.re.keys:
+  for k in s.as_map.keys:
     yield k
 func `==`*[K](s1, s2: PSetRef[K]): bool =
   if s1.len != s2.len: return false
-  if s1.re.hash != s2.re.hash: return false
+  if s1.hash != s2.hash: return false
   else:
     for k in s1.items:
       if k notin s2:
         return false
     return true
 template valid*[K](s: PSetRef[K]): bool =
-  s.re.valid
+  s.as_map.valid
 func to_json*[K](s: PSetRef[K]): string =
   result.add("[ ")
   block:
@@ -814,6 +817,7 @@ func to_json*[K](s: PSetRef[K]): string =
     # trim off the last comma because json doesn't allow trailing commas
     result.delete((result.len - 2)..<result.len)
   result.add(" ]")
+
 
 # #endregion ==========================================================
 #            Multiset
