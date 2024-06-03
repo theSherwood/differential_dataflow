@@ -14,8 +14,8 @@ const RUN_PERSVECTOR = true
 const RUN_PVEC       = true
 const RUN_PMAP       = true
 const RUN_SANITY     = true
-const RUN_RULES      = true
 
+const RUN_RULES      = true
 const RUN_MAPS       = true
 const RUN_ARRS       = true
 

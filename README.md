@@ -33,7 +33,7 @@ wach ./run.sh -tur native
 ### Test Wasm in Node
 
 ```sh
-./run.sh -tur node
+./run.sh -tur node32
 ```
 
 OR

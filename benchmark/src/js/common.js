@@ -10,6 +10,7 @@ export const WARMUP = 100_000; // microseconds
 // things if we are using a timeout this long. So we also include a LOW_TIMEOUT
 // for use when we want it.
 export const TIMEOUT = 100_000;
+// export const LOW_TIMEOUT = 100_000;
 export const LOW_TIMEOUT = 2;
 export const RUN_NOOLS = true;
 

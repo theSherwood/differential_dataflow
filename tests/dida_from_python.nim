@@ -483,7 +483,6 @@ proc main* =
             .map((e) => e[0])
           live_with_2_neighbors = maybe_live_cells
             .filter((e) => e[1] == 2)
-            # .semijoin(b)
             .join(b.map(proc (e: Value): Value = V([e, Nil])))
             .map((e) => e[0])
           live_next_round = live_with_2_neighbors
@@ -547,6 +546,87 @@ proc main* =
         (V [2, 4], 1),
       ].COL
 
+#[
+
+Rete-like Interface
+
+Rule Requirements
+- named
+- optional agenda
+- "when" clauses
+  - match clauses
+  - filter clauses
+- "then" clauses
+  - callback/actions
+  - can assert new facts
+  - can retract facts
+  - (nools has "modify" in addition to "assert" and "retract")
+- use other rules as sources (composition)
+- truth maintenance
+- parameterized rules
+- should compose with differential dataflow? (this seems hard)
+- "not" operator
+  - NCC - "not" around an "and"
+- "or" operator
+- aggregations?
+  - "count"?
+- nools' "from" operator is really cool
+  - http://noolsjs.com/#defining-rule
+  - similar to verse's use of superpositions
+- "exists" operator
+  - similar to verse's "one"
+  - opposite of "not"?
+- salience? conflict resolution?
+
+Match Requirements
+- can bind to entire value
+- can bind to parts of value
+- default to implicit alpha network with option to use explicit alphas
+- unpacking/destructuring binding?
+- try to not to use macros?
+
+Questions
+- It might be worth handling genericity before we get deep into this?
+- How do we determine which part of the alpha network a given match clause
+  should connect/listen to?
+- How do we handle async?
+- How do we handle errors?
+  - Seems like it would be good to have atomic transactions with rollback?
+    - maybe that should be a part of dida and not our logic system
+
+
+
+type
+  Match = object
+    # (p)ath - where to find the value part to consider for filtering or binding
+    # `p: Nil`, it's the entire value
+    p: Value
+    # (i)dent - the identifier to use in the binding
+    i: Value
+    # (e)qual - literal match
+    e: Value
+    # (f)ilter - a predicate used to determine if there's a match
+    f: proc (v: Value, b: Value): bool
+  M = Match
+
+# Some example match operators simulating the "when" portion of a rule
+beta_network
+  .match(alpha, [
+    M(p: V [0], i: V "Parent"),
+    M(p: V [1], e: V "age"),
+    M(p: V [2], i: V "ParentAge", f: (v, b) => v > 40.0)
+  ])
+  .match(alpha, [M(i: V "Thing")])
+  .match(alpha, [M(i: V "Thing", f: (v, b) => v < 4.0)])
+  .match(alpha, [
+    M(p: V ["foo", 1, [4, "bar"]], i: V "Child"),
+    M(p: V ["foo", Nil, "shoot"], e: V "age"),
+    M(p: V [3, 4, 5], i: V "ChildAge", (v, b) => c < 4.0)
+  ])
+
+]#
+
+
       #[
       # Rete-like approaches
       var
@@ -605,7 +685,7 @@ proc main* =
             (false, 1.0, V "age"),
             (true, 2.0, V {id: "ChildAge", fn: (b, c) => c < 4.0})
           ])
-        # tuple (path_to_value, exact_match, predicate, binding)
+        # tuple (path_to_value, exact_match, binding, predicate)
         # if the path is empty (len 0) or Nil, then the canidate is the bare object
         # should just make this an object instead of a tuple
         # still unclear how to handle functions
@@ -645,7 +725,6 @@ proc main* =
       ## - how do we get extra context into the predicate fns?
       ## - how do we get bindings out (efficiently)?
       ]#
-          
 
     if false:
       test "task: send more money":
