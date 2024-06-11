@@ -199,6 +199,21 @@ proc main* =
           (4, 1),
         ])
 
+      test "flat_map":
+        var a = COL([(1, 1), (2, 1), (3, 1)])
+        proc multiply_odds(n: int): iterator(): I2 =
+          return iterator(): I2 =
+            if n mod 2 != 0:
+              for i in 1..n:
+                for j in 0..<i:
+                  yield (n, i)
+        check a.flat_map(multiply_odds) == COL([
+          ((1, 1), 1),
+          ((3, 1), 1),
+          ((3, 2), 2),
+          ((3, 3), 3),
+        ])
+
     suite "collection > ImValue":
       test "simple":
         var
@@ -338,6 +353,26 @@ proc main* =
           (V ["banana", "$2"], 1),
         ])
 
+      test "flat_map":
+        var a = COL([
+          (V ["apple", 3], 1),
+          (V ["kiwi", 7], 1),
+          (V ["banana", 1], 1)
+        ])
+        proc multiply_fruit(tup: Val): iterator(): Val =
+          return iterator(): Val =
+            let k = tup.key
+            let v = tup.value
+            if k != V"kiwi":
+              for i in 1..(v.as_f64.int):
+                for j in 0..<i:
+                  yield V [k, i]
+        check a.flat_map(multiply_fruit) == COL([
+          (V ["apple", 1], 1),
+          (V ["apple", 2], 2),
+          (V ["apple", 3], 3),
+          (V ["banana", 1], 1),
+        ])
 
 #[
   suite "version":

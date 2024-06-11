@@ -547,6 +547,8 @@ converter toImValue(s: string): ImValue = s.v
 converter toBool(b: ImBool): bool = b == True
 converter toBool(n: ImNil): bool = false
 
+converter toFloat(v: ImValue): float64 = v.as_f64
+
 # Debug String Conversion #
 # ---------------------------------------------------------------------
 

@@ -36,8 +36,7 @@ type
   CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
   # TODO - figure out some stream or iterator concept so we don't have a bunch
   # of different versions of this.
-  # FlatMapFn* = proc (e: Entry): ImArray {.closure.}
-  # FlatMapSeqFn* = proc (e: Entry): seq[Entry] {.closure.}
+  FlatMapFn*[T, U] = proc (e: T): iterator(): U {.closure.}
 
 template size*[T](c: Collection[T]): int = c.rows.len
 
@@ -87,14 +86,11 @@ func filter*[T](c: Collection[T], f: FilterFn[T]): Collection[T] =
   for r in c:
     if f(r.entry): result.add(r)
 
-# func flat_map*(c: Collection, f: FlatMapFn): Collection =
-#   for r in c:
-#     for e in f(r.entry):
-#       result.add((e, r.multiplicity))
-# func flat_map_seq*(c: Collection, f: FlatMapSeqFn): Collection =
-#   for r in c:
-#     for e in f(r.entry):
-#       result.add((e, r.multiplicity))
+func flat_map*[T, U](c: Collection[T], f: FlatMapFn[T, U]): Collection[U] =
+  new result
+  for r in c:
+    for e in f(r.entry):
+      result.add((e, r.multiplicity))
 
 func negate*[T](c: Collection[T]): Collection[T] =
   new result
