@@ -1,140 +1,182 @@
-import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
-import hashes
-import values
+## 
+## TODO
+## 
+## - [ ] genericity
+## - [ ] simplify frontier/timestamp business
+##   - we need tuple timestamps for iteration/recursion, but that's it
+##   - so we should be able to simplify things a lot because their comparison
+##     logic is branching and should therefore be a lot simpler than the
+##     current frontier comparison logic because frontiers are N-dimensional
+##     and the comparison happens across all dimensions.
+## - [ ] make compaction performant
+## - [ ] make collections more performant?
+## 
+
+import std/[tables]
+# import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
+# import hashes
+# import values
+export tables
 
 # Collections #
 # ---------------------------------------------------------------------
 
 type
-  Value* = ImValue
-  Entry* = Value
+  # Value* = ImValue
+  # Entry* = Value
 
-  Row* = (Entry, int)
+  Row*[T] = (T, int)
   
-  Collection* = object
-    rows*: seq[Row]
+  Collection*[T] = ref object
+    rows*: seq[Row[T]]
 
-  MapFn* = proc (e: Entry): Entry {.closure.}
-  FilterFn* = proc (e: Entry): bool {.closure.}
-  ReduceFn* = proc (rows: seq[Row]): seq[Row] {.closure.}
-  CollIterateFn* = proc (c: Collection): Collection {.closure.}
+  MapFn*[T, U] = proc (e: T): U {.closure.}
+  FilterFn*[T] = proc (e: T): bool {.closure.}
+  # ReduceFn*[T, U] = proc (rows: seq[Row[T]]): seq[Row[U]] {.closure.}
+  # CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
   # TODO - figure out some stream or iterator concept so we don't have a bunch
   # of different versions of this.
-  FlatMapFn* = proc (e: Entry): ImArray {.closure.}
-  FlatMapSeqFn* = proc (e: Entry): seq[Entry] {.closure.}
+  # FlatMapFn* = proc (e: Entry): ImArray {.closure.}
+  # FlatMapSeqFn* = proc (e: Entry): seq[Entry] {.closure.}
 
-func size*(c: Collection): int = return c.rows.len
+template size*[T](c: Collection[T]): int = c.rows.len
 
-proc key*(e: Entry): Value =
-  doAssert e.is_array
-  return e.as_arr[0]
-proc value*(e: Entry): Value =
-  doAssert e.is_array
-  return e.as_arr[1]
-template entry*(r: Row): Entry = r[0]
-template key*(r: Row): Value = r.entry.key
-template value*(r: Row): Value = r.entry.value
-template multiplicity*(r: Row): int = r[1]
+# proc key*(e: Entry): Value =
+#   doAssert e.is_array
+#   return e.as_arr[0]
+# proc value*(e: Entry): Value =
+#   doAssert e.is_array
+#   return e.as_arr[1]
+template entry*[T](r: Row[T]): T = r[0]
+# template key*(r: Row): Value = r.entry.key
+# template value*(r: Row): Value = r.entry.value
+template multiplicity*[T](r: Row[T]): int = r[1]
 
-template `[]`*(c: Collection, i: int): untyped = c.rows[i]
-template `[]=`*(c: Collection, i: int, r: Row) = c.rows[i] = r
-template add*(c: Collection, r: Row) = c.rows.add(r)
+# template `[]`*[T](c: Collection[T], i: int): T = c.rows[i]
+template `[]=`*[T](c: Collection[T], i: int, r: Row[T]) = c.rows[i] = r
+template add*[T](c: Collection[T], r: Row[T]) = c.rows.add(r)
 
-iterator items*(c: Collection): Row =
+iterator items*[T](c: Collection[T]): Row[T] =
   for r in c.rows:
     yield r
 
 ## This is quite an expensive operation. It would be good to find a faster way
 ## to compute this.
 ## Using an xor-based hash for entries could help a lot.
-func `==`*(c1, c2: Collection): bool =
+func `==`*[T](c1, c2: Collection[T]): bool =
   var
-    t1 = initTable[Entry, int]()
-    t2 = initTable[Entry, int]()
+    t1 = initTable[T, int]()
+    t2 = initTable[T, int]()
   for (e, m) in c1:
     t1[e] = m + t1.getOrDefault(e, 0)
   for (e, m) in c2:
     t2[e] = m + t2.getOrDefault(e, 0)
   return t1 == t2
 
-func map*(c: Collection, f: MapFn): Collection =
+func map*[T, U](c: Collection[T], f: MapFn[T, U]): Collection[U] =
+  new result
   result.rows.setLen(c.size)
   for i in 0..<c.size:
-    result[i] = (f(c[i].entry), c[i].multiplicity)
+    result[i] = (f(c.rows[i].entry), c.rows[i].multiplicity)
 
-func filter*(c: Collection, f: FilterFn): Collection =
+func filter*[T](c: Collection[T], f: FilterFn[T]): Collection[T] =
+  new result
   for r in c:
     if f(r.entry): result.add(r)
 
-func flat_map*(c: Collection, f: FlatMapFn): Collection =
-  for r in c:
-    for e in f(r.entry):
-      result.add((e, r.multiplicity))
-func flat_map_seq*(c: Collection, f: FlatMapSeqFn): Collection =
-  for r in c:
-    for e in f(r.entry):
-      result.add((e, r.multiplicity))
+# func flat_map*(c: Collection, f: FlatMapFn): Collection =
+#   for r in c:
+#     for e in f(r.entry):
+#       result.add((e, r.multiplicity))
+# func flat_map_seq*(c: Collection, f: FlatMapSeqFn): Collection =
+#   for r in c:
+#     for e in f(r.entry):
+#       result.add((e, r.multiplicity))
 
-func negate*(c: Collection): Collection =
+func negate*[T](c: Collection[T]): Collection[T] =
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (c[i].entry, 0 - c[i].multiplicity)
 
-func concat*(c1, c2: Collection): Collection =
+func concat*[T](c1, c2: Collection[T]): Collection[T] =
+  new result
   for r in c1: result.add(r)
   for r in c2: result.add(r)
 
-proc mut_concat(c1: var Collection, c2: Collection) =
+#[
+proc mut_concat[T](c1: var Collection[T], c2: Collection[T]) =
   for r in c2: c1.add(r)
 
-func consolidate*(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+func consolidate*[T](rows: seq[Row[T]]): seq[Row[T]] =
+  var t = initTable[T, int]()
   for (e, m) in rows:
     t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
-func consolidate*(c: Collection): Collection =
-  var t = initTable[Entry, int]()
+func consolidate*[T](c: Collection[T]): Collection[T] =
+  var t = initTable[T, int]()
   for (e, m) in c:
     t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
-proc print*(c: Collection, label: string): Collection =
+proc print*[T](c: Collection[T], label: string): Collection[T] =
   echo label, ": ", c
   return c
+]#
 
-proc to_row_table_by_key(t: var Table[Value, seq[Row]], c: Collection) =
+proc to_row_table_by_key[T, K](t: var Table[K, seq[Row[T]]], c: Collection[T]) =
   for r in c:
     if t.hasKey(r.key):
       t[r.key].add(r)
     else:
       t[r.key] = @[r]
 
-proc join*(c1, c2: Collection): Collection =
-  let empty_seq = newSeq[Row]()
-  var t = initTable[Value, seq[Row]]()
+proc join2*[T, U](c1, c2: Collection[T]): Collection[U] =
+  let empty_seq = newSeq[Row[U]]()
+  var t = initTable[T, seq[Row[T]]]()
   t.to_row_table_by_key(c1)
   for r in c2:
     for r2 in t.getOrDefault(r.key, empty_seq):
       result.add((V [r.key, [r2.value, r.value]], r.multiplicity * r2.multiplicity))
 
+template monomorphize_join_collection_fn*(
+    EntryType, KeyType, ResultType: typed,
+    name, Kfn, Vfn, Jfn: untyped
+  ): untyped {.dirty.} =
+  proc name*(c1, c2: Collection[EntryType]): Collection[KeyType] =
+    new result
+    let empty_seq = newSeq[Row[ResultType]]()
+    var t = initTable[KeyType, seq[Row[EntryType]]]()
+    var key: KeyType
+    for r in c1:
+      key = Kfn(r)
+      if t.hasKey(key):
+        t[key].add(r)
+      else:
+        t[key] = @[r]
+    for r2 in c2:
+      key = Kfn(r2)
+      for r in t.getOrDefault(key, empty_seq):
+        result.add((Jfn(key, Vfn(r), Vfn(r2)), r.multiplicity * r2.multiplicity))
+
+#[
 ## Keys must not be changed by the reduce fn
-proc reduce*(c: Collection, f: ReduceFn): Collection =
-  var t = initTable[Value, seq[Row]]()
+proc reduce*[T, U](c: Collection[T], f: ReduceFn[T, U]): Collection[U] =
+  var t = initTable[Value, seq[Row[T]]]()
   t.to_row_table_by_key(c)
   for r in t.values:
     for r2 in f(r):
       result.add(r2)
 
-proc count_inner(rows: seq[Row]): seq[Row] =
+proc count_inner[T](rows: seq[Row[T]]): seq[Row[T]] =
   let k = rows[0].key
   var cnt = 0
   for r in rows: cnt += r.multiplicity
   return @[(V [k, cnt.float64], 1)]
 
-proc count*(c: Collection): Collection =
+proc count*[T](c: Collection[T]): Collection =
   return c.reduce(count_inner)
 
 proc sum_inner(rows: seq[Row]): seq[Row] =
@@ -214,16 +256,21 @@ proc max*(c: Collection): Collection =
   except TypeException as e:
     raise newException(TypeException, "Incomparable types")
 
-proc iterate*(c: Collection, f: CollIterateFn): Collection =
+proc iterate*[T](c: Collection[T], f: CollIterateFn[T]): Collection[T] =
   var curr = c
   while true:
     result = f(curr)
     if curr == result: break
     curr = result
+]#
 
-proc init_collection*(rows: openArray[Row]): Collection =
+proc init_collection*[T](rows: openArray[Row[T]]): Collection[T] =
+  new result
   for r in rows:
     result.add(r)
+
+
+#[
 
 # Versions and Frontiers #
 # ---------------------------------------------------------------------
@@ -1506,3 +1553,5 @@ proc step(n: Node) =
   if frontier_change: n.output_frontier_message
 proc step*(g: Graph) =
   for n in g.nodes: n.step()
+
+]#
