@@ -4,9 +4,10 @@ import ../src/[test_utils, dida_from_python, values]
 
 
 template COL*[T](rows: openArray[Row[T]]): Collection[T] = init_collection[T](rows)
-# template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
-# template FTR*(versions: openArray[Version]): Frontier = init_frontier(versions)
+template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
+template FTR*(versions: openArray[Version]): Frontier = init_frontier(versions)
 
+# monomorphize generic collections for `ImValue`
 type Val = ImValue
 template key(e: Val): Val = e[0]
 template value(e: Val): Val = e[1]
@@ -24,6 +25,7 @@ monomorphize_sum_collection_fn(Val, Val, key, value, mult_by_int, sum_assemble)
 monomorphize_min_collection_fn(Val, Val, key, value, assemble_pair)
 monomorphize_max_collection_fn(Val, Val, key, value, assemble_pair)
 
+# monomorphize generic collections for `(int, int)`
 type I2 = (int, int)
 template key(e: I2): int = e[0]
 template value(e: I2): int = e[1]
@@ -39,6 +41,7 @@ monomorphize_sum_collection_fn(I2, I2, key, value, mult, assemble_pair)
 monomorphize_min_collection_fn(I2, I2, key, value, assemble_pair)
 monomorphize_max_collection_fn(I2, I2, key, value, assemble_pair)
 
+# monomorphize generic collections for `int`
 template bare_int_key(r: Row[int]): int = r.entry
 template bare_int_value(r: Row[int]): int = r.entry
 narrow_reduce_collection_fn(int, int, bare_int_key)
@@ -374,7 +377,6 @@ proc main* =
           (V ["banana", 1], 1),
         ])
 
-#[
   suite "version":
     test "simple":
       var
@@ -421,6 +423,7 @@ proc main* =
       check [v0_0].FTR.meet([v1_0].FTR) == [v0_0].FTR
       check [v1_0, v0_1].FTR.truncate == [[0].VER].FTR
 
+#[
   suite "dida":
     test "simple on_row and on_collection":
       var

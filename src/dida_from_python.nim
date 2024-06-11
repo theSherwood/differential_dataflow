@@ -8,23 +8,23 @@
 ##     logic is branching and should therefore be a lot simpler than the
 ##     current frontier comparison logic because frontiers are N-dimensional
 ##     and the comparison happens across all dimensions.
+##     - WRONG. to make consolidation work with branching state, we need
+##       branching timestamps. So we should change versions to support
+##       branching.
+## - [ ] make indices more performant
 ## - [ ] make compaction performant
 ## - [ ] make collections more performant?
 ## 
 
-import std/[tables]
-# import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
-# import hashes
-# import values
+import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
+import hashes
 export tables
 
-# Collections #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            COLLECTIONS
+# #region =============================================================
 
 type
-  # Value* = ImValue
-  # Entry* = Value
-
   Row*[T] = (T, int)
   
   Collection*[T] = ref object
@@ -34,8 +34,6 @@ type
   FilterFn*[T] = proc (e: T): bool {.closure.}
   ReduceFn*[T, U] = proc (rows: seq[Row[T]]): seq[Row[U]] {.closure.}
   CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
-  # TODO - figure out some stream or iterator concept so we don't have a bunch
-  # of different versions of this.
   FlatMapFn*[T, U] = proc (e: T): iterator(): U {.closure.}
 
 template size*[T](c: Collection[T]): int = c.rows.len
@@ -278,11 +276,9 @@ proc init_collection*[T](rows: openArray[Row[T]]): Collection[T] =
   for r in rows:
     result.add(r)
 
-
-#[
-
-# Versions and Frontiers #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            VERSIONS AND FRONTIERS
+# #region =============================================================
 
 type
   Version* = object
@@ -451,8 +447,11 @@ proc step*(f: Frontier, delta: int): Frontier =
   new_f.update_hash
   return new_f
 
-# Index #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            INDEX
+# #region =============================================================
+
+#[
 
 type
   Index* = ref object
@@ -605,8 +604,9 @@ proc compact(i: var Index, compaction_frontier: Frontier) =
   doAssert i.compaction_frontier.isNil or i.compaction_frontier.le(compaction_frontier)
   i.compaction_frontier = compaction_frontier
 
-# Nodes #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            NODES
+# #region =============================================================
 
 type
   BuilderIterateFn* = proc (b: Builder): Builder
@@ -807,8 +807,9 @@ template to_message*(v: Version, c: Collection): Message =
 template to_message*(f: Frontier): Message =
   Message(tag: tFrontier, frontier: f)
 
-# Builder #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            BUILDER
+# #region =============================================================
 
 proc init_builder*(g: Graph, f: Frontier): Builder =
   var b = Builder()
@@ -953,8 +954,9 @@ proc accumulate_messages*(b: Builder): Builder =
   build_unary(b, tAccumulateMessages)
   n.messages = @[]
 
-# Sinks #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            SINKS
+# #region =============================================================
 
 type
   CompletableMultisetValue = ref object
@@ -1057,8 +1059,9 @@ proc to_collection*(s: VersionedMultiset, v: Version): Collection =
 #   else:
 #     return init_collection([])
 
-# Pretty Print #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            PRINT
+# #region =============================================================
 
 proc `$`*(t: NodeTag): string =
   result = case t:
@@ -1133,8 +1136,9 @@ template pprint_recursive*(n: Node, indent = 0): string =
 proc pprint*(g: Graph): string =
   return g.top_node.pprint_recursive(0)
 
-# Send #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            SEND
+# #region =============================================================
 
 template send*(e: Edge, v: Version, c: Collection) =
   doAssert e.frontier.isNil or e.frontier.le(v)
@@ -1165,8 +1169,9 @@ proc send*(g: Graph, v: Version, c: Collection) = g.top_node.send(v, c)
 proc send*(g: Graph, f: Frontier) = g.top_node.send(f)
 proc send*(g: Graph, m: Message) = g.top_node.send(m)
 
-# Step #
-# ---------------------------------------------------------------------
+# #endregion ==========================================================
+#            STEP
+# #region =============================================================
 
 proc handle_frontier_message(n: Node, f: Frontier, idx: int) =
   doAssert n.input_frontiers[idx].le(f)
