@@ -32,7 +32,7 @@ type
 
   MapFn*[T, U] = proc (e: T): U {.closure.}
   FilterFn*[T] = proc (e: T): bool {.closure.}
-  # ReduceFn*[T, U] = proc (rows: seq[Row[T]]): seq[Row[U]] {.closure.}
+  ReduceFn*[T, U] = proc (rows: seq[Row[T]]): seq[Row[U]] {.closure.}
   # CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
   # TODO - figure out some stream or iterator concept so we don't have a bunch
   # of different versions of this.
@@ -94,9 +94,10 @@ func filter*[T](c: Collection[T], f: FilterFn[T]): Collection[T] =
 #       result.add((e, r.multiplicity))
 
 func negate*[T](c: Collection[T]): Collection[T] =
+  new result
   result.rows.setLen(c.size)
   for i in 0..<c.size:
-    result[i] = (c[i].entry, 0 - c[i].multiplicity)
+    result[i] = (c.rows[i].entry, 0 - c.rows[i].multiplicity)
 
 func concat*[T](c1, c2: Collection[T]): Collection[T] =
   new result
@@ -106,8 +107,10 @@ func concat*[T](c1, c2: Collection[T]): Collection[T] =
 #[
 proc mut_concat[T](c1: var Collection[T], c2: Collection[T]) =
   for r in c2: c1.add(r)
+]#
 
 func consolidate*[T](rows: seq[Row[T]]): seq[Row[T]] =
+  new result
   var t = initTable[T, int]()
   for (e, m) in rows:
     t[e] = m + t.getOrDefault(e, 0)
@@ -115,23 +118,31 @@ func consolidate*[T](rows: seq[Row[T]]): seq[Row[T]] =
     if m != 0: result.add((e, m))
 
 func consolidate*[T](c: Collection[T]): Collection[T] =
+  new result
   var t = initTable[T, int]()
   for (e, m) in c:
     t[e] = m + t.getOrDefault(e, 0)
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
+#[
 proc print*[T](c: Collection[T], label: string): Collection[T] =
   echo label, ": ", c
   return c
 ]#
 
-proc to_row_table_by_key[T, K](t: var Table[K, seq[Row[T]]], c: Collection[T]) =
-  for r in c:
-    if t.hasKey(r.key):
-      t[r.key].add(r)
-    else:
-      t[r.key] = @[r]
+template to_row_table_by_key*[EntryType, KeyType](
+    t: var Table[KeyType, seq[Row[EntryType]]],
+    c: Collection[EntryType],
+    get_key: untyped
+  ): untyped =
+  block:
+    for r in c:
+      let key = get_key(r)
+      if t.hasKey(key):
+        t[key].add(r)
+      else:
+        t[key] = @[r]
 
 proc join2*[T, U](c1, c2: Collection[T]): Collection[U] =
   let empty_seq = newSeq[Row[U]]()
@@ -143,53 +154,56 @@ proc join2*[T, U](c1, c2: Collection[T]): Collection[U] =
 
 template monomorphize_join_collection_fn*(
     EntryType, KeyType, ResultType: typed,
-    name, Kfn, Vfn, Jfn: untyped
+    name, get_key, get_value, assemble_result: untyped
   ): untyped {.dirty.} =
   proc name*(c1, c2: Collection[EntryType]): Collection[KeyType] =
     new result
     let empty_seq = newSeq[Row[ResultType]]()
     var t = initTable[KeyType, seq[Row[EntryType]]]()
-    var key: KeyType
-    for r in c1:
-      key = Kfn(r)
-      if t.hasKey(key):
-        t[key].add(r)
-      else:
-        t[key] = @[r]
+    t.to_row_table_by_key(c1, get_key)
     for r2 in c2:
-      key = Kfn(r2)
+      let key = get_key(r2)
       for r in t.getOrDefault(key, empty_seq):
-        result.add((Jfn(key, Vfn(r), Vfn(r2)), r.multiplicity * r2.multiplicity))
+        result.add((assemble_result(key, get_value(r), get_value(r2)), r.multiplicity * r2.multiplicity))
 
-#[
-## Keys must not be changed by the reduce fn
-proc reduce*[T, U](c: Collection[T], f: ReduceFn[T, U]): Collection[U] =
-  var t = initTable[Value, seq[Row[T]]]()
-  t.to_row_table_by_key(c)
-  for r in t.values:
-    for r2 in f(r):
-      result.add(r2)
+template narrow_reduce_collection_fn*(
+    EntryType, KeyType: typed,
+    get_key: untyped
+  ): untyped {.dirty.} =
+  proc reduce*[ResultType](c: Collection[EntryType], f: ReduceFn[EntryType, ResultType]): Collection[ResultType] =
+    new result
+    var t = initTable[KeyType, seq[Row[EntryType]]]()
+    to_row_table_by_key(t, c, get_key)
+    for r in t.values:
+      for r2 in f(r):
+        result.add(r2)
 
-proc count_inner[T](rows: seq[Row[T]]): seq[Row[T]] =
-  let k = rows[0].key
-  var cnt = 0
-  for r in rows: cnt += r.multiplicity
-  return @[(V [k, cnt.float64], 1)]
+template monomorphize_count_collection_fn*(
+    EntryType, ResultType: typed,
+    assemble_result: untyped
+  ): untyped {.dirty.} =
+  proc count_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
+    let k = rows[0].key
+    var cnt = 0
+    for r in rows: cnt += r.multiplicity
+    return @[(assemble_result(k, cnt), 1)]
+  proc count*(c: Collection[EntryType]): Collection[ResultType] =
+    return c.reduce(count_inner)
 
-proc count*[T](c: Collection[T]): Collection =
-  return c.reduce(count_inner)
+template monomorphize_sum_collection_fn*(
+    EntryType, ResultType: typed,
+    get_value_as_float, assemble_result: untyped
+  ): untyped {.dirty.} =
+  proc sum_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
+    let k = rows[0].key
+    var cnt = 0.float64
+    for r in rows: cnt += get_value_as_float(r) * r.multiplicity.float64
+    return @[(assemble_result(k, cnt), 1)]
+  proc sum*(c: Collection[EntryType]): Collection[ResultType] =
+    return c.reduce(sum_inner)
 
-proc sum_inner(rows: seq[Row]): seq[Row] =
-  let k = rows[0].key
-  var cnt = 0.float64
-  for r in rows: cnt += r.value.as_f64 * r.multiplicity.float64
-  return @[(V [k, cnt], 1)]
-
-proc sum*(c: Collection): Collection =
-  return c.reduce(sum_inner)
-
-proc distinct_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
+proc distinct_inner[T](rows: seq[Row[T]]): seq[Row[T]] =
+  var t = initTable[T, int]()
   for r in rows:
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
   result = @[]
@@ -199,63 +213,70 @@ proc distinct_inner(rows: seq[Row]): seq[Row] =
       result.add((e, 1))
 
 ## Reduce a collection to a set
-proc `distinct`*(c: Collection): Collection =
-  return c.reduce(distinct_inner)
+proc `distinct`*[T](c: Collection[T]): Collection[T] =
+  return c.reduce(distinct_inner[T])
 
-proc min_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
-  var k = rows[0].key
-  for r in rows:
-    t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
-  result = @[]
-  var value_seen = false
-  var min_val: ImValue
-  for e, i in t.pairs:
-    doAssert i >= 0
-    if i != 0:
-      if not(value_seen):
-        value_seen = true
-        min_val = e.value
-      elif e.value < min_val:
-        min_val = e.value
-  if value_seen:
-    return @[(V [k, min_val], 1)]
-  else:
-    return @[]
+template monomorphize_min_collection_fn*(
+    EntryType, ResultType: typed,
+    get_key, get_value, assemble_result: untyped
+  ): untyped {.dirty.} =
+  proc min_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
+    var t = initTable[EntryType, int]()
+    var k = get_key(rows[0])
+    for r in rows:
+      t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
+    result = @[]
+    var value_seen = false
+    var min_val: EntryType
+    for e, i in t.pairs:
+      doAssert i >= 0
+      if i != 0:
+        if not(value_seen):
+          value_seen = true
+          min_val = get_value(e)
+        elif get_value(e) < min_val:
+          min_val = get_value(e)
+    if value_seen:
+      return @[(assemble_result(k, min_val), 1)]
+    else:
+      return @[]
+  proc min*(c: Collection[EntryType]): Collection[ResultType] =
+    try:
+      return c.reduce(min_inner)
+    except TypeException as e:
+      raise newException(TypeException, "Incomparable types")
 
-proc min*(c: Collection): Collection =
-  try:
-    return c.reduce(min_inner)
-  except TypeException as e:
-    raise newException(TypeException, "Incomparable types")
+template monomorphize_max_collection_fn*(
+    EntryType, ResultType: typed,
+    get_key, get_value, assemble_result: untyped
+  ): untyped {.dirty.} =
+  proc max_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
+    var t = initTable[EntryType, int]()
+    var k = get_key(rows[0])
+    for r in rows:
+      t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
+    result = @[]
+    var value_seen = false
+    var max_val: EntryType
+    for e, i in t.pairs:
+      doAssert i >= 0
+      if i != 0:
+        if not(value_seen):
+          value_seen = true
+          max_val = get_value(e)
+        elif get_value(e) > max_val:
+          max_val = get_value(e)
+    if value_seen:
+      return @[(assemble_result(k, max_val), 1)]
+    else:
+      return @[]
+  proc max*(c: Collection[EntryType]): Collection[ResultType] =
+    try:
+      return c.reduce(max_inner)
+    except TypeException as e:
+      raise newException(TypeException, "Incomparable types")
 
-proc max_inner(rows: seq[Row]): seq[Row] =
-  var t = initTable[Entry, int]()
-  var k = rows[0].key
-  for r in rows:
-    t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
-  result = @[]
-  var value_seen = false
-  var max_val: ImValue
-  for e, i in t.pairs:
-    doAssert i >= 0
-    if i != 0:
-      if not(value_seen):
-        value_seen = true
-        max_val = e.value
-      elif e.value > max_val:
-        max_val = e.value
-  if value_seen:
-    return @[(V [k, max_val], 1)]
-  else:
-    return @[]
-
-proc max*(c: Collection): Collection =
-  try:
-    return c.reduce(max_inner)
-  except TypeException as e:
-    raise newException(TypeException, "Incomparable types")
-
+#[
 proc iterate*[T](c: Collection[T], f: CollIterateFn[T]): Collection[T] =
   var curr = c
   while true:

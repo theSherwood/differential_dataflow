@@ -8,151 +8,162 @@ template COL*[T](rows: openArray[Row[T]]): Collection[T] = init_collection[T](ro
 
 template key(e: ImValue): ImValue = e[0]
 template value(e: ImValue): ImValue = e[1]
-
 template key(r: Row[ImValue]): ImValue = r.entry[0]
 template value(r: Row[ImValue]): ImValue = r.entry[1]
-template join_inner(k, v1, v2: ImValue): ImValue = V([k, V([v1, v2])])
+template join_assemble(k, v1, v2: ImValue): ImValue = V([k, V([v1, v2])])
+template count_assemble(k: ImValue, cnt: int): ImValue = V([k, cnt.float64])
+template sum_assemble(k: ImValue, sum: float): ImValue = V([k, sum])
+template assemble_pair(v1, v2: ImValue): ImValue = V([v1, v2])
+template get_value_as_float(r: Row[ImValue]): float = r.value.as_f64
+
 monomorphize_join_collection_fn(ImValue, ImValue, ImValue,
   join,
   key,
   value,
-  join_inner
+  join_assemble
 )
+narrow_reduce_collection_fn(ImValue, ImValue, key)
+monomorphize_count_collection_fn(ImValue, ImValue, count_assemble)
+monomorphize_sum_collection_fn(ImValue, ImValue, get_value_as_float, sum_assemble)
+monomorphize_min_collection_fn(ImValue, ImValue, key, value, assemble_pair)
+monomorphize_max_collection_fn(ImValue, ImValue, key, value, assemble_pair)
 
 proc main* =
   suite "collection":
-    test "simple ints":
-      var
-        a = COL[int]([])
-        b = COL[int]([])
-        c = COL([(101, 1)])
-      check a == b
-      check a != c
+    suite "collection > int":
+      test "simple":
+        var
+          a = COL[int]([])
+          b = COL[int]([])
+          c = COL([(101, 1)])
+        check a == b
+        check a != c
 
-    test "simple ImValue":
-      var
-        a = COL[ImValue]([])
-        b = COL[ImValue]([])
-        c = COL([(V [0, 1], 1)])
-      check a == b
-      check a != c
+    suite "collection > ImValue":
+      test "simple":
+        var
+          a = COL[ImValue]([])
+          b = COL[ImValue]([])
+          c = COL([(V [0, 1], 1)])
+        check a == b
+        check a != c
 
-    test "various":
-      var
-        a = COL([
+      test "various":
+        var
+          a = COL([
+            (V ["apple", "$5"], 2),
+            (V ["banana", "$2"], 1),
+          ])
+          b = COL([
+            (V ["apple", "$3"], 1),
+            (V ["apple", ["granny smith", "$2"]], 1),
+            (V ["kiwi", "$2"], 1),
+          ])
+          c = COL([
+            (V ["apple", "$5"], 2),
+            (V ["banana", "$2"], 1),
+            (V ["apple", "$2"], 20),
+          ])
+          d = COL([
+            (V ["apple", 11], 1),
+            (V ["apple", 3], 2),
+            (V ["banana", 2], 3),
+            (V ["coconut", 3], 1),
+          ])
+          # some results
+          a_concat_b_result = COL([
+            (V ["apple", "$5"], 2),
+            (V ["banana", "$2"], 1),
+            (V ["apple", "$3"], 1),
+            (V ["apple", ["granny smith", "$2"]], 1),
+            (V ["kiwi", "$2"], 1),
+          ])
+          a_join_b_result = COL([
+            (V ["apple", ["$5", "$3"]], 2),
+            (V ["apple", ["$5", ["granny smith", "$2"]]], 2),
+          ])
+          b_join_a_result = COL([
+            (V ["apple", ["$3", "$5"]], 2),
+            (V ["apple", [["granny smith", "$2"], "$5"]], 2),
+          ])
+        check a.concat(b) == a_concat_b_result
+        check b.concat(a) == a_concat_b_result
+        check a.join(b) == a_join_b_result
+        check b.join(a) == b_join_a_result
+        check a.filter(proc (e: ImValue): bool = e.key == V "apple") == COL([
           (V ["apple", "$5"], 2),
-          (V ["banana", "$2"], 1),
         ])
-        b = COL([
+        check a.map(proc (e: ImValue): ImValue = V([e.value, e.key])) == COL([
+          (V ["$5", "apple"], 2),
+          (V ["$2", "banana"], 1),
+        ])
+        check a.concat(b).count() == COL([
+          (V ["apple", 4], 1),
+          (V ["banana", 1], 1),
+          (V ["kiwi", 1], 1),
+        ])
+        check a.concat(b).distinct() == COL([
+          (V ["apple", "$5"], 1),
+          (V ["banana", "$2"], 1),
           (V ["apple", "$3"], 1),
           (V ["apple", ["granny smith", "$2"]], 1),
           (V ["kiwi", "$2"], 1),
         ])
-        c = COL([
-          (V ["apple", "$5"], 2),
-          (V ["banana", "$2"], 1),
-          (V ["apple", "$2"], 20),
-        ])
-        d = COL([
-          (V ["apple", 11], 1),
-          (V ["apple", 3], 2),
-          (V ["banana", 2], 3),
+        check d.min() == COL([
+          (V ["apple", 3], 1),
+          (V ["banana", 2], 1),
           (V ["coconut", 3], 1),
         ])
-        # some results
-        a_concat_b_result = COL([
-          (V ["apple", "$5"], 2),
+        check d.max() == COL([
+          (V ["apple", 11], 1),
+          (V ["banana", 2], 1),
+          (V ["coconut", 3], 1),
+        ])
+        check d.sum() == COL([
+          (V ["apple", 17], 1),
+          (V ["banana", 6], 1),
+          (V ["coconut", 3], 1),
+        ])
+        check c.min() == COL([
+          (V ["apple", "$2"], 1),
           (V ["banana", "$2"], 1),
-          (V ["apple", "$3"], 1),
-          (V ["apple", ["granny smith", "$2"]], 1),
-          (V ["kiwi", "$2"], 1),
         ])
-        a_join_b_result = COL([
-          (V ["apple", ["$5", "$3"]], 2),
-          (V ["apple", ["$5", ["granny smith", "$2"]]], 2),
+        check c.max() == COL([
+          (V ["apple", "$5"], 1),
+          (V ["banana", "$2"], 1),
         ])
-        b_join_a_result = COL([
-          (V ["apple", ["$3", "$5"]], 2),
-          (V ["apple", [["granny smith", "$2"], "$5"]], 2),
+
+      test "negate":
+        var a = COL([
+          (V ["foo", Nil], 3),
+          (V ["foo", Nil], 1),
+          (V ["bar", Nil], 2),
         ])
-      check a.concat(b) == a_concat_b_result
-      check b.concat(a) == a_concat_b_result
-      check a.join(b) == a_join_b_result
-      check b.join(a) == b_join_a_result
-      check a.filter(proc (e: ImValue): bool = e.key == V "apple") == COL([
-        (V ["apple", "$5"], 2),
-      ])
-      check a.map(proc (e: ImValue): ImValue = V([e.value, e.key])) == COL([
-        (V ["$5", "apple"], 2),
-        (V ["$2", "banana"], 1),
-      ])
+        check a.negate == COL([
+          (V ["foo", Nil], -3),
+          (V ["foo", Nil], -1),
+          (V ["bar", Nil], -2),
+        ])
+
+      test "consolidate":
+        var a = COL([
+          (V ["foo", Nil], 1),
+          (V ["foo", Nil], 3),
+          (V ["bar", Nil], 3),
+          (V ["foo", Nil], 9),
+          (V ["bar", Nil], 3),
+          (V ["was", Nil], 3),
+          (V ["foo", Nil], 1),
+          (V ["bar", Nil], -47),
+          (V ["was", Nil], -3),
+        ])
+        check a.consolidate == COL([
+          (V ["foo", Nil], 14),
+          (V ["bar", Nil], -41),
+        ])
+        check a.concat(a.negate).consolidate == COL[ImValue]([])
+
 #[
-      check a.concat(b).count() == COL([
-        (V ["apple", 4], 1),
-        (V ["banana", 1], 1),
-        (V ["kiwi", 1], 1),
-      ])
-      check a.concat(b).distinct() == COL([
-        (V ["apple", "$5"], 1),
-        (V ["banana", "$2"], 1),
-        (V ["apple", "$3"], 1),
-        (V ["apple", ["granny smith", "$2"]], 1),
-        (V ["kiwi", "$2"], 1),
-      ])
-      check d.min() == COL([
-        (V ["apple", 3], 1),
-        (V ["banana", 2], 1),
-        (V ["coconut", 3], 1),
-      ])
-      check d.max() == COL([
-        (V ["apple", 11], 1),
-        (V ["banana", 2], 1),
-        (V ["coconut", 3], 1),
-      ])
-      check d.sum() == COL([
-        (V ["apple", 17], 1),
-        (V ["banana", 6], 1),
-        (V ["coconut", 3], 1),
-      ])
-      check c.min() == COL([
-        (V ["apple", "$2"], 1),
-        (V ["banana", "$2"], 1),
-      ])
-      check c.max() == COL([
-        (V ["apple", "$5"], 1),
-        (V ["banana", "$2"], 1),
-      ])
-
-    test "negate":
-      var a = COL([
-        (V ["foo", Nil], 3),
-        (V ["foo", Nil], 1),
-        (V ["bar", Nil], 2),
-      ])
-      check a.negate == COL([
-        (V ["foo", Nil], -3),
-        (V ["foo", Nil], -1),
-        (V ["bar", Nil], -2),
-      ])
-
-    test "consolidate":
-      var a = COL([
-        (V ["foo", Nil], 1),
-        (V ["foo", Nil], 3),
-        (V ["bar", Nil], 3),
-        (V ["foo", Nil], 9),
-        (V ["bar", Nil], 3),
-        (V ["was", Nil], 3),
-        (V ["foo", Nil], 1),
-        (V ["bar", Nil], -47),
-        (V ["was", Nil], -3),
-      ])
-      check a.consolidate == COL([
-        (V ["foo", Nil], 14),
-        (V ["bar", Nil], -41),
-      ])
-      check a.concat(a.negate).consolidate == COL([])
-
     test "iterate":
       var a = COL([(V [1, Nil], 1)])
       proc add_one(c: Collection): Collection =
