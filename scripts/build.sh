@@ -93,12 +93,10 @@ else
   exit 1
 fi
 
+C_DEBUG_OPTIONS=""
 NIM_DEBUG_OPTIONS="--d: release --stackTrace: off"
 if [ $DEBUG -eq 1 ]; then
   NIM_DEBUG_OPTIONS="--d: debug --stackTrace: on"
-fi
-C_DEBUG_OPTIONS=""
-if [ $DEBUG -eq 1 ]; then
   C_DEBUG_OPTIONS="-g"
 fi
 

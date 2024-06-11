@@ -2,31 +2,46 @@ import std/[sugar, sequtils]
 import ../src/[test_utils, dida_from_python, values]
 # import ../src/[test_utils, dida_from_python]
 
+
 template COL*[T](rows: openArray[Row[T]]): Collection[T] = init_collection[T](rows)
 # template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
 # template FTR*(versions: openArray[Version]): Frontier = init_frontier(versions)
 
-template key(e: ImValue): ImValue = e[0]
-template value(e: ImValue): ImValue = e[1]
-template key(r: Row[ImValue]): ImValue = r.entry[0]
-template value(r: Row[ImValue]): ImValue = r.entry[1]
-template join_assemble(k, v1, v2: ImValue): ImValue = V([k, V([v1, v2])])
-template count_assemble(k: ImValue, cnt: int): ImValue = V([k, cnt.float64])
-template sum_assemble(k: ImValue, sum: float): ImValue = V([k, sum])
-template assemble_pair(v1, v2: ImValue): ImValue = V([v1, v2])
-template get_value_as_float(r: Row[ImValue]): float = r.value.as_f64
+type Val = ImValue
+template key(e: Val): Val = e[0]
+template value(e: Val): Val = e[1]
+template key(r: Row[Val]): Val = r.entry[0]
+template value(r: Row[Val]): Val = r.entry[1]
+template join_assemble(k, v1, v2: Val): Val = V([k, V([v1, v2])])
+template count_assemble(k: Val, cnt: int): Val = V([k, cnt.float64])
+template sum_assemble(k: Val, sum: float): Val = V([k, sum])
+template assemble_pair(v1, v2: Val): Val = V([v1, v2])
+template mult_by_int(v: Val, i: int): float = (v.as_f64 * i.float64)
+narrow_reduce_collection_fn(Val, Val, key)
+monomorphize_join_collection_fn(Val, Val, Val, join, key, value, join_assemble)
+monomorphize_count_collection_fn(Val, Val, key, count_assemble)
+monomorphize_sum_collection_fn(Val, Val, key, value, mult_by_int, sum_assemble)
+monomorphize_min_collection_fn(Val, Val, key, value, assemble_pair)
+monomorphize_max_collection_fn(Val, Val, key, value, assemble_pair)
 
-monomorphize_join_collection_fn(ImValue, ImValue, ImValue,
-  join,
-  key,
-  value,
-  join_assemble
-)
-narrow_reduce_collection_fn(ImValue, ImValue, key)
-monomorphize_count_collection_fn(ImValue, ImValue, count_assemble)
-monomorphize_sum_collection_fn(ImValue, ImValue, get_value_as_float, sum_assemble)
-monomorphize_min_collection_fn(ImValue, ImValue, key, value, assemble_pair)
-monomorphize_max_collection_fn(ImValue, ImValue, key, value, assemble_pair)
+type I2 = (int, int)
+template key(e: I2): int = e[0]
+template value(e: I2): int = e[1]
+template key(r: Row[I2]): int = r.entry[0]
+template value(r: Row[I2]): int = r.entry[1]
+template join_assemble(k, v1, v2: int): (int, I2) = (k, (v1, v2))
+template assemble_pair(v1, v2: int): I2 = (v1, v2)
+template mult(v, i: int): int = v * i
+narrow_reduce_collection_fn(I2, int, key)
+monomorphize_join_collection_fn(I2, int, (int, I2), join, key, value, join_assemble)
+monomorphize_count_collection_fn(I2, I2, key, assemble_pair)
+monomorphize_sum_collection_fn(I2, I2, key, value, mult, assemble_pair)
+monomorphize_min_collection_fn(I2, I2, key, value, assemble_pair)
+monomorphize_max_collection_fn(I2, I2, key, value, assemble_pair)
+
+template bare_int_key(r: Row[int]): int = r.entry
+template bare_int_value(r: Row[int]): int = r.entry
+narrow_reduce_collection_fn(int, int, bare_int_key)
 
 proc main* =
   suite "collection":
@@ -39,14 +54,204 @@ proc main* =
         check a == b
         check a != c
 
+      test "negate":
+        var a = COL([
+          (7, 3),
+          (9, 1),
+          (11, 2),
+        ])
+        check a.negate == COL([
+          (7, -3),
+          (9, -1),
+          (11, -2),
+        ])
+
+      test "consolidate":
+        var a = COL([
+          (9, 3),
+          (7, 3),
+          (9, 9),
+          (9, 1),
+          (7, 3),
+          (5, 3),
+          (9, 1),
+          (7, -47),
+          (5, -3),
+        ])
+        check a.consolidate == COL([
+          (9, 14),
+          (7, -41),
+        ])
+        check a.concat(a.negate).consolidate == COL[int]([])
+
+      test "various":
+        var
+          a = COL([
+            ((0, 5), 2),
+            ((1, 2), 1),
+          ])
+          b = COL([
+            ((0, 3), 1),
+            ((0, 17), 1),
+            ((2, 2), 1),
+          ])
+          c = COL([
+            ((0, 5), 2),
+            ((1, 2), 1),
+            ((0, 2), 20),
+          ])
+          d = COL([
+            ((0, 11), 1),
+            ((0, 3), 2),
+            ((1, 2), 3),
+            ((3, 3), 1),
+          ])
+          # some results
+          a_concat_b_result = COL([
+            ((0, 5), 2),
+            ((1, 2), 1),
+            ((0, 3), 1),
+            ((0, 17), 1),
+            ((2, 2), 1),
+          ])
+          a_join_b_result = COL([
+            ((0, (5, 3)), 2),
+            ((0, (5, 17)), 2),
+          ])
+          b_join_a_result = COL([
+            ((0, (3, 5)), 2),
+            ((0, (17, 5)), 2),
+          ])
+        check a.concat(b) == a_concat_b_result
+        check b.concat(a) == a_concat_b_result
+        check a.join(b) == a_join_b_result
+        check b.join(a) == b_join_a_result
+        check a.filter(proc (e: I2): bool = e.key == 0) == COL([
+          ((0, 5), 2),
+        ])
+        check a.map(proc (e: I2): I2 = (e.value, e.key)) == COL([
+          ((5, 0), 2),
+          ((2, 1), 1),
+        ])
+        check a.concat(b).count() == COL([
+          ((0, 4), 1),
+          ((1, 1), 1),
+          ((2, 1), 1),
+        ])
+        check a.concat(b).distinct() == COL([
+          ((0, 5), 1),
+          ((1, 2), 1),
+          ((0, 3), 1),
+          ((0, 17), 1),
+          ((2, 2), 1),
+        ])
+        check d.min() == COL([
+          ((0, 3), 1),
+          ((1, 2), 1),
+          ((3, 3), 1),
+        ])
+        check d.max() == COL([
+          ((0, 11), 1),
+          ((1, 2), 1),
+          ((3, 3), 1),
+        ])
+        check d.sum() == COL([
+          ((0, 17), 1),
+          ((1, 6), 1),
+          ((3, 3), 1),
+        ])
+        check c.min() == COL([
+          ((0, 2), 1),
+          ((1, 2), 1),
+        ])
+        check c.max() == COL([
+          ((0, 5), 1),
+          ((1, 2), 1),
+        ])
+
+      test "iterate I2":
+        var a = COL([((1, 0), 1)])
+        proc add_one(c: Collection): Collection =
+          return c.map((e) => (e.key + 1, e.value))
+            .concat(c)
+            .filter(proc (e: I2): bool = e.key < 5)
+            .distinct
+            .consolidate
+        check a.iterate(add_one) == COL([
+          ((1, 0), 1),
+          ((2, 0), 1),
+          ((3, 0), 1),
+          ((4, 0), 1),
+        ])
+
+      test "iterate int":
+        var a = COL([(1, 1)])
+        proc add_one(c: Collection[int]): Collection[int] =
+          return c.map(proc (e: int): int = e + 1)
+            .concat(c)
+            .filter(proc (e: int): bool = e < 5)
+            .distinct
+            .consolidate
+        check a.iterate(add_one) == COL([
+          (1, 1),
+          (2, 1),
+          (3, 1),
+          (4, 1),
+        ])
+
     suite "collection > ImValue":
       test "simple":
         var
-          a = COL[ImValue]([])
-          b = COL[ImValue]([])
+          a = COL[Val]([])
+          b = COL[Val]([])
           c = COL([(V [0, 1], 1)])
         check a == b
         check a != c
+
+      test "negate":
+        var a = COL([
+          (V ["foo", Nil], 3),
+          (V ["foo", Nil], 1),
+          (V ["bar", Nil], 2),
+        ])
+        check a.negate == COL([
+          (V ["foo", Nil], -3),
+          (V ["foo", Nil], -1),
+          (V ["bar", Nil], -2),
+        ])
+
+      test "consolidate":
+        var a = COL([
+          (V ["foo", Nil], 1),
+          (V ["foo", Nil], 3),
+          (V ["bar", Nil], 3),
+          (V ["foo", Nil], 9),
+          (V ["bar", Nil], 3),
+          (V ["was", Nil], 3),
+          (V ["foo", Nil], 1),
+          (V ["bar", Nil], -47),
+          (V ["was", Nil], -3),
+        ])
+        check a.consolidate == COL([
+          (V ["foo", Nil], 14),
+          (V ["bar", Nil], -41),
+        ])
+        check a.concat(a.negate).consolidate == COL[Val]([])
+
+      test "iterate":
+        var a = COL([(V [1, Nil], 1)])
+        proc add_one(c: Collection[Val]): Collection[Val] =
+          return c.map((e) => V([(e.key.as_f64 + 1.0).v, e.value]))
+            .concat(c)
+            .filter(proc (e: Val): bool = e.key < V 5.0)
+            .distinct
+            .consolidate
+        check a.iterate(add_one) == COL([
+          (V [1, Nil], 1),
+          (V [2, Nil], 1),
+          (V [3, Nil], 1),
+          (V [4, Nil], 1),
+        ])
 
       test "various":
         var
@@ -90,10 +295,10 @@ proc main* =
         check b.concat(a) == a_concat_b_result
         check a.join(b) == a_join_b_result
         check b.join(a) == b_join_a_result
-        check a.filter(proc (e: ImValue): bool = e.key == V "apple") == COL([
+        check a.filter(proc (e: Val): bool = e.key == V "apple") == COL([
           (V ["apple", "$5"], 2),
         ])
-        check a.map(proc (e: ImValue): ImValue = V([e.value, e.key])) == COL([
+        check a.map(proc (e: Val): Val = V([e.value, e.key])) == COL([
           (V ["$5", "apple"], 2),
           (V ["$2", "banana"], 1),
         ])
@@ -133,52 +338,6 @@ proc main* =
           (V ["banana", "$2"], 1),
         ])
 
-      test "negate":
-        var a = COL([
-          (V ["foo", Nil], 3),
-          (V ["foo", Nil], 1),
-          (V ["bar", Nil], 2),
-        ])
-        check a.negate == COL([
-          (V ["foo", Nil], -3),
-          (V ["foo", Nil], -1),
-          (V ["bar", Nil], -2),
-        ])
-
-      test "consolidate":
-        var a = COL([
-          (V ["foo", Nil], 1),
-          (V ["foo", Nil], 3),
-          (V ["bar", Nil], 3),
-          (V ["foo", Nil], 9),
-          (V ["bar", Nil], 3),
-          (V ["was", Nil], 3),
-          (V ["foo", Nil], 1),
-          (V ["bar", Nil], -47),
-          (V ["was", Nil], -3),
-        ])
-        check a.consolidate == COL([
-          (V ["foo", Nil], 14),
-          (V ["bar", Nil], -41),
-        ])
-        check a.concat(a.negate).consolidate == COL[ImValue]([])
-
-#[
-    test "iterate":
-      var a = COL([(V [1, Nil], 1)])
-      proc add_one(c: Collection): Collection =
-        return c.map((e) => V([(e.key.as_f64 + 1.0).v, e.value]))
-          .concat(c)
-          .filter(proc (e: Entry): bool = e.key < V 5.0)
-          .distinct
-          .consolidate
-      check a.iterate(add_one) == COL([
-        (V [1, Nil], 1),
-        (V [2, Nil], 1),
-        (V [3, Nil], 1),
-        (V [4, Nil], 1),
-      ])
-]#
 
 #[
   suite "version":

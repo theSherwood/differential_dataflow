@@ -33,13 +33,16 @@ type
   MapFn*[T, U] = proc (e: T): U {.closure.}
   FilterFn*[T] = proc (e: T): bool {.closure.}
   ReduceFn*[T, U] = proc (rows: seq[Row[T]]): seq[Row[U]] {.closure.}
-  # CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
+  CollIterateFn*[T] = proc (c: Collection[T]): Collection[T] {.closure.}
   # TODO - figure out some stream or iterator concept so we don't have a bunch
   # of different versions of this.
   # FlatMapFn* = proc (e: Entry): ImArray {.closure.}
   # FlatMapSeqFn* = proc (e: Entry): seq[Entry] {.closure.}
 
 template size*[T](c: Collection[T]): int = c.rows.len
+
+proc `$`*[T](c: Collection[T]): string =
+  $(c[])
 
 # proc key*(e: Entry): Value =
 #   doAssert e.is_array
@@ -125,11 +128,9 @@ func consolidate*[T](c: Collection[T]): Collection[T] =
   for e, m in t.pairs:
     if m != 0: result.add((e, m))
 
-#[
 proc print*[T](c: Collection[T], label: string): Collection[T] =
   echo label, ": ", c
   return c
-]#
 
 template to_row_table_by_key*[EntryType, KeyType](
     t: var Table[KeyType, seq[Row[EntryType]]],
@@ -144,21 +145,13 @@ template to_row_table_by_key*[EntryType, KeyType](
       else:
         t[key] = @[r]
 
-proc join2*[T, U](c1, c2: Collection[T]): Collection[U] =
-  let empty_seq = newSeq[Row[U]]()
-  var t = initTable[T, seq[Row[T]]]()
-  t.to_row_table_by_key(c1)
-  for r in c2:
-    for r2 in t.getOrDefault(r.key, empty_seq):
-      result.add((V [r.key, [r2.value, r.value]], r.multiplicity * r2.multiplicity))
-
 template monomorphize_join_collection_fn*(
     EntryType, KeyType, ResultType: typed,
     name, get_key, get_value, assemble_result: untyped
   ): untyped {.dirty.} =
-  proc name*(c1, c2: Collection[EntryType]): Collection[KeyType] =
+  proc name*(c1, c2: Collection[EntryType]): Collection[ResultType] =
     new result
-    let empty_seq = newSeq[Row[ResultType]]()
+    let empty_seq = newSeq[Row[EntryType]]()
     var t = initTable[KeyType, seq[Row[EntryType]]]()
     t.to_row_table_by_key(c1, get_key)
     for r2 in c2:
@@ -180,10 +173,10 @@ template narrow_reduce_collection_fn*(
 
 template monomorphize_count_collection_fn*(
     EntryType, ResultType: typed,
-    assemble_result: untyped
+    get_key, assemble_result: untyped
   ): untyped {.dirty.} =
   proc count_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
-    let k = rows[0].key
+    let k = get_key(rows[0])
     var cnt = 0
     for r in rows: cnt += r.multiplicity
     return @[(assemble_result(k, cnt), 1)]
@@ -192,12 +185,12 @@ template monomorphize_count_collection_fn*(
 
 template monomorphize_sum_collection_fn*(
     EntryType, ResultType: typed,
-    get_value_as_float, assemble_result: untyped
+    get_key, get_value, multiply, assemble_result: untyped
   ): untyped {.dirty.} =
   proc sum_inner(rows: seq[Row[EntryType]]): seq[Row[ResultType]] =
-    let k = rows[0].key
-    var cnt = 0.float64
-    for r in rows: cnt += get_value_as_float(r) * r.multiplicity.float64
+    let k = get_key(rows[0])
+    var cnt = multiply(get_value(rows[0]), 0)
+    for r in rows: cnt += multiply(get_value(r), r.multiplicity)
     return @[(assemble_result(k, cnt), 1)]
   proc sum*(c: Collection[EntryType]): Collection[ResultType] =
     return c.reduce(sum_inner)
@@ -227,7 +220,7 @@ template monomorphize_min_collection_fn*(
       t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
     result = @[]
     var value_seen = false
-    var min_val: EntryType
+    var min_val: typeof get_value(default(EntryType))
     for e, i in t.pairs:
       doAssert i >= 0
       if i != 0:
@@ -241,6 +234,7 @@ template monomorphize_min_collection_fn*(
     else:
       return @[]
   proc min*(c: Collection[EntryType]): Collection[ResultType] =
+    new result
     try:
       return c.reduce(min_inner)
     except TypeException as e:
@@ -257,7 +251,7 @@ template monomorphize_max_collection_fn*(
       t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
     result = @[]
     var value_seen = false
-    var max_val: EntryType
+    var max_val: typeof get_value(default(EntryType))
     for e, i in t.pairs:
       doAssert i >= 0
       if i != 0:
@@ -276,14 +270,12 @@ template monomorphize_max_collection_fn*(
     except TypeException as e:
       raise newException(TypeException, "Incomparable types")
 
-#[
 proc iterate*[T](c: Collection[T], f: CollIterateFn[T]): Collection[T] =
   var curr = c
   while true:
     result = f(curr)
     if curr == result: break
     curr = result
-]#
 
 proc init_collection*[T](rows: openArray[Row[T]]): Collection[T] =
   new result
