@@ -451,14 +451,13 @@ proc step*(f: Frontier, delta: int): Frontier =
 #            INDEX
 # #region =============================================================
 
-#[
 
 type
-  Index* = ref object
+  Index*[T] = ref object
     compaction_frontier*: Frontier
     # Might be better as a tuple tree
-    key_to_versions*: Table[Value, seq[Version]] 
-    key_version_to_rows*: Table[(Value, Version), seq[Row]]
+    key_to_versions*: Table[T, seq[Version]] 
+    key_version_to_rows*: Table[(T, Version), seq[Row[T]]]
 
 proc is_empty(i: Index): bool =
   return i.key_to_versions.len == 0
@@ -470,16 +469,16 @@ proc validate(i: Index, f: Frontier) =
   if i.compaction_frontier.isNil: return
   doAssert i.compaction_frontier.le(f)
 
-proc reconstruct_at(i: Index, key: Value, v: Version): seq[Row] =
+proc reconstruct_at[T](i: Index[T], key: T, v: Version): seq[Row[T]] =
   i.validate(v)
   for vers in i.key_to_versions.getOrDefault(key):
     if vers.le(v):
       result.add(i.key_version_to_rows.getOrDefault((key, vers)))
 
-proc versions(i: Index, key: Value): seq[Version] =
+proc versions[T](i: Index[T], key: T): seq[Version] =
   return i.key_to_versions.getOrDefault(key)
 
-proc add(i: var Index, key: Value, version: Version, row: Row) =
+proc add[T](i: var Index[T], key: T, version: Version, row: Row[T]) =
   if key in i.key_to_versions:
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
@@ -492,7 +491,7 @@ proc add(i: var Index, key: Value, version: Version, row: Row) =
   else:
     i.key_to_versions[key] = @[version]
     i.key_version_to_rows[(key, version)] = @[row]
-proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
+proc add[T](i: var Index[T], key: T, version: Version, rows: seq[Row[T]]) =
   if key in i.key_to_versions:
     var s = i.key_to_versions[key]
     if s.find(version) == -1:
@@ -506,7 +505,7 @@ proc add(i: var Index, key: Value, version: Version, rows: seq[Row]) =
     i.key_to_versions[key] = @[version]
     i.key_version_to_rows[(key, version)] = rows
 
-proc pop(i: var Index, key: Value, version: Version, rows: var seq[Row]) =
+proc pop[T](i: var Index[T], key: T, version: Version, rows: var seq[Row[T]]) =
   var versions = i.key_to_versions[key]
   let idx = versions.find(version)
   if idx == -1: return
@@ -514,7 +513,7 @@ proc pop(i: var Index, key: Value, version: Version, rows: var seq[Row]) =
   i.key_to_versions[key] = versions
   discard i.key_version_to_rows.pop((key, version), rows)
 
-proc mut_concat(i1: var Index, i2: Index) =
+proc mut_concat[T](i1: var Index[T], i2: Index[T]) =
   if i2.is_empty: return
   for (kv, rows) in i2.key_version_to_rows.pairs:
     let (key, version) = kv
@@ -531,11 +530,16 @@ proc mut_concat(i1: var Index, i2: Index) =
       i1.key_to_versions[key] = @[version]
       i1.key_version_to_rows[kv] = rows
 
-proc join_inner(i1, i2: Index, fn: proc (r1, r2: Row): Row): seq[(Version, Collection)] =
+proc join_inner[T, U, V](
+    i1: Index[T], i2: Index[U], fn: proc (r1: Row[T], r2: Row[U]): Row[V]
+  ): seq[(Version, Collection[V])] =
   if i1.is_empty or i2.is_empty: return
   var join_version: Version
-  var version_to_rows: Table[Version, seq[Row]]
-  var rows, rows1, rows2: seq[Row]
+  var version_to_rows: Table[Version, seq[Row[V]]]
+  var
+    rows: seq[Row[V]]
+    rows1: seq[Row[T]]
+    rows2: seq[Row[U]]
   for (key, versions) in i1.key_to_versions.pairs:
     if key notin i2.key_to_versions: continue
     let versions2 = i2.key_to_versions[key]
@@ -555,16 +559,18 @@ proc join_inner(i1, i2: Index, fn: proc (r1, r2: Row): Row): seq[(Version, Colle
   for (v, rows) in version_to_rows.pairs:
     if rows.len > 0: result.add((v, Collection(rows: rows)))
 
-template product_join(i1, i2: Index): seq[(Version, Collection)] =
-  join_inner(i1, i2, (r1, r2) => (V([r1.entry, r2.entry]), r1.multiplicity * r2.multiplicity))
-template join(i1, i2: Index): seq[(Version, Collection)] =
-  join_inner(i1, i2, (r1, r2) => (V([r1.key, [r1.value, r2.value]]), r1.multiplicity * r2.multiplicity))
+# template product_join[T, U, V](i1: Index[T], i2: Index[U]): seq[(Version, Collection[V])] =
+#   join_inner(i1, i2, (r1, r2) => (V([r1.entry, r2.entry]), r1.multiplicity * r2.multiplicity))
+# template join(i1, i2: Index): seq[(Version, Collection)] =
+#   join_inner(i1, i2, (r1, r2) => (V([r1.key, [r1.value, r2.value]]), r1.multiplicity * r2.multiplicity))
 
-proc semijoin(i1, i2: Index): seq[(Version, Collection)] =
+proc semijoin[T, U, V](i1: Index[T], i2: Index[U]): seq[(Version, Collection[V])] =
   # if i1.is_empty or i2.is_empty: return
   var join_version: Version
-  var version_to_rows: Table[Version, seq[Row]]
-  var rows, rows1: seq[Row]
+  var version_to_rows: Table[Version, seq[Row[V]]]
+  var
+    rows: seq[Row[V]]
+    rows1: seq[Row[T]]
   for (key, versions) in i1.key_to_versions.pairs:
     if key notin i2.key_to_versions: continue
     let versions2 = i2.key_to_versions[key]
@@ -584,7 +590,7 @@ proc semijoin(i1, i2: Index): seq[(Version, Collection)] =
 
 ## TODO - make this faster
 ## It is currently so slow as to be completely unusable.
-proc compact(i: var Index, compaction_frontier: Frontier) =
+proc compact[T](i: var Index[T], compaction_frontier: Frontier) =
   i.validate(compaction_frontier)
   for (key, versions) in i.key_to_versions.pairs:
     var to_consolidate: seq[Version] = @[]
@@ -593,7 +599,7 @@ proc compact(i: var Index, compaction_frontier: Frontier) =
       if compaction_frontier.le(version).not:
         to_compact.add(version)
     for version in to_compact:
-      var rows: seq[Row] 
+      var rows: seq[Row[T]] 
       i.pop(key, version, rows)
       let new_version = version.advance_by(compaction_frontier)
       i.add(key, new_version, rows)
@@ -608,29 +614,30 @@ proc compact(i: var Index, compaction_frontier: Frontier) =
 #            NODES
 # #region =============================================================
 
+#[
 type
   BuilderIterateFn* = proc (b: Builder): Builder
-  OnRowFn* = proc (r: Row): void
-  OnCollectionFn* = proc (v: Version, c: Collection): void
-  OnMessageFn* = proc (m: Message): void
+  OnRowFn*[T] = proc (r: Row[T]): void
+  OnCollectionFn*[T] = proc (v: Version, c: Collection[T]): void
+  OnMessageFn*[T] = proc (m: Message[T]): void
 
   MessageTag* = enum
     tData
     tFrontier
   
-  Message* = object
+  Message*[T] = object
     case tag*: MessageTag:
       of tData:
         version*: Version
-        collection*: Collection
+        collection*: Collection[T]
       of tFrontier:
         frontier*: Frontier
 
-  Edge* = ref object
+  Edge*[T] = ref object
     id*: Hash
-    input*: Node
-    output*: Node
-    queue*: seq[Message]
+    input*: Node[T] # TODO - fix this generic param
+    output*: Node[T]
+    queue*: seq[Message[T]]
     frontier*: Frontier
   
   NodeTag* = enum
@@ -673,7 +680,7 @@ type
     tVersionIncrement
     tVersionPop
 
-  Node* = ref object
+  Node*[T] = ref object
     id*: int
     inputs*: seq[Edge]
     outputs*: seq[Edge]

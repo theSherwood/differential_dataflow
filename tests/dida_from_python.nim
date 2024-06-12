@@ -425,30 +425,33 @@ proc main* =
 
 #[
   suite "dida":
-    test "simple on_row and on_collection":
-      var
-        initial_data: seq[(Version, Collection)] = @[
-          ([0].VER, [(V [0, 1], 1)].COL),
-          ([0].VER, [(V [2, 3], 1)].COL),
-        ]
-        result_rows: seq[Row] = @[]
-        result_data: seq[(Version, Collection)] = @[]
-        correct_rows: seq[Row] = @[(V [0, 1], -1), (V [2, 3], -1)]
-        correct_data: seq[(Version, Collection)] = @[
-          ([0].VER, [(V [0, 1], -1)].COL),
-          ([0].VER, [(V [2, 3], -1)].COL),
-        ]
-        b = init_builder()
-          .negate()
-          .on_row(proc (r: Row) = result_rows.add(r))
-          .on_collection(proc (v: Version, c: Collection) = result_data.add((v, c)))
-        g = b.graph
-      for (v, c) in initial_data: g.send(v, c)
-      g.send([[1].VER].FTR)
-      g.step
-      check result_rows == correct_rows
-      check result_data == correct_data
+    suite "dida > ImValue":
+      test "simple on_row and on_collection":
+        var
+          initial_data: seq[(Version, Collection)] = @[
+            ([0].VER, [(V [0, 1], 1)].COL),
+            ([0].VER, [(V [2, 3], 1)].COL),
+          ]
+          result_rows: seq[Row[Val]] = @[]
+          result_data: seq[(Version, Collection)] = @[]
+          correct_rows = @[(V [0, 1], -1), (V [2, 3], -1)]
+          correct_data: seq[(Version, Collection)] = @[
+            ([0].VER, [(V [0, 1], -1)].COL),
+            ([0].VER, [(V [2, 3], -1)].COL),
+          ]
+          b = init_builder()
+            .negate()
+            .on_row(proc (r: Row[Val]) = result_rows.add(r))
+            .on_collection(proc (v: Version, c: Collection[Val]) = result_data.add((v, c)))
+          g = b.graph
+        for (v, c) in initial_data: g.send(v, c)
+        g.send([[1].VER].FTR)
+        g.step
+        check result_rows == correct_rows
+        check result_data == correct_data
+      ]#
     
+#[
     test "simple accumulate_results":
       var
         initial_data: seq[(Version, Collection)] = @[
