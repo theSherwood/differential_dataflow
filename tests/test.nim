@@ -1,14 +1,20 @@
 from ../src/test_utils import failures
-from vec import nil
+from ./persistent/vec import nil
+from ./persistent/map import nil
+from ./persistent/set import nil
+from ./persistent/multiset import nil
 from sumtree import nil
 from values import nil
 from dida_from_python import nil
 
 # Run tests
-vec.main()
+# vec.main()
+# map.main()
+# set.main()
+# multiset.main()
 # sumtree.main()
-# values.main()
-# dida_from_python.main()
+values.main()
+dida_from_python.main()
 
 when defined(wasm):
   if failures > 0: raise newException(AssertionDefect, "Something failed.")
