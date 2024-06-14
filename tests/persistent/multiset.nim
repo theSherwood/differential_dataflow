@@ -1,7 +1,6 @@
 import std/[tables, strutils, sequtils, algorithm]
 import ../../src/[test_utils]
 import ../../src/persistent/[map]
-# import ../../src/values
 
 proc main* =
   suite "persistent multiset":

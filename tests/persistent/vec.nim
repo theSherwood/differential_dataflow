@@ -22,7 +22,7 @@ import ../../src/persistent/[vec]
 ## [ ] transient mutation
 ## 
 ## Impl
-## [ ] get ImArray to use this
+## [x] get ImArray to use this
 ## [x] add hash to pvec summary
 ## [ ] use `distinct` so that we can have monomorphic impls come after sumtree
 ##   - look at impl of https://github.com/Nycto/RBTreeNim/blob/master/src/rbtree.nim

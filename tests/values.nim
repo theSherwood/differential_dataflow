@@ -47,7 +47,27 @@ proc main* =
       check s3 != s2
       check s3 == s1
       check s4 == s3
- 
+
+  suite "symbol":
+    test "simple":
+      var
+        s1 = Sym()
+        s2 = Sym()
+        s3 = Sym "x"
+        s4 = Sym "x"
+        s5 = s1
+        s6 = s1
+        s7 = s3
+        s8 = s3
+      check s1 != s2
+      check s1 != s3
+      check s1 != s4
+      check s3 != s4
+      check s5 == s1
+      check s5 == s6
+      check s7 == s3
+      check s7 == s8
+
   suite "map":
     test "immutable updates":
       var

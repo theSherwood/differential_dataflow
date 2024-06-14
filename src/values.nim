@@ -119,7 +119,8 @@ import persistent/[vec, map]
 ## 011 - array
 ## 100 - set
 ## 101 - map
-## 110-111 - (unused, 2 values)
+## 110 - symbol
+## 111 - (unused)
 ##
 ## ### Going with OPTION 2 for now
 ## 
@@ -146,7 +147,8 @@ import persistent/[vec, map]
 ## 011 - array
 ## 100 - set
 ## 101 - map
-## 110-111 - (unused, 2 values)
+## 110 - symbol
+## 111 - (unused)
 ##
 ## +- Heap bit (1)
 ## |            +- Heap type bits (3)
@@ -180,6 +182,7 @@ type
     kArray
     kMap
     kSet
+    kSymbol
 
 when c32:
   type ImValue* = object
@@ -199,10 +202,14 @@ type
   ImArrayPayload* = PVec[ImValue]
   ImMapPayload* = PMap[ImValue, ImValue]
   ImSetPayload* = PSet[ImValue]
+  ImSymbolPayload* = object
+    id: uint
+    data: string
   ImStringPayloadRef* = ref ImStringPayload
   ImArrayPayloadRef*  = ref ImArrayPayload
   ImMapPayloadRef*    = ref ImMapPayload
   ImSetPayloadRef*    = ref ImSetPayload
+  ImSymbolPayloadRef* = ref ImSymbolPayload
 
   ImNaN*    = distinct uint64
   ImNil*    = distinct uint64
@@ -223,7 +230,9 @@ when c32:
     ImSet* = object
       tail*: ImSetPayloadRef
       head*: uint32
-  
+    ImSymbol* = object
+      tail*: ImSymbolPayloadRef
+      head*: uint32
 else:
   type
     MaskedRef*[T] = object
@@ -233,10 +242,11 @@ else:
     ImArray*  = MaskedRef[ImArrayPayload]
     ImMap*    = MaskedRef[ImMapPayload]
     ImSet*    = MaskedRef[ImSetPayload]
+    ImSymbol* = MaskedRef[ImSymbolPayload]
 
 type
   ImSV* = ImNaN or ImNil or ImBool or ImAtom
-  ImHV* = ImString or ImArray or ImMap or ImSet
+  ImHV* = ImString or ImArray or ImMap or ImSet or ImSymbol
   ImV* = ImSV or ImHV
 
 ## Forward declare this so that we make sure the same hash function is always
@@ -259,6 +269,7 @@ template as_str*(v: typed): ImString = cast[ImString](cast[uint64](v))
 template as_arr*(v: typed): ImArray = cast[ImArray](cast[uint64](v))
 template as_map*(v: typed): ImMap = cast[ImMap](cast[uint64](v))
 template as_set*(v: typed): ImSet = cast[ImSet](cast[uint64](v))
+template as_sym*(v: typed): ImSymbol = cast[ImSymbol](cast[uint64](v))
 
 # Conversions #
 # ---------------------------------------------------------------------
@@ -268,6 +279,7 @@ template v*(x: ImString): ImValue = x.as_v
 template v*(x: ImSet): ImValue = x.as_v
 template v*(x: ImArray): ImValue = x.as_v
 template v*(x: ImMap): ImValue = x.as_v
+template v*(x: ImSymbol): ImValue = x.as_v
 template v*(x: ImNil): ImValue = x.as_v
 template v*(x: ImBool): ImValue = x.as_v
 
@@ -307,6 +319,7 @@ when c32:
   const MASK_TYPE_ARR    = 0b10000000000000110000000000000000'u32
   const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u32
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u32
+  const MASK_TYPE_SYM    = 0b10000000000001100000000000000000'u32
 
 else:
   # const MASK_SIGN        = 0b10000000000000000000000000000000'u64 shl 32
@@ -328,6 +341,7 @@ else:
   const MASK_TYPE_ARR    = 0b10000000000000110000000000000000'u64 shl 32
   const MASK_TYPE_SET    = 0b10000000000001000000000000000000'u64 shl 32
   const MASK_TYPE_MAP    = 0b10000000000001010000000000000000'u64 shl 32
+  const MASK_TYPE_SYM    = 0b10000000000001100000000000000000'u64 shl 32
 
   const MASK_POINTER     = 0x0000ffffffffffff'u64
 
@@ -342,6 +356,7 @@ const MASK_SIG_BIGNUM  = MASK_EXP_OR_Q or MASK_TYPE_BIGNUM
 const MASK_SIG_ARR     = MASK_EXP_OR_Q or MASK_TYPE_ARR
 const MASK_SIG_SET     = MASK_EXP_OR_Q or MASK_TYPE_SET
 const MASK_SIG_MAP     = MASK_EXP_OR_Q or MASK_TYPE_MAP
+const MASK_SIG_SYM     = MASK_EXP_OR_Q or MASK_TYPE_SYM
 
 # Get Payload #
 # ---------------------------------------------------------------------
@@ -351,6 +366,7 @@ when c32:
   template payload*(v: ImMap): ImMapPayloadRef       = v.tail
   template payload*(v: ImArray): ImArrayPayloadRef   = v.tail
   template payload*(v: ImSet): ImSetPayloadRef       = v.tail
+  template payload*(v: ImSymbol): ImSymbolPayloadRef = v.tail
 else:
   template to_clean_ptr(v: typed): pointer =
     cast[pointer](bitand((v).as_u64, MASK_POINTER))
@@ -359,6 +375,7 @@ else:
   template payload*(v: ImMap): ImMapPayloadRef       = cast[ImMapPayloadRef](to_clean_ptr(v.p))
   template payload*(v: ImArray): ImArrayPayloadRef   = cast[ImArrayPayloadRef](to_clean_ptr(v.p))
   template payload*(v: ImSet): ImSetPayloadRef       = cast[ImSetPayloadRef](to_clean_ptr(v.p))
+  template payload*(v: ImSymbol): ImSymbolPayloadRef = cast[ImSymbolPayloadRef](to_clean_ptr(v.p))
 
 # Type Detection #
 # ---------------------------------------------------------------------
@@ -388,6 +405,8 @@ template is_set*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_SET
 template is_map*(v: typed): bool =
   bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_MAP
+template is_symbol*(v: typed): bool =
+  bitand(v.type_bits, MASK_SIGNATURE) == MASK_SIG_SYM
 template is_heap*(v: typed): bool =
   bitand(v.type_bits, MASK_HEAP) == MASK_HEAP
 
@@ -404,6 +423,7 @@ proc get_type*(v: ImValue): ImValueKind =
     of MASK_SIG_ARR:    return kArray
     of MASK_SIG_SET:    return kSet
     of MASK_SIG_MAP:    return kMap
+    of MASK_SIG_SYM:    return kSymbol
     else:               echo "Unknown Type!"
 
 # GC Hooks #
@@ -419,6 +439,8 @@ when c32:
       GC_unref(cast[ImSetPayloadRef](x.tail))
     elif x.is_string:
       GC_unref(cast[ImStringPayloadRef](x.tail))
+    elif x.is_symbol:
+      GC_unref(cast[ImSymbolPayloadRef](x.tail))
   proc `=copy`(x: var ImValue, y: ImValue) =
     if x.as_u64 == y.as_u64: return
     if y.is_map:
@@ -429,6 +451,8 @@ when c32:
       GC_ref(cast[ImSetPayloadRef](y.tail))
     elif y.is_string:
       GC_ref(cast[ImStringPayloadRef](y.tail))
+    elif y.is_symbol:
+      GC_ref(cast[ImSymbolPayloadRef](y.tail))
     `=destroy`(x)
     x.head = y.head
     x.tail = y.tail
@@ -493,6 +517,8 @@ template eq_heap_value_generic*(v1, v2: typed) =
         result = v1.as_map.payload == v2.as_map.payload
       of MASK_SIG_SET:
         result = v1.as_set.payload == v2.as_set.payload
+      of MASK_SIG_SYM:
+        result = v1.as_sym.payload.id == v2.as_sym.payload.id
       else:               discard
 
 func `==`*(v1, v2: ImValue): bool =
@@ -508,6 +534,8 @@ func `==`*(v1, v2: ImArray): bool =
   return v1.payload == v2.payload
 func `==`*(v1, v2: ImSet): bool =
   return v1.payload == v2.payload
+func `==`*(v1, v2: ImSymbol): bool =
+  return v1.payload.id == v2.payload.id
 
 func `==`*(v1, v2: ImHV): bool = eq_heap_value_generic(v1, v2)
 func `==`*(v1, v2: ImSV): bool = return v1.as_u64 == v2.as_u64
@@ -538,6 +566,7 @@ converter toImValue(x: ImArray): ImValue = x.v
 converter toImValue(x: ImMap): ImValue = x.v
 converter toImValue(x: ImString): ImValue = x.v
 converter toImValue(x: ImSet): ImValue = x.v
+converter toImValue(x: ImSymbol): ImValue = x.v
 
 converter toImValue(f: float64): ImValue = f.v
 converter toImValue(i: int): ImValue = i.v
@@ -568,6 +597,7 @@ proc `$`*(k: ImValueKind): string =
     of kMap:    return "Map"
     of kArray:  return "Array"
     of kSet:    return "Set"
+    of kSymbol: return "Symbol"
     of kBool:   return "Boolean"
     else:       return "<unknown>"
 
@@ -584,6 +614,7 @@ proc `$`*(v: ImValue): string =
     of kMap:              return $(v.as_map.payload)
     of kArray:            return $(v.as_arr.payload)
     of kSet:              return $(v.as_set.payload) 
+    of kSymbol:           return "Sym<" & v.as_sym.payload.data & "." & $(v.as_sym.payload.id) & ">"
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
     # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
     # of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
@@ -607,6 +638,7 @@ proc debug*(v: ImValue): string =
     of kMap:              return "Map" & shallow_str
     of kArray:            return "Arr" & shallow_str
     of kSet:              return "Set" & shallow_str
+    of kSymbol:           return "Sym" & shallow_str
     else:                 discard
 
 template type_label*(v: ImValue): string = $(v.get_type)
@@ -629,6 +661,8 @@ func hash*(v: ImValue): Hash =
       result = v.as_arr.payload.summary.hash
     elif is_set(v):
       result = v.as_set.payload.hash
+    elif is_symbol(v):
+      result = v.as_sym.payload.id.as_hash
     else:
       # We cast to ImString so that we can get the hash, but all the ImHeapValues have a hash in the tail.
       let vh = cast[ImString](v)
@@ -704,6 +738,31 @@ func size*(s: ImString): int =
 
 func `<`*(v1, v2: ImString): bool = return v1.payload.data < v2.payload.data
 func `<=`*(v1, v2: ImString): bool = return v1.payload.data <= v2.payload.data
+
+func to_nim_string(s: ImString): string = s.payload.data
+
+# ImSymbol Impl #
+# ---------------------------------------------------------------------
+
+var symbol_id: uint = 0
+
+proc get_symbol_id(): uint =
+  symbol_id += 1
+  return symbol_id
+
+proc init_symbol*(str: string = ""): ImSymbol = 
+  let new_sym_id = get_symbol_id()
+  let re = ImSymbolPayloadRef(id: new_sym_id, data: str)
+  when c32:
+    result = ImSymbol(
+      head: update_head(MASK_SIG_SYM, new_sym_id.as_u32).as_u32,
+      tail: re
+    )
+  else:
+    GC_ref(re)
+    result = ImSymbol(p: bitor(MASK_SIG_SYM, re.as_p.as_u64).as_p)
+
+func to_nim_string(s: ImSymbol): string = s.payload.data
 
 # ImMap Impl #
 # ---------------------------------------------------------------------
@@ -1075,6 +1134,9 @@ macro Set*(): untyped =
 ## TODO
 ## - add format string capabilities
 template Str*(x: string): ImString = x.init_string
+
+template Sym*(x: string): ImSymbol = x.init_symbol
+template Sym*(): ImSymbol = init_symbol()
 
 # ImValue Fns #
 # ---------------------------------------------------------------------
