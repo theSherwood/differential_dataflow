@@ -64,7 +64,7 @@ func `$`*[T](s: PVecRef[T]): string =
   var res = "["
   for it in s.items:
     res.add(&"{it}, ")
-  res.delete((res.len - 2)..<(res.len.int))
+  if s.len > 0: res.delete((res.len - 2)..<(res.len.int))
   res.add("]")
   return res
 

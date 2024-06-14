@@ -57,7 +57,7 @@ proc unify_array*(x, y, smap: Val): Val =
   if y[0] == dot: return unify(y[1], x, smap)
   if x.len == 0 or y.len == 0: return Nil.v
   let s = unify(x[0], y[0], smap)
-  if s != Nil: return unify(x.slice(1, x.len), y.slice(1, x.len), s)
+  if s != Nil: return unify(x.slice(1, x.len), y.slice(1, y.len), s)
   return s
 
 proc succeedo*(): proc(smap: Val): iterator(): Val =
@@ -110,6 +110,7 @@ proc eqo*(x, y: Val): SMapStream =
     yield unify(x, y, smap)
 
 proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
+  echo "RUN"
   var n = num
   let smap = init_map().v
   for x in goal(smap):
@@ -120,11 +121,11 @@ proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
       for lvar in vars:
         new_map = new_map.set(lvar, deep_walk(lvar, x))
       result.add(new_map)
-  echo result
+  echo "result: ", result
 
 proc conso*(first, rest, output: Val): SMapStream =
   if rest.is_lvar: return eqo(V [first, dot, rest], output)
-  else:            return eqo(rest.prepend(first), output)
+  return eqo(rest.prepend(first), output)
 
 proc firsto*(first, output: Val): SMapStream =
   return conso(first, V Sym(rest), output)
