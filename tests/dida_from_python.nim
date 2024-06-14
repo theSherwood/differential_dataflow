@@ -99,7 +99,23 @@ proc main* =
         (V ["apple", "$5"], 1),
         (V ["banana", "$2"], 1),
       ])
-    
+
+    test "flat_map":
+      var a = COL([(V 1, 1), (V 2, 1), (V 3, 1)])
+      proc multiply_odds(e: Value): iterator(): Value =
+        let n = e.as_f64.int
+        return iterator(): Value =
+          if n mod 2 != 0:
+            for i in 1..n:
+              for j in 0..<i:
+                yield V [n, i]
+      check a.flat_map(multiply_odds) == COL([
+        (V [1, 1], 1),
+        (V [3, 1], 1),
+        (V [3, 2], 2),
+        (V [3, 3], 3),
+      ])   
+
     test "negate":
       var a = COL([
         (V ["foo", Nil], 3),
@@ -286,7 +302,10 @@ proc main* =
           ([0].VER, [(V 2, 1), (V 3, 1)].COL),
         ]
         b = init_builder()
-          .flat_map((e) => Arr([e[0], e[1]]))
+          .flat_map(proc (e: Value): iterator(): Value =
+            return iterator(): Value =
+              yield e[0]
+              yield e[1])
           .accumulate_results
         g = b.graph
       for (v, c) in initial_data: g.send(v, c)
@@ -456,26 +475,25 @@ proc main* =
     test "game of life":
       proc game_of_life(b: Builder): Builder =
         var
-          maybe_live_cells_flat_map_fn = proc (e: Value): ImArray =
-            var
-              x = e[0]
-              x_0 = x.as_f64
-              x_m_1 = (x_0 - 1.0).v
-              x_p_1 = (x_0 + 1.0).v
-              y = e[1]
-              y_0 = y.as_f64
-              y_m_1 = (y_0 - 1.0).v
-              y_p_1 = (y_0 + 1.0).v
-            return Arr [
-              [x_m_1, y_m_1],
-              [x_m_1, y    ],
-              [x_m_1, y_p_1],
-              [x,     y_m_1],
-              [x,     y_p_1],
-              [x_p_1, y_m_1],
-              [x_p_1, y    ],
-              [x_p_1, y_p_1],
-            ]
+          maybe_live_cells_flat_map_fn = proc (e: Value): iterator(): Value =
+            return iterator(): Value =
+              var
+                x = e[0]
+                x_0 = x.as_f64
+                x_m_1 = (x_0 - 1.0).v
+                x_p_1 = (x_0 + 1.0).v
+                y = e[1]
+                y_0 = y.as_f64
+                y_m_1 = (y_0 - 1.0).v
+                y_p_1 = (y_0 + 1.0).v
+              yield V [x_m_1, y_m_1]
+              yield V [x_m_1, y    ]
+              yield V [x_m_1, y_p_1]
+              yield V [x,     y_m_1]
+              yield V [x,     y_p_1]
+              yield V [x_p_1, y_m_1]
+              yield V [x_p_1, y    ]
+              yield V [x_p_1, y_p_1]
           maybe_live_cells = b.flat_map(maybe_live_cells_flat_map_fn)
             .map((e) => V([e, Nil])).count()
           live_with_3_neighbors = maybe_live_cells
@@ -744,54 +762,62 @@ beta_network
             ([0].VER, [(V {S: 9, E: 5, N: 6, D: 7, M: 1, O: 0, R: 8, Y: 2}, 1)].COL),
           ]
           input = init_builder()
-          s = input.flat_map_seq(proc (e: Entry): seq[Entry] =
-              if e != 0: result.add(V {S: e}))
+          s = input.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                if e != 0: yield V({S: e}))
             .product(input)
-          e = s.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              if m[S] != n: return @[m.set(E, n)])
+          e = s.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                if m[S] != n: yield m.set(E, n))
             .product(input)
-          n = e.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              if m[S] != n and m[E] != n: return @[m.set(N, n)])
+          n = e.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                if m[S] != n and m[E] != n: yield m.set(N, n))
             .product(input)
-          d = n.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              for v in m.values:
-                if v == n: return
-              return @[m.set(D, n)])
+          d = n.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                for v in m.values:
+                  if v == n: return
+                yield m.set(D, n))
             .product(input)
-          m = d.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              if n == 0: return
-              for v in m.values:
-                if v == n: return
-              return @[m.set(M, n)])
+          m = d.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                if n == 0: return
+                for v in m.values:
+                  if v == n: return
+                yield m.set(M, n))
             .product(input)
-          o = m.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              for v in m.values:
-                if v == n: return
-              return @[m.set(O, n)])
+          o = m.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                for v in m.values:
+                  if v == n: return
+                yield m.set(O, n))
             .product(input)
-          r = o.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              for v in m.values:
-                if v == n: return
-              return @[m.set(R, n)])
+          r = o.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                for v in m.values:
+                  if v == n: return
+                yield m.set(R, n))
             .product(input)
-          y = r.flat_map_seq(proc (e: Entry): seq[Entry] =
-              let m = e[0]
-              let n = e[1]
-              for v in m.values:
-                if v == n: return
-              return @[m.set(Y, n)])
+          y = r.flat_map(proc (e: Entry): iterator(): Entry =
+              return iterator(): Entry =
+                let m = e[0]
+                let n = e[1]
+                for v in m.values:
+                  if v == n: return
+                yield m.set(Y, n))
           final = y.filter(proc (e: Entry): bool =
             let
               map = e
