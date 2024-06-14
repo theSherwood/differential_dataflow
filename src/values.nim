@@ -295,6 +295,8 @@ template v*(x: openArray[int]): ImValue = toSeq(x).map(x => x.v).init_array.v
 template v*(x: openArray[float64]): ImValue = toSeq(x).map(x => x.v).init_array.v
 template v*(x: openArray[ImValue]): ImValue = x.init_array.v
 
+template to_int*(x: ImValue): int = x.as_f64.int
+
 # Masks #
 # ---------------------------------------------------------------------
 
@@ -560,21 +562,21 @@ template `<=`*(a: ImValue, b: float64): bool = return a.v <= b.v
 # Automatic Conversions #
 # ---------------------------------------------------------------------
 
-converter toImValue(n: ImNil): ImValue = n.v
-converter toImValue(b: ImBool): ImValue = b.v
-converter toImValue(x: ImArray): ImValue = x.v
-converter toImValue(x: ImMap): ImValue = x.v
-converter toImValue(x: ImString): ImValue = x.v
-converter toImValue(x: ImSet): ImValue = x.v
-converter toImValue(x: ImSymbol): ImValue = x.v
+converter toImValue*(n: ImNil): ImValue = n.v
+converter toImValue*(b: ImBool): ImValue = b.v
+converter toImValue*(x: ImArray): ImValue = x.v
+converter toImValue*(x: ImMap): ImValue = x.v
+converter toImValue*(x: ImString): ImValue = x.v
+converter toImValue*(x: ImSet): ImValue = x.v
+converter toImValue*(x: ImSymbol): ImValue = x.v
 
 converter toImValue(f: float64): ImValue = f.v
 converter toImValue(i: int): ImValue = i.v
 converter toImValue(b: bool): ImValue = b.v
 converter toImValue(s: string): ImValue = s.v
 
-converter toBool(b: ImBool): bool = b == True
-converter toBool(n: ImNil): bool = false
+converter toBool*(b: ImBool): bool = b == True
+converter toBool*(n: ImNil): bool = false
 
 # Debug String Conversion #
 # ---------------------------------------------------------------------
@@ -614,7 +616,7 @@ proc `$`*(v: ImValue): string =
     of kMap:              return $(v.as_map.payload)
     of kArray:            return $(v.as_arr.payload)
     of kSet:              return $(v.as_set.payload) 
-    of kSymbol:           return "Sym<" & v.as_sym.payload.data & "." & $(v.as_sym.payload.id) & ">"
+    of kSymbol:           return "'" & v.as_sym.payload.data & "." & $(v.as_sym.payload.id)
     # of kString:           return "Str\"" & $(v.as_str.payload.data) & "\""
     # of kMap:              return "M[" & $(v.as_map.payload.data) & "]"
     # of kArray:            return "A[" & $(v.as_arr.payload.data) & "]" 
@@ -942,6 +944,13 @@ proc add*(a: ImArray, v: ImValue): ImArray =
   array_from_vec(new_vec)
   return new_array
 template push*(a: ImArray, v: ImValue): ImArray = a.add(v)
+template append*(a: ImArray, v: ImValue): ImArray = a.add(v)
+
+proc prepend*(a: ImArray, v: ImValue): ImArray =
+  let new_vec = a.payload.prepend(v)
+  array_from_vec(new_vec)
+  return new_array
+template push_front*(a: ImArray, v: ImValue): ImArray = a.prepend(v)
 
 proc pop*(a: ImArray): (ImValue, ImArray) =
   case a.size:
@@ -1135,8 +1144,15 @@ macro Set*(): untyped =
 ## - add format string capabilities
 template Str*(x: string): ImString = x.init_string
 
-template Sym*(x: string): ImSymbol = x.init_symbol
-template Sym*(): ImSymbol = init_symbol()
+proc Sym_impl(x: NimNode): NimNode =
+  if x.kind == nnkStrLit:
+    return quote do: init_symbol(`x`)
+  let str_val = x.repr
+  return quote do: init_symbol(`str_val`)
+macro Sym*(x: untyped): untyped =
+  Sym_impl(x)
+macro Sym*(): untyped =
+  return quote do: init_symbol()
 
 # ImValue Fns #
 # ---------------------------------------------------------------------
@@ -1268,6 +1284,7 @@ proc add*(coll, v: ImValue): ImValue =
     else: discard
   raise newException(TypeException, &"Cannot add onto {$coll} of type {coll.type_label} with value {$v} of type {v.type_label}")
 template add*(coll: ImValue, val: typed): ImValue = add(coll, val.v)
+template append*(coll: ImValue, val: typed): ImValue = add(coll, val.v)
 
 proc push*(coll, v: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
@@ -1279,6 +1296,17 @@ proc push*(coll, v: ImValue): ImValue =
     else: discard
   raise newException(TypeException, &"Cannot push onto {$coll} of type {coll.type_label} with value {$v} of type {v.type_label}")
 template push*(coll: ImValue, val: typed): ImValue = push(coll, val.v)
+
+proc prepend*(coll, v: ImValue): ImValue =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr.prepend(v).v
+    # of MASK_SIG_SET: return coll.as_set.add(v).v
+    # of MASK_SIG_MAP: return coll.as_map.set(k, v).v
+    # of MASK_SIG_STR: return coll.as_str.set(k, v)
+    else: discard
+  raise newException(TypeException, &"Cannot prepend onto {$coll} of type {coll.type_label} with value {$v} of type {v.type_label}")
+template push_front*(coll: ImValue, val: typed): ImValue = prepend(coll, val.v)
 
 proc del*(coll, k: ImValue): ImValue =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
@@ -1312,6 +1340,15 @@ proc size*(coll: ImValue): ImValue =
     of MASK_SIG_SET: return coll.as_set.size.v
     else: discard
   raise newException(TypeException, &"Cannot get the size of {$coll} of type {coll.type_label}")
+proc len*(coll: ImValue): int =
+  let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)
+  case coll_sig:
+    of MASK_SIG_ARR: return coll.as_arr.size
+    of MASK_SIG_MAP: return coll.as_map.size
+    of MASK_SIG_STR: return coll.as_str.size
+    of MASK_SIG_SET: return coll.as_set.size
+    else: discard
+  raise newException(TypeException, &"Cannot get the len of {$coll} of type {coll.type_label}")
 
 proc merge*(v1, v2: ImValue): ImValue =
   let v1_sig = bitand(v1.type_bits, MASK_SIGNATURE)
@@ -1324,7 +1361,8 @@ proc merge*(v1, v2: ImValue): ImValue =
       # of MASK_SIG_STR: return coll.as_str.set(k, v)
       else: discard
   raise newException(TypeException, &"Cannot merge {$v1} of type {v1.type_label} with {$v2} of type {v2.type_label}")
-proc `&`*(v1, v2: ImValue): ImValue = v1.merge(v2)
+template concat*(v1, v2: ImValue): ImValue = v1.merge(v2)
+template `&`*(v1, v2: ImValue): ImValue = v1.merge(v2)
 
 proc contains*(coll, k: ImValue): bool =
   let coll_sig = bitand(coll.type_bits, MASK_SIGNATURE)

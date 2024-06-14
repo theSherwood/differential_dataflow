@@ -94,11 +94,9 @@ else
 fi
 
 NIM_DEBUG_OPTIONS="--d: release --stackTrace: off"
-if [ $DEBUG -eq 1 ]; then
-  NIM_DEBUG_OPTIONS="--d: debug --stackTrace: on"
-fi
 C_DEBUG_OPTIONS=""
 if [ $DEBUG -eq 1 ]; then
+  NIM_DEBUG_OPTIONS="--d: debug --stackTrace: on"
   C_DEBUG_OPTIONS="-g"
 fi
 
@@ -163,6 +161,7 @@ if [ $WASM32 -eq 1 ]; then
     --d: wasm32 \
     --d: useMalloc \
     --d: noSignalHandler \
+    --d: nimNoLentIterators \
     ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
@@ -227,6 +226,7 @@ elif [ $WASM64 -eq 1 ]; then
     --d: wasm64 \
     --d: useMalloc \
     --d: noSignalHandler \
+    --d: nimNoLentIterators \
     ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
@@ -284,6 +284,7 @@ elif [ $NATIVE -eq 1 ]; then
     --opt: speed \
     --threads: off \
     --profiler: off \
+    --d: nimNoLentIterators \
     ${NIM_DEBUG_OPTIONS} \
     --nimcache: ${PATH_TO_C_ASSETS} \
     c ${FILE}
