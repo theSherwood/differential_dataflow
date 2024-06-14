@@ -10,8 +10,8 @@ type
   Entry* = Value
 
   Row* = (Entry, int)
-  
-  Collection* = object
+
+  Collection* = ref object
     rows*: seq[Row]
 
   MapFn* = proc (e: Entry): Entry {.closure.}
@@ -23,6 +23,9 @@ type
   FlatMapFn* = proc (e: Entry): iterator(): Entry {.closure.}
 
 func size*(c: Collection): int = return c.rows.len
+
+proc `$`*(c: Collection): string =
+  $(c[])
 
 proc key*(e: Entry): Value =
   doAssert e.is_array
@@ -57,25 +60,30 @@ func `==`*(c1, c2: Collection): bool =
   return t1 == t2
 
 func map*(c: Collection, f: MapFn): Collection =
+  new result
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (f(c[i].entry), c[i].multiplicity)
 
 func filter*(c: Collection, f: FilterFn): Collection =
+  new result
   for r in c:
     if f(r.entry): result.add(r)
 
 func flat_map*(c: Collection, f: FlatMapFn): Collection =
+  new result
   for r in c:
     for e in f(r.entry):
       result.add((e, r.multiplicity))
 
 func negate*(c: Collection): Collection =
+  new result
   result.rows.setLen(c.size)
   for i in 0..<c.size:
     result[i] = (c[i].entry, 0 - c[i].multiplicity)
 
 func concat*(c1, c2: Collection): Collection =
+  new result
   for r in c1: result.add(r)
   for r in c2: result.add(r)
 
@@ -90,6 +98,7 @@ func consolidate*(rows: seq[Row]): seq[Row] =
     if m != 0: result.add((e, m))
 
 func consolidate*(c: Collection): Collection =
+  new result
   var t = initTable[Entry, int]()
   for (e, m) in c:
     t[e] = m + t.getOrDefault(e, 0)
@@ -108,6 +117,7 @@ proc to_row_table_by_key(t: var Table[Value, seq[Row]], c: Collection) =
       t[r.key] = @[r]
 
 proc join*(c1, c2: Collection): Collection =
+  new result
   let empty_seq = newSeq[Row]()
   var t = initTable[Value, seq[Row]]()
   t.to_row_table_by_key(c1)
@@ -117,6 +127,7 @@ proc join*(c1, c2: Collection): Collection =
 
 ## Keys must not be changed by the reduce fn
 proc reduce*(c: Collection, f: ReduceFn): Collection =
+  new result
   var t = initTable[Value, seq[Row]]()
   t.to_row_table_by_key(c)
   for r in t.values:
@@ -217,6 +228,7 @@ proc iterate*(c: Collection, f: CollIterateFn): Collection =
     curr = result
 
 proc init_collection*(rows: openArray[Row]): Collection =
+  new result
   for r in rows:
     result.add(r)
 
@@ -1412,7 +1424,7 @@ proc step(n: Node) =
         case m.tag:
           of tData:
             if n.collections.hasKey(m.version):
-              n.collections[m.version].mut_concat(m.collection)
+              n.collections[m.version] = n.collections[m.version].concat(m.collection)
             else:
               n.collections[m.version] = m.collection
           of tFrontier:
