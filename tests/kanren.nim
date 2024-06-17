@@ -16,16 +16,36 @@ proc main* =
       let y = V Sym y
       var res = run(-1, [x, y], conso(x, y, [1, 2, 3]))
       check res == @[V Map {x: 1, y: [2, 3]}]
+
       res = run(-1, [x], firsto(x, [1, 2, 3]))
       check res == @[V Map {x: 1}]
+
       res = run(-1, [x], resto(x, [1, 2, 3]))
       check res == @[V Map {x: [2, 3]}]
+
       res = run(-1, [x], emptyo(x))
       check res == @[V Map {x: []}]
     
+    test "arrays":
+      let q = V Sym q
+      var res = run(-1, [q], membero(q, [1, 2, 3]))
+      check res == @[V Map {q: 1}, V Map {q: 2}, V Map {q: 3}]
+
+      let x = V Sym x
+      let y = V Sym y
+      res = run(-1, [x, y], conso(x, y, [1, 2, 3]))
+      check res == @[V Map {x: 1, y: [2, 3]}]
+
+      res = run(-1, [x, y], appendo(x, y, [1, 2, 3]))
+      check res == @[
+        V Map {x: [],        y: [1, 2, 3]},
+        V Map {x: [1],       y: [2, 3]   },
+        V Map {x: [1, 2],    y: [3]      },
+        V Map {x: [1, 2, 3], y: []       },
+      ]
+
     test "fresh":
       let q = V Sym q
-
       var res = run(-1, [q], fresh([x, y], eqo(x, y)))
       check res == @[V Map {q: q}]
 
@@ -47,13 +67,11 @@ proc main* =
     
     test "no result":
       let x = V Sym x
-
       var res = run(-1, [x], eqo(4, 5))
       check res == newSeq[Val]()
 
       res = run(-1, [x], ando(@[eqo(x, 5), eqo(x, 6)]))
       check res == newSeq[Val]()
-
 
     #[
     test "length":

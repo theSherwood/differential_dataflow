@@ -92,7 +92,7 @@ proc oro_helper(clauses: seq[SMapStream], offset, sol_num: int, smap: Val): Stre
   return iterator(): Val =
     if offset == clauses.len: return
     let clause = clauses[offset]
-    var x: Val
+    var x = smap
     var s_num = sol_num
     for x in clause(smap):
       if x != Nil:
@@ -106,7 +106,8 @@ proc oro*(clauses: seq[SMapStream]): SMapStream =
     offset = 0
     sol_num = 0
   return iterator(smap: Val): Val =
-    for x in oro_helper(clauses, offset, sol_num, smap)():
+    var it = oro_helper(clauses, offset, sol_num, smap)
+    for x in it():
       yield x
 
 proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
@@ -131,7 +132,10 @@ macro fresh*(lvars, body: untyped): untyped =
     defs.add(getAst(def_lvar(lvar)))
   result = quote do: (proc(): SMapStream =
     `defs`
-    `body`
+    return iterator(smap: Val): Val =
+      var it = `body`
+      for z in it(smap):
+        yield z
   )()
   echo treeRepr(defs)
 
@@ -161,3 +165,23 @@ proc emptyo_impl*(x: Val): SMapStream =
   return eqo(x, V Arr [])
 macro emptyo*(x: untyped): untyped =
   return newCall("emptyo_impl", V_impl(x))
+
+proc membero_impl*(x, arr: Val): SMapStream =
+  return oro(@[
+    fresh([first], ando(@[firsto(first, arr), eqo(first, x)])),
+    fresh([rest], ando(@[resto(rest, arr), membero_impl(x, rest)])),
+  ])
+macro membero*(x, arr: untyped): untyped =
+  return newCall("membero_impl", V_impl(x), V_impl(arr))
+
+proc appendo_impl*(arr1, arr2, output: Val): SMapStream =
+  return oro(@[
+    ando(@[emptyo(arr1), eqo(arr2, output)]),
+    fresh([first, rest, rec], ando(@[
+      conso(first, rest, arr1),
+      conso(first, rec, output),
+      appendo_impl(rest, arr2, rec),
+    ]))
+  ])
+macro appendo*(arr1, arr2, output: untyped): untyped =
+  return newCall("appendo_impl", V_impl(arr1), V_impl(arr2), V_impl(output)) 
