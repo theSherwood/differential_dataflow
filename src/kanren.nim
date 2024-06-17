@@ -3,14 +3,18 @@
 ## 
 
 import macros
+import strutils
+import strformat
 import values
 export values
+
+const DEBUG_ITER* = true
+const ITER_ID* = 0
 
 type
   Val* = ImValue
 
   Stream* = iterator(): Val
-  StreamGen* = proc(x: Val): iterator(): Val {.closure.}
   SMapStream* = iterator(x: Val): Val {.closure.}
 
 let dot* = V Sym "."
@@ -61,57 +65,116 @@ proc unify_array*(x, y, smap: Val): Val =
   if s != Nil: return unify(x.slice(1, x.len), y.slice(1, y.len), s)
   return s
 
-proc succeedo*(): proc(smap: Val): iterator(): Val =
-  return proc(smap: Val): iterator(): Val =
-    return iterator(): Val =
-      yield smap
+## a list of which indents are in use (true is in use; false is free)
+## We start with the first value in use. This corresponds to the main thread.
+var indents = @[true]
+## map of ids (the index) to indent (the value)
+## We start with the first value in use. This corresponds to the main thread. 
+var registry = @[ITER_ID]
+proc print_impl*(id: int, s: string) =
+  let indent = registry[id]
+  echo indent(&"{id} {s}", indent, "|   ")
+template print*(the_print_string: string) {.dirty.} =
+  when DEBUG_ITER:
+    print_impl(ITER_ID, the_print_string)
+  else:
+    echo the_print_string
+template yeet*(val: untyped) =
+  let THE_VALUE = val
+  when DEBUG_ITER:
+    print("yeet: " & $THE_VALUE)
+  yield THE_VALUE
+proc register(debug_label: string = ""): int = 
+  var idx = indents.find(false)
+  if idx < 0:
+    idx = indents.len
+    indents.add(true)
+  indents[idx] = true
+  let id = registry.len
+  registry.add(idx)
+  print_impl(id, &"START {debug_label}")
+  return id
+proc deregister(id: int) =
+  indents[registry[id]] = false
+  print_impl(id, "END")
+macro iter(name, params, yield_type, body: untyped): untyped =
+  let name_string = name.strVal
+  var resolved_params = @[newIdentNode(yield_type.strVal)]
+  for colon_expr in params:
+    resolved_params.add(nnkIdentDefs.newTree(
+      colon_expr[0],
+      colon_expr[1],
+      newEmptyNode()
+    ))
+  let new_body = quote do: 
+    when DEBUG_ITER:
+      let ITER_ID {.inject.} = register(`name_string`)
+      `body`
+      deregister(ITER_ID)
+    else:
+      `body`
+  result = newProc(
+    params = resolved_params,
+    procType = nnkIteratorDef,
+    body = new_body)
+  echo "\nITER::"
+  echo treeRepr(result)
+  # echo "BODY::"
+  # echo treeRepr(new_body)
+  echo "\n"
 
-proc failo*(): proc(smap: Val): iterator(): Val =
-  return proc(smap: Val): iterator(): Val =
-    return iterator(): Val =
-      yield Nil.v
+proc succeedo*(): proc(smap: Val): Stream =
+  return proc(smap: Val): Stream =
+    return iter(succeedo, (), Val):
+      yeet smap
+
+proc failo*(): proc(smap: Val): Stream =
+  return proc(smap: Val): Stream =
+    return iter(failo, (), Val):
+      yeet Nil.v
 
 proc ando_helper(clauses: seq[SMapStream], offset: int, smap: Val): Stream =
-  return iterator(): Val =
+  return iter(ando_helper, (), Val):
     if offset == clauses.len: return
     let clause = clauses[offset]
     for x in clause(smap):
-      if x == Nil: yield x                             # error?
-      elif offset == clauses.len - 1: yield x
+      if x == Nil: yeet x                             # error?
+      elif offset == clauses.len - 1: yeet x
       else:
         var it = ando_helper(clauses, offset + 1, x)
+        print(&"finished: {finished(it)}")
         for y in it():
-          yield y
+          yeet y
 proc ando*(clauses: seq[SMapStream]): SMapStream =
-  return iterator(smap: Val): Val =
+  return iter(ando, (smap: Val), Val):
     var it = ando_helper(clauses, 0, smap)
     for x in it():
-      yield x
+      yeet x
 
 proc oro_helper(clauses: seq[SMapStream], offset, sol_num: int, smap: Val): Stream =
-  return iterator(): Val =
-    if offset == clauses.len: return
-    let clause = clauses[offset]
-    var x = smap
-    var s_num = sol_num
-    for x in clause(smap):
-      if x != Nil:
-        yield x
-        s_num += 1
-    var it = oro_helper(clauses, offset + 1, s_num, x)
-    for y in it():
-      yield y
+  return iter(oro_helper, (), Val):
+    if offset != clauses.len:
+      let clause = clauses[offset]
+      var x = smap
+      var s_num = sol_num
+      for x in clause(smap):
+        if x != Nil:
+          yeet x
+          s_num += 1
+      var it = oro_helper(clauses, offset + 1, s_num, x)
+      for y in it():
+        yeet y
 proc oro*(clauses: seq[SMapStream]): SMapStream =
   let
     offset = 0
     sol_num = 0
-  return iterator(smap: Val): Val =
+  return iter(oro, (smap: Val), Val):
     var it = oro_helper(clauses, offset, sol_num, smap)
     for x in it():
-      yield x
+      yeet x
 
 proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
-  echo "RUN"
+  print "RUN"
   var n = num
   let smap = init_map().v
   for x in goal(smap):
@@ -122,7 +185,7 @@ proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
       for lvar in vars:
         new_map = new_map.set(lvar, deep_walk(lvar, x))
       result.add(new_map)
-  echo "result: ", result
+  print &"result: {result}"
 
 macro fresh*(lvars, body: untyped): untyped =
   template def_lvar(x): untyped =
@@ -132,16 +195,15 @@ macro fresh*(lvars, body: untyped): untyped =
     defs.add(getAst(def_lvar(lvar)))
   result = quote do: (proc(): SMapStream =
     `defs`
-    return iterator(smap: Val): Val =
+    return iter(fresh, (smap: Val), Val):
       var it = `body`
       for z in it(smap):
-        yield z
+        yeet z
   )()
-  echo treeRepr(defs)
 
 proc eqo_impl*(x, y: Val): SMapStream =
-  return iterator(smap: Val): Val =
-    yield unify(x, y, smap)
+  return iter(eqo_impl, (smap: Val), Val):
+    yeet unify(x, y, smap)
 macro eqo*(x, y: untyped): untyped =
   return newCall("eqo_impl", V_impl(x), V_impl(y))
 
@@ -167,10 +229,17 @@ macro emptyo*(x: untyped): untyped =
   return newCall("emptyo_impl", V_impl(x))
 
 proc membero_impl*(x, arr: Val): SMapStream =
-  return oro(@[
-    fresh([first], ando(@[firsto(first, arr), eqo(first, x)])),
-    fresh([rest], ando(@[resto(rest, arr), membero_impl(x, rest)])),
-  ])
+  # return oro(@[
+  #   fresh([first], ando(@[firsto(first, arr), eqo(first, x)])),
+  #   fresh([rest], ando(@[resto(rest, arr), membero_impl(x, rest)])),
+  # ])
+  return iter(membero_impl, (smap: Val), Val):
+    var it = oro(@[
+      fresh([first], ando(@[firsto(first, arr), eqo(first, x)])),
+      fresh([rest], ando(@[resto(rest, arr), membero_impl(x, rest)])),
+    ])
+    for x in it(smap):
+      yeet x
 macro membero*(x, arr: untyped): untyped =
   return newCall("membero_impl", V_impl(x), V_impl(arr))
 
@@ -185,3 +254,110 @@ proc appendo_impl*(arr1, arr2, output: Val): SMapStream =
   ])
 macro appendo*(arr1, arr2, output: untyped): untyped =
   return newCall("appendo_impl", V_impl(arr1), V_impl(arr2), V_impl(output)) 
+
+proc stringo_impl*(x: Val): SMapStream =
+  return iter(stringo_impl, (smap: Val), Val):
+    if walk(x, smap).is_string: yeet smap
+    yeet Nil.v
+macro stringo*(x: untyped): untyped =
+  return newCall("stringo_impl", V_impl(x))
+
+proc numbero_impl*(x: Val): SMapStream =
+  return iter(numbero_impl, (smap: Val), Val):
+    if walk(x, smap).is_num: yeet smap
+    yeet Nil.v
+macro numbero*(x: untyped): untyped =
+  return newCall("numbero_impl", V_impl(x))
+
+proc arrayo_impl*(x: Val): SMapStream =
+  return iter(arrayo_impl, (smap: Val), Val):
+    if walk(x, smap).is_array: yeet smap
+    yeet Nil.v
+macro arrayo*(x: untyped): untyped =
+  return newCall("arrayo_impl", V_impl(x))
+
+proc add_impl*(a, b, c: Val): SMapStream =
+  ## a + b = c
+  return iter(add_impl, (smap: Val), Val):
+    let x = walk(a, smap)
+    let y = walk(b, smap)
+    let z = walk(c,  smap)
+    var
+      lvars_count = 0
+      lvar = Nil.v
+    if x.is_symbol:
+      lvars_count += 1
+      lvar = x
+    if y.is_symbol:
+      lvars_count += 1
+      lvar = y
+    if z.is_symbol:
+      lvars_count += 1
+      lvar = z
+    if lvars_count == 0:
+      if x + y == z: yeet smap
+      else: yeet Nil.v
+    elif lvars_count == 1:
+      if lvar == x:
+        if y.is_num and z.is_num:
+          var it = eqo(x, z - y)
+          for a in it(smap): yeet a
+        else: yeet Nil.v
+      elif lvar == y:
+        if x.is_num and z.is_num:
+          var it = eqo(y, z - x)
+          for b in it(smap): yeet b
+        else: yeet Nil.v
+      else:
+        if x.is_num and y.is_num:
+          var it = eqo(z, x + y)
+          for c in it(smap): yeet c
+        else: yeet Nil.v
+    else: yeet Nil.v
+macro add*(a, b, c: untyped): untyped =
+  return newCall("add_impl", V_impl(a), V_impl(b), V_impl(c))
+macro sub*(a, b, c: untyped): untyped =
+  return newCall("add_impl", V_impl(b), V_impl(c), V_impl(a))
+
+proc mul_impl*(a, b, c: Val): SMapStream =
+  ## a * b = c
+  return iter(mul_impl, (smap: Val), Val):
+    let x = walk(a, smap)
+    let y = walk(b, smap)
+    let z = walk(c,  smap)
+    var
+      lvars_count = 0
+      lvar = Nil.v
+    if x.is_symbol:
+      lvars_count += 1
+      lvar = x
+    if y.is_symbol:
+      lvars_count += 1
+      lvar = y
+    if z.is_symbol:
+      lvars_count += 1
+      lvar = z
+    if lvars_count == 0:
+      if x * y == z: yeet smap
+      else: yeet Nil.v
+    elif lvars_count == 1:
+      if lvar == x:
+        if y.is_num and z.is_num:
+          var it = eqo(x, z / y)
+          for a in it(smap): yeet a
+        else: yeet Nil.v
+      elif lvar == y:
+        if x.is_num and z.is_num:
+          var it = eqo(y, z / x)
+          for b in it(smap): yeet b
+        else: yeet Nil.v
+      else:
+        if x.is_num and y.is_num:
+          var it = eqo(z, x * y)
+          for c in it(smap): yeet c
+        else: yeet Nil.v
+    else: yeet Nil.v
+macro mul*(a, b, c: untyped): untyped =
+  return newCall("mul_impl", V_impl(a), V_impl(b), V_impl(c))
+macro dis*(a, b, c: untyped): untyped =
+  return newCall("mul_impl", V_impl(b), V_impl(c), V_impl(a))

@@ -72,6 +72,19 @@ proc main* =
 
       res = run(-1, [x], ando(@[eqo(x, 5), eqo(x, 6)]))
       check res == newSeq[Val]()
+    
+    test "arithmetic":
+      let x = V Sym x
+      let y = V Sym y
+      var res = run(-1, [x], add(2, x, 5))
+      check res == @[V Map {x: 3}]
+
+      echo "========================"
+      res = run(2, [x, y], ando(@[
+        membero(x, [4, 5, 6]),
+        add(2, x, y),
+      ]))
+      check res == @[V Map {x: 3}]
 
     #[
     test "length":

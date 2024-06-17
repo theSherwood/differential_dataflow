@@ -1425,6 +1425,19 @@ iterator pairs*(coll: ImValue): (ImValue, ImValue) =
     else:
       raise newException(TypeException, &"Cannot iterate the pairs of {$coll} of type {coll.type_label}")
 
+proc `+`*(x, y: ImValue): ImValue = 
+  if x.is_num and y.is_num: return (x.as_f64 + y.as_f64).v
+  else: raise newException(TypeException, &"Cannot call `+` on {x.type_label} and {y.type_label}")
+proc `-`*(x, y: ImValue): ImValue = 
+  if x.is_num and y.is_num: return (x.as_f64 - y.as_f64).v
+  else: raise newException(TypeException, &"Cannot call `-` on {x.type_label} and {y.type_label}")
+proc `*`*(x, y: ImValue): ImValue = 
+  if x.is_num and y.is_num: return (x.as_f64 * y.as_f64).v
+  else: raise newException(TypeException, &"Cannot call `*` on {x.type_label} and {y.type_label}")
+proc `/`*(x, y: ImValue): ImValue = 
+  if x.is_num and y.is_num: return (x.as_f64 / y.as_f64).v
+  else: raise newException(TypeException, &"Cannot call `/` on {x.type_label} and {y.type_label}")
+
 ##
 ## nil < boolean < number < string < set < array < map
 ## 
