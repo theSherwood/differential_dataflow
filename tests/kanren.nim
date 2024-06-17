@@ -5,17 +5,71 @@ proc main* =
   suite "kanren":
     test "simple":
       let x = V Sym x
-      var res = run(1, [x], eqo(x, V 1))
+      var res = run(-1, [x], eqo(x, 1))
       check res == @[V Map {x: 1}]
 
+      res = run(-1, [x], oro(@[eqo(x, 1), eqo(x, 2)]))
+      check res == @[V Map {x: 1}, V Map {x: 2}]
+
+    test "simple arrays":
+      let x = V Sym x
       let y = V Sym y
-      res = run(1, [x, y], conso(x, y, V [1, 2, 3]))
+      var res = run(-1, [x, y], conso(x, y, [1, 2, 3]))
       check res == @[V Map {x: 1, y: [2, 3]}]
-      res = run(1, [x], firsto(x, V [1, 2, 3]))
+      res = run(-1, [x], firsto(x, [1, 2, 3]))
       check res == @[V Map {x: 1}]
-      res = run(1, [x], resto(x, V [1, 2, 3]))
+      res = run(-1, [x], resto(x, [1, 2, 3]))
       check res == @[V Map {x: [2, 3]}]
-      res = run(1, [x], emptyo(x))
+      res = run(-1, [x], emptyo(x))
       check res == @[V Map {x: []}]
+    
+    test "fresh":
+      let q = V Sym q
+
+      var res = run(-1, [q], fresh([x, y], eqo(x, y)))
+      check res == @[V Map {q: q}]
+
+      res = run(-1, [q], fresh([x, y, z], ando(@[eqo(x, y), eqo(z, 3)])))
+      check res == @[V Map {q: q}]
+
+      res = run(-1, [q], fresh([x, y], ando(@[eqo(q, 3), eqo(x, y)])))
+      check res == @[V Map {q: 3}]
+
+      res = run(-1, [q], fresh([x, y], ando(@[eqo(x, y), eqo(3, y), eqo(x, q)])))
+      check res == @[V Map {q: 3}]
+
+      let y = V Sym y
+      res = run(-1, [y], ando(@[
+        fresh([x, y], ando(@[eqo(4, x), eqo(x, y)])),
+        eqo(3, y)
+      ]))
+      check res == @[V Map {y: 3}]
+    
+    test "no result":
+      let x = V Sym x
+
+      var res = run(-1, [x], eqo(4, 5))
+      check res == newSeq[Val]()
+
+      res = run(-1, [x], ando(@[eqo(x, 5), eqo(x, 6)]))
+      check res == newSeq[Val]()
+
+
+    #[
+    test "length":
+      let x = V Sym x
+      proc leno(arr, n: Val): SMapStream =
+        let head = V Sym head
+        let rest = V Sym rest
+        let n1   = V Sym n1
+        return oro(@[
+          ando(@[emptyo(x), eqo(n, 0)]),
+          ando(@[
+            conso(head, rest, arr),
+            leno(rest, n1),
+            addo(n1, 1, n),
+          ]),
+        ])
+]#
 
   echo "done"

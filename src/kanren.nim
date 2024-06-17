@@ -2,6 +2,7 @@
 ## https://github.com/shd101wyy/logic.js/blob/master/lib/logic.js
 ## 
 
+import macros
 import values
 export values
 
@@ -78,11 +79,13 @@ proc ando_helper(clauses: seq[SMapStream], offset: int, smap: Val): Stream =
       if x == Nil: yield x                             # error?
       elif offset == clauses.len - 1: yield x
       else:
-        for y in ando_helper(clauses, offset + 1, x)():
+        var it = ando_helper(clauses, offset + 1, x)
+        for y in it():
           yield y
 proc ando*(clauses: seq[SMapStream]): SMapStream =
   return iterator(smap: Val): Val =
-    for x in ando_helper(clauses, 0, smap)():
+    var it = ando_helper(clauses, 0, smap)
+    for x in it():
       yield x
 
 proc oro_helper(clauses: seq[SMapStream], offset, sol_num: int, smap: Val): Stream =
@@ -95,7 +98,8 @@ proc oro_helper(clauses: seq[SMapStream], offset, sol_num: int, smap: Val): Stre
       if x != Nil:
         yield x
         s_num += 1
-    for y in oro_helper(clauses, offset + 1, s_num, x)():
+    var it = oro_helper(clauses, offset + 1, s_num, x)
+    for y in it():
       yield y
 proc oro*(clauses: seq[SMapStream]): SMapStream =
   let
@@ -104,10 +108,6 @@ proc oro*(clauses: seq[SMapStream]): SMapStream =
   return iterator(smap: Val): Val =
     for x in oro_helper(clauses, offset, sol_num, smap)():
       yield x
-
-proc eqo*(x, y: Val): SMapStream =
-  return iterator(smap: Val): Val =
-    yield unify(x, y, smap)
 
 proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
   echo "RUN"
@@ -123,16 +123,41 @@ proc run*(num: int, vars: openArray[Val], goal: SMapStream): seq[Val] =
       result.add(new_map)
   echo "result: ", result
 
-proc conso*(first, rest, output: Val): SMapStream =
+macro fresh*(lvars, body: untyped): untyped =
+  template def_lvar(x): untyped =
+    let x = V Sym x
+  var defs = newStmtList()
+  for lvar in lvars:
+    defs.add(getAst(def_lvar(lvar)))
+  result = quote do: (proc(): SMapStream =
+    `defs`
+    `body`
+  )()
+  echo treeRepr(defs)
+
+proc eqo_impl*(x, y: Val): SMapStream =
+  return iterator(smap: Val): Val =
+    yield unify(x, y, smap)
+macro eqo*(x, y: untyped): untyped =
+  return newCall("eqo_impl", V_impl(x), V_impl(y))
+
+proc conso_impl*(first, rest, output: Val): SMapStream =
   if rest.is_lvar: return eqo(V [first, dot, rest], output)
   return eqo(rest.prepend(first), output)
+macro conso*(first, rest, output: untyped): untyped =
+  return newCall("conso_impl", V_impl(first), V_impl(rest), V_impl(output))
 
-proc firsto*(first, output: Val): SMapStream =
+proc firsto_impl*(first, output: Val): SMapStream =
   return conso(first, V Sym(rest), output)
+macro firsto*(first, output: untyped): untyped =
+  return newCall("firsto_impl", V_impl(first), V_impl(output))
 
-proc resto*(rest, output: Val): SMapStream =
+proc resto_impl*(rest, output: Val): SMapStream =
   return conso(V Sym(first), rest, output)
+macro resto*(rest, output: untyped): untyped =
+  return newCall("resto_impl", V_impl(rest), V_impl(output))
 
-proc emptyo*(x: Val): SMapStream =
+proc emptyo_impl*(x: Val): SMapStream =
   return eqo(x, V Arr [])
-
+macro emptyo*(x: untyped): untyped =
+  return newCall("emptyo_impl", V_impl(x))

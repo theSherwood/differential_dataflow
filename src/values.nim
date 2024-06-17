@@ -1040,7 +1040,7 @@ proc size*(s: ImSet): int =
 # More Conversions #
 # ---------------------------------------------------------------------
 
-proc V_impl(x: NimNode): NimNode =
+proc V_impl*(x: NimNode): NimNode =
   case x.kind:
     # a plain tuple of ImValues
     of nnkTupleConstr, nnkPar:
