@@ -113,6 +113,39 @@ proc main* =
         ]))
         check res == @[V Map {x:4,y: -4}, V Map {x:5,y: -3}, V Map {x:6,y: -2}]
 
+      test "simple multiplication and division":
+        let x = V Sym x
+        let y = V Sym y
+        var res = run(10, [x], mul(2, x, 5))
+        check res == @[V Map {x: 2.5}]
+
+        res = run(10, [x], dis(5, x, 2))
+        check res == @[V Map {x: 2.5}]
+
+        res = run(10, [x, y], ando(@[
+          membero(x, [4, 5, 6]),
+          mul(x, 2, y),
+        ]))
+        check res == @[V Map {x:4,y:8}, V Map {x:5,y:10}, V Map {x:6,y:12}]
+
+        res = run(10, [x, y], ando(@[
+          membero(x, [4, 5, 6]),
+          dis(x, 2, y),
+        ]))
+        check res == @[V Map {x:4,y:2}, V Map {x:5,y:2.5}, V Map {x:6,y:3}]
+
+        res = run(10, [x, y], ando(@[
+          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 2)]),
+          mul(x, y, 8),
+        ]))
+        check res == @[V Map {x:4,y:2}, V Map {x:5,y:1.6}, V Map {x:2,y:4}]
+
+        res = run(10, [x, y], ando(@[
+          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 6)]),
+          dis(x, y, 8),
+        ]))
+        check res == @[V Map {x:4,y:0.5}, V Map {x:5,y:0.625}, V Map {x:6,y:0.75}]
+
 #[
 ]#
 
