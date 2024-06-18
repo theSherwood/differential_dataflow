@@ -107,7 +107,9 @@ type
   Stream* = iterator(): Val
   GenStream* = proc(x: Val): iterator(): Val
 
-let dot* = V Sym "."
+macro Var*(x): untyped = newCall("v", Sym_impl(x))
+
+let dot* = Var "."
 
 template is_lvar*(x: Val): bool = x.is_symbol and x != dot
 
@@ -222,7 +224,7 @@ proc run*(num: int, vars: openArray[Val], goal: GenStream): seq[Val] =
 
 macro fresh*(lvars, body: untyped): untyped =
   template def_lvar(x): untyped =
-    let x = V Sym x
+    let x = Var x
   var defs = newStmtList()
   for lvar in lvars:
     defs.add(getAst(def_lvar(lvar)))
@@ -253,11 +255,11 @@ proc conso_impl*(first, rest, output: Val): GenStream =
 macro conso*(first, rest, output): untyped = C("conso_impl", Z(first), Z(rest), Z(output))
 
 proc firsto_impl*(first, output: Val): GenStream =
-  return conso(first, V Sym(rest), output)
+  return conso(first, Var(rest), output)
 macro firsto*(first, output): untyped = C("firsto_impl", Z(first), Z(output))
 
 proc resto_impl*(rest, output: Val): GenStream =
-  return conso(V Sym(first), rest, output)
+  return conso(Var(first), rest, output)
 macro resto*(rest, output): untyped = C("resto_impl", Z(rest), Z(output))
 
 proc emptyo_impl*(x: Val): GenStream =

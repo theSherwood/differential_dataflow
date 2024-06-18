@@ -9,12 +9,10 @@
 import std/[tables, strutils, macros]
 import ../src/[test_utils, kanren]
 
-macro Sy(x): untyped = newCall("v", Sym_impl(x))
-
 proc main* =
   suite "kanren":
     test "simple":
-      let x = Sy x
+      let x = Var x
       var res = run(10, [x], eqo(x, 1))
       check res == @[V {x: 1}]
 
@@ -22,14 +20,14 @@ proc main* =
       check res == @[V {x: 1}, V {x: 2}]
 
     test "simple and":
-      let x = Sy x
-      let y = Sy y
+      let x = Var x
+      let y = Var y
       var res = run(10, [x, y], ando(eqo(x, y), eqo(x, 1)))
       check res == @[V {x: 1, y: 1}]
 
     test "conde":
-      let x = Sy x
-      let y = Sy y
+      let x = Var x
+      let y = Var y
       var res = run(10, [x, y], conde(
         @[eqo(x, y), eqo(x, 1)],
         @[eqo(x, y), eqo(x, 2)],
@@ -38,8 +36,8 @@ proc main* =
       check res == @[V {x: 1, y: 1}, V {x: 2, y: 2}]
 
     test "simple arrays":
-      let x = Sy x
-      let y = Sy y
+      let x = Var x
+      let y = Var y
       var res = run(10, [x, y], conso(x, y, [1, 2, 3]))
       check res == @[V {x: 1, y: [2, 3]}]
 
@@ -53,12 +51,12 @@ proc main* =
       check res == @[V {x: []}]
     
     test "arrays":
-      let q = Sy q
+      let q = Var q
       var res = run(10, [q], membero(q, [1, 2, 3]))
       check res == @[V {q: 1}, V {q: 2}, V {q: 3}]
 
-      let x = Sy x
-      let y = Sy y
+      let x = Var x
+      let y = Var y
       res = run(10, [x, y], conso(x, y, [1, 2, 3]))
       check res == @[V {x: 1, y: [2, 3]}]
 
@@ -71,7 +69,7 @@ proc main* =
       ]
 
     test "fresh":
-      let q = Sy q
+      let q = Var q
       var res = run(10, [q], fresh([x, y], eqo(x, y)))
       check res == @[V {q: q}]
 
@@ -84,7 +82,7 @@ proc main* =
       res = run(10, [q], fresh([x, y], ando(eqo(x, y), eqo(3, y), eqo(x, q))))
       check res == @[V {q: 3}]
 
-      let y = Sy y
+      let y = Var y
       res = run(10, [y], ando(
         fresh([x, y], ando(eqo(4, x), eqo(x, y))),
         eqo(3, y)
@@ -92,7 +90,7 @@ proc main* =
       check res == @[V {y: 3}]
     
     test "no result":
-      let x = Sy x
+      let x = Var x
       var res = run(10, [x], eqo(4, 5))
       check res == newSeq[Val]()
 
@@ -101,8 +99,8 @@ proc main* =
     
     suite "arithmetic":
       test "simple addition and subtraction":
-        let x = Sy x
-        let y = Sy y
+        let x = Var x
+        let y = Var y
         var res = run(10, [x], add(2, x, 5))
         check res == @[V {x: 3}]
 
@@ -134,8 +132,8 @@ proc main* =
         check res == @[V {x:4,y: -4}, V {x:5,y: -3}, V {x:6,y: -2}]
 
       test "simple multiplication and division":
-        let x = Sy x
-        let y = Sy y
+        let x = Var x
+        let y = Var y
         var res = run(10, [x], mul(2, x, 5))
         check res == @[V {x: 2.5}]
 
@@ -167,8 +165,8 @@ proc main* =
         check res == @[V {x:4,y:0.5}, V {x:5,y:0.625}, V {x:6,y:0.75}]
 
     test "comparisons":
-      let a = Sy a
-      let b = Sy b
+      let a = Var a
+      let b = Var b
       var res = run(10, [a, b], ando(
         membero(a, [1, 2, 3]),
         membero(b, [1, 2, 3]),
@@ -198,12 +196,12 @@ proc main* =
       check res == @[V {b:1,a:1}, V {b:1,a:2}, V {b:2,a:2}, V {b:1,a:3}, V {b:2,a:3}, V {b:3,a:3}]
     
     test "other":
-      let a = Sy a
+      let a = Var a
       var res = run(7, [a], anyo(membero(a, [1, 2, 3])))
       check res == @[V {a:1}, V {a:2}, V {a:3}, V {a:1}, V {a:2}, V {a:3}, V {a:1}]
     
     test "stream run":
-      let a = Sy a
+      let a = Var a
       var
         it = run([a], anyo(membero(a, [1, 2, 3])))
         n = 7
@@ -221,7 +219,7 @@ proc main* =
         V ["Henry", "Alice"],
       ])
 
-      let x = Sy x
+      let x = Var x
       var res = run(10, [x], parent(@[x, V "Alice"]))
       check res == @[V {x: "Henry"}]
       res = run(10, [x], parent(@[V "Steve", x]))
