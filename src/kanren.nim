@@ -198,6 +198,9 @@ proc oro*(clauses: varargs[GenStream]): GenStream =
     for x in it():
       yeet x
 
+proc conde*(conds: varargs[seq[GenStream]]): GenStream =
+  return oro(conds.map(proc(c: seq[GenStream]): GenStream = ando(c)))
+
 proc run*(vars: openArray[Val], goal: GenStream): Stream =
   let lvars = toSeq(vars)
   return iter(run, (), Val):

@@ -1,15 +1,9 @@
 ## TODO
-## - better interfaces for:
-##   - oro
-##   - ando
-##   - run
-##     - stream?
 ## - perf
 ##   - reduce recursion in:
 ##     - oro
 ##     - ando
 ##   - array methods?
-## - rules
 ## 
 
 import std/[tables, strutils, macros]
@@ -26,12 +20,22 @@ proc main* =
 
       res = run(10, [x], oro(eqo(x, 1), eqo(x, 2)))
       check res == @[V {x: 1}, V {x: 2}]
-    
+
     test "simple and":
       let x = Sy x
       let y = Sy y
       var res = run(10, [x, y], ando(eqo(x, y), eqo(x, 1)))
       check res == @[V {x: 1, y: 1}]
+
+    test "conde":
+      let x = Sy x
+      let y = Sy y
+      var res = run(10, [x, y], conde(
+        @[eqo(x, y), eqo(x, 1)],
+        @[eqo(x, y), eqo(x, 2)],
+        @[eqo(x, y), eqo(x, 1), eqo(y, 2)],
+      ))
+      check res == @[V {x: 1, y: 1}, V {x: 2, y: 2}]
 
     test "simple arrays":
       let x = Sy x
@@ -196,6 +200,18 @@ proc main* =
     test "other":
       let a = Sy a
       var res = run(7, [a], anyo(membero(a, [1, 2, 3])))
+      check res == @[V {a:1}, V {a:2}, V {a:3}, V {a:1}, V {a:2}, V {a:3}, V {a:1}]
+    
+    test "stream run":
+      let a = Sy a
+      var
+        it = run([a], anyo(membero(a, [1, 2, 3])))
+        n = 7
+        res = newSeq[Val]()
+      for x in it():
+        if n == 0: break
+        n -= 1
+        res.add(x)
       check res == @[V {a:1}, V {a:2}, V {a:3}, V {a:1}, V {a:2}, V {a:3}, V {a:1}]
 
     test "rules":
