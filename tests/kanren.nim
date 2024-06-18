@@ -12,193 +12,209 @@
 ## - rules
 ## 
 
-import std/[tables, strutils]
+import std/[tables, strutils, macros]
 import ../src/[test_utils, kanren]
+
+macro Sy(x): untyped = newCall("v", Sym_impl(x))
 
 proc main* =
   suite "kanren":
     test "simple":
-      let x = V Sym x
+      let x = Sy x
       var res = run(10, [x], eqo(x, 1))
-      check res == @[V Map {x: 1}]
+      check res == @[V {x: 1}]
 
-      res = run(10, [x], oro(@[eqo(x, 1), eqo(x, 2)]))
-      check res == @[V Map {x: 1}, V Map {x: 2}]
+      res = run(10, [x], oro(eqo(x, 1), eqo(x, 2)))
+      check res == @[V {x: 1}, V {x: 2}]
     
     test "simple and":
-      let x = V Sym x
-      let y = V Sym y
-      var res = run(10, [x, y], ando(@[eqo(x, y), eqo(x, 1)]))
-      check res == @[V Map {x: 1, y: 1}]
+      let x = Sy x
+      let y = Sy y
+      var res = run(10, [x, y], ando(eqo(x, y), eqo(x, 1)))
+      check res == @[V {x: 1, y: 1}]
 
     test "simple arrays":
-      let x = V Sym x
-      let y = V Sym y
+      let x = Sy x
+      let y = Sy y
       var res = run(10, [x, y], conso(x, y, [1, 2, 3]))
-      check res == @[V Map {x: 1, y: [2, 3]}]
+      check res == @[V {x: 1, y: [2, 3]}]
 
       res = run(10, [x], firsto(x, [1, 2, 3]))
-      check res == @[V Map {x: 1}]
+      check res == @[V {x: 1}]
 
       res = run(10, [x], resto(x, [1, 2, 3]))
-      check res == @[V Map {x: [2, 3]}]
+      check res == @[V {x: [2, 3]}]
 
       res = run(10, [x], emptyo(x))
-      check res == @[V Map {x: []}]
+      check res == @[V {x: []}]
     
     test "arrays":
-      let q = V Sym q
+      let q = Sy q
       var res = run(10, [q], membero(q, [1, 2, 3]))
-      check res == @[V Map {q: 1}, V Map {q: 2}, V Map {q: 3}]
+      check res == @[V {q: 1}, V {q: 2}, V {q: 3}]
 
-      let x = V Sym x
-      let y = V Sym y
+      let x = Sy x
+      let y = Sy y
       res = run(10, [x, y], conso(x, y, [1, 2, 3]))
-      check res == @[V Map {x: 1, y: [2, 3]}]
+      check res == @[V {x: 1, y: [2, 3]}]
 
       res = run(10, [x, y], appendo(x, y, [1, 2, 3]))
       check res == @[
-        V Map {x: [],        y: [1, 2, 3]},
-        V Map {x: [1],       y: [2, 3]   },
-        V Map {x: [1, 2],    y: [3]      },
-        V Map {x: [1, 2, 3], y: []       },
+        V {x: [],        y: [1, 2, 3]},
+        V {x: [1],       y: [2, 3]   },
+        V {x: [1, 2],    y: [3]      },
+        V {x: [1, 2, 3], y: []       },
       ]
 
     test "fresh":
-      let q = V Sym q
+      let q = Sy q
       var res = run(10, [q], fresh([x, y], eqo(x, y)))
-      check res == @[V Map {q: q}]
+      check res == @[V {q: q}]
 
-      res = run(10, [q], fresh([x, y, z], ando(@[eqo(x, y), eqo(z, 3)])))
-      check res == @[V Map {q: q}]
+      res = run(10, [q], fresh([x, y, z], ando(eqo(x, y), eqo(z, 3))))
+      check res == @[V {q: q}]
 
-      res = run(10, [q], fresh([x, y], ando(@[eqo(q, 3), eqo(x, y)])))
-      check res == @[V Map {q: 3}]
+      res = run(10, [q], fresh([x, y], ando(eqo(q, 3), eqo(x, y))))
+      check res == @[V {q: 3}]
 
-      res = run(10, [q], fresh([x, y], ando(@[eqo(x, y), eqo(3, y), eqo(x, q)])))
-      check res == @[V Map {q: 3}]
+      res = run(10, [q], fresh([x, y], ando(eqo(x, y), eqo(3, y), eqo(x, q))))
+      check res == @[V {q: 3}]
 
-      let y = V Sym y
-      res = run(10, [y], ando(@[
-        fresh([x, y], ando(@[eqo(4, x), eqo(x, y)])),
+      let y = Sy y
+      res = run(10, [y], ando(
+        fresh([x, y], ando(eqo(4, x), eqo(x, y))),
         eqo(3, y)
-      ]))
-      check res == @[V Map {y: 3}]
+      ))
+      check res == @[V {y: 3}]
     
     test "no result":
-      let x = V Sym x
+      let x = Sy x
       var res = run(10, [x], eqo(4, 5))
       check res == newSeq[Val]()
 
-      res = run(10, [x], ando(@[eqo(x, 5), eqo(x, 6)]))
+      res = run(10, [x], ando(eqo(x, 5), eqo(x, 6)))
       check res == newSeq[Val]()
     
     suite "arithmetic":
       test "simple addition and subtraction":
-        let x = V Sym x
-        let y = V Sym y
+        let x = Sy x
+        let y = Sy y
         var res = run(10, [x], add(2, x, 5))
-        check res == @[V Map {x: 3}]
+        check res == @[V {x: 3}]
 
         res = run(10, [x], sub(5, x, 2))
-        check res == @[V Map {x: 3}]
+        check res == @[V {x: 3}]
 
-        res = run(10, [x, y], ando(@[
+        res = run(10, [x, y], ando(
           membero(x, [4, 5, 6]),
           add(x, 2, y),
-        ]))
-        check res == @[V Map {x:4,y:6}, V Map {x:5,y:7}, V Map {x:6,y:8}]
+        ))
+        check res == @[V {x:4,y:6}, V {x:5,y:7}, V {x:6,y:8}]
 
-        res = run(10, [x, y], ando(@[
+        res = run(10, [x, y], ando(
           membero(x, [4, 5, 6]),
           sub(x, 2, y),
-        ]))
-        check res == @[V Map {x:4,y:2}, V Map {x:5,y:3}, V Map {x:6,y:4}]
+        ))
+        check res == @[V {x:4,y:2}, V {x:5,y:3}, V {x:6,y:4}]
 
-        res = run(10, [x, y], ando(@[
-          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 6)]),
+        res = run(10, [x, y], ando(
+          oro(eqo(x, 4), eqo(x, 5), eqo(x, 6)),
           add(x, y, 8),
-        ]))
-        check res == @[V Map {x:4,y:4}, V Map {x:5,y:3}, V Map {x:6,y:2}]
+        ))
+        check res == @[V {x:4,y:4}, V {x:5,y:3}, V {x:6,y:2}]
 
-        res = run(10, [x, y], ando(@[
-          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 6)]),
+        res = run(10, [x, y], ando(
+          oro(eqo(x, 4), eqo(x, 5), eqo(x, 6)),
           sub(x, y, 8),
-        ]))
-        check res == @[V Map {x:4,y: -4}, V Map {x:5,y: -3}, V Map {x:6,y: -2}]
+        ))
+        check res == @[V {x:4,y: -4}, V {x:5,y: -3}, V {x:6,y: -2}]
 
       test "simple multiplication and division":
-        let x = V Sym x
-        let y = V Sym y
+        let x = Sy x
+        let y = Sy y
         var res = run(10, [x], mul(2, x, 5))
-        check res == @[V Map {x: 2.5}]
+        check res == @[V {x: 2.5}]
 
         res = run(10, [x], dis(5, x, 2))
-        check res == @[V Map {x: 2.5}]
+        check res == @[V {x: 2.5}]
 
-        res = run(10, [x, y], ando(@[
+        res = run(10, [x, y], ando(
           membero(x, [4, 5, 6]),
           mul(x, 2, y),
-        ]))
-        check res == @[V Map {x:4,y:8}, V Map {x:5,y:10}, V Map {x:6,y:12}]
+        ))
+        check res == @[V {x:4,y:8}, V {x:5,y:10}, V {x:6,y:12}]
 
-        res = run(10, [x, y], ando(@[
+        res = run(10, [x, y], ando(
           membero(x, [4, 5, 6]),
           dis(x, 2, y),
-        ]))
-        check res == @[V Map {x:4,y:2}, V Map {x:5,y:2.5}, V Map {x:6,y:3}]
+        ))
+        check res == @[V {x:4,y:2}, V {x:5,y:2.5}, V {x:6,y:3}]
 
-        res = run(10, [x, y], ando(@[
-          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 2)]),
+        res = run(10, [x, y], ando(
+          oro(eqo(x, 4), eqo(x, 5), eqo(x, 2)),
           mul(x, y, 8),
-        ]))
-        check res == @[V Map {x:4,y:2}, V Map {x:5,y:1.6}, V Map {x:2,y:4}]
+        ))
+        check res == @[V {x:4,y:2}, V {x:5,y:1.6}, V {x:2,y:4}]
 
-        res = run(10, [x, y], ando(@[
-          oro(@[eqo(x, 4), eqo(x, 5), eqo(x, 6)]),
+        res = run(10, [x, y], ando(
+          oro(eqo(x, 4), eqo(x, 5), eqo(x, 6)),
           dis(x, y, 8),
-        ]))
-        check res == @[V Map {x:4,y:0.5}, V Map {x:5,y:0.625}, V Map {x:6,y:0.75}]
+        ))
+        check res == @[V {x:4,y:0.5}, V {x:5,y:0.625}, V {x:6,y:0.75}]
+
+    test "comparisons":
+      let a = Sy a
+      let b = Sy b
+      var res = run(10, [a, b], ando(
+        membero(a, [1, 2, 3]),
+        membero(b, [1, 2, 3]),
+        lt(a, b),
+      ))
+      check res == @[V {a:1, b:2}, V {a:1, b:3}, V {a:2, b:3}]
+
+      res = run(10, [a, b], ando(
+        membero(a, [1, 2, 3]),
+        membero(b, [1, 2, 3]),
+        gt(a, b),
+      ))
+      check res == @[V {a:2, b:1}, V {a:3, b:1}, V {a:3, b:2}]
+
+      res = run(10, [a, b], ando(
+        membero(a, [1, 2, 3]),
+        membero(b, [1, 2, 3]),
+        le(a, b),
+      ))
+      check res == @[V {a:1,b:1}, V {a:1,b:2}, V {a:1,b:3}, V {a:2,b:2}, V {a:2,b:3}, V {a:3,b:3}]
+
+      res = run(10, [a, b], ando(
+        membero(a, [1, 2, 3]),
+        membero(b, [1, 2, 3]),
+        ge(a, b),
+      ))
+      check res == @[V {b:1,a:1}, V {b:1,a:2}, V {b:2,a:2}, V {b:1,a:3}, V {b:2,a:3}, V {b:3,a:3}]
+    
+    test "other":
+      let a = Sy a
+      var res = run(7, [a], anyo(membero(a, [1, 2, 3])))
+      check res == @[V {a:1}, V {a:2}, V {a:3}, V {a:1}, V {a:2}, V {a:3}, V {a:1}]
 
     test "rules":
       let parent = facts(@[
-        V Arr ["Steve", "Bob"],
-        V Arr ["Steve", "Henry"],
-        V Arr ["Henry", "Alice"],
+        V ["Steve", "Bob"],
+        V ["Steve", "Henry"],
+        V ["Henry", "Alice"],
       ])
 
-      let x = V Sym x
+      let x = Sy x
       var res = run(10, [x], parent(@[x, V "Alice"]))
-      check res == @[V Map {x: "Henry"}]
+      check res == @[V {x: "Henry"}]
       res = run(10, [x], parent(@[V "Steve", x]))
-      check res == @[V Map {x: "Bob"}, V Map {x: "Henry"}]
+      check res == @[V {x: "Bob"}, V {x: "Henry"}]
 
       proc grandparent(x, y: Val): GenStream =
-        result = fresh([z], ando(@[
-          parent(@[x, z]),
-          parent(@[z, y])]))
+        result = fresh([z], ando(parent(@[x, z]), parent(@[z, y])))
       
       res = run(10, [x], grandparent(x, V "Alice"))
-      check res == @[V Map {x: "Steve"}]
-
-#[
-]#
-
-    #[
-    test "length":
-      let x = V Sym x
-      proc leno(arr, n: Val): SMapStream =
-        let head = V Sym head
-        let rest = V Sym rest
-        let n1   = V Sym n1
-        return oro(@[
-          ando(@[emptyo(x), eqo(n, 0)]),
-          ando(@[
-            conso(head, rest, arr),
-            leno(rest, n1),
-            addo(n1, 1, n),
-          ]),
-        ])
-]#
+      check res == @[V {x: "Steve"}]
 
   echo "done"

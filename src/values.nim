@@ -1076,7 +1076,7 @@ proc V_impl*(x: NimNode): NimNode =
 macro V*(x: untyped): untyped =
   V_impl(x)
 
-proc Map_impl(x: NimNode): NimNode =
+proc Map_impl*(x: NimNode): NimNode =
   case x.kind:
     of nnkBracket:
       var brak = copyNimNode(x)
@@ -1112,7 +1112,7 @@ macro Map*(x: untyped): untyped =
 macro Map*(): untyped =
   return quote do: init_map([])
 
-proc Arr_impl(x: NimNode): NimNode =
+proc Arr_impl*(x: NimNode): NimNode =
   case x.kind:
     of nnkBracket:
       var brak = copyNimNode(x)
@@ -1126,7 +1126,7 @@ macro Arr*(x: untyped): untyped =
 macro Arr*(): untyped =
   return quote do: init_array([])
 
-proc Set_impl(x: NimNode): NimNode =
+proc Set_impl*(x: NimNode): NimNode =
   case x.kind:
     of nnkBracket, nnkCurly:
       var brak = quote do: []
@@ -1144,7 +1144,7 @@ macro Set*(): untyped =
 ## - add format string capabilities
 template Str*(x: string): ImString = x.init_string
 
-proc Sym_impl(x: NimNode): NimNode =
+proc Sym_impl*(x: NimNode): NimNode =
   if x.kind == nnkStrLit:
     return quote do: init_symbol(`x`)
   let str_val = x.repr
