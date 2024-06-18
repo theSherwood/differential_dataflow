@@ -1220,7 +1220,7 @@ proc `<`*(a, b: ImValue): bool =
   raise newException(TypeException, &"Cannot compare {a.type_label} and {b.type_label}")
   
 proc `<=`*(a, b: ImValue): bool =
-  if a.is_num and b.is_num: return a.as_f64 < b.as_f64
+  if a.is_num and b.is_num: return a.as_f64 <= b.as_f64
   let a_sig = bitand(a.type_bits, MASK_SIGNATURE)
   let b_sig = bitand(b.type_bits, MASK_SIGNATURE)
   case a_sig:
