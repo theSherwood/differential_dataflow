@@ -1,3 +1,17 @@
+## TODO
+## - better interfaces for:
+##   - oro
+##   - ando
+##   - run
+##     - stream?
+## - perf
+##   - reduce recursion in:
+##     - oro
+##     - ando
+##   - array methods?
+## - rules
+## 
+
 import std/[tables, strutils]
 import ../src/[test_utils, kanren]
 
@@ -145,6 +159,27 @@ proc main* =
           dis(x, y, 8),
         ]))
         check res == @[V Map {x:4,y:0.5}, V Map {x:5,y:0.625}, V Map {x:6,y:0.75}]
+
+    test "rules":
+      let parent = facts(@[
+        V Arr ["Steve", "Bob"],
+        V Arr ["Steve", "Henry"],
+        V Arr ["Henry", "Alice"],
+      ])
+
+      let x = V Sym x
+      var res = run(10, [x], parent(@[x, V "Alice"]))
+      check res == @[V Map {x: "Henry"}]
+      res = run(10, [x], parent(@[V "Steve", x]))
+      check res == @[V Map {x: "Bob"}, V Map {x: "Henry"}]
+
+      proc grandparent(x, y: Val): GenStream =
+        result = fresh([z], ando(@[
+          parent(@[x, z]),
+          parent(@[z, y])]))
+      
+      res = run(10, [x], grandparent(x, V "Alice"))
+      check res == @[V Map {x: "Steve"}]
 
 #[
 ]#

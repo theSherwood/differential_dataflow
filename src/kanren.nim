@@ -4,6 +4,7 @@
 
 import macros
 import strutils
+import sequtils
 import strformat
 import values
 export values
@@ -380,3 +381,20 @@ macro mul*(a, b, c: untyped): untyped =
   return newCall("mul_impl", V_impl(a), V_impl(b), V_impl(c))
 macro dis*(a, b, c: untyped): untyped =
   return newCall("mul_impl", V_impl(b), V_impl(c), V_impl(a))
+
+proc mapi[T, U](a: openArray[T], fn: proc(v: T, i: int): U): seq[U] =
+  var i = 0
+  for v in a:
+    result.add(fn(v, i))
+    i += 1
+
+proc facts*(facs: seq[Val]): proc(args: seq[Val]): GenStream =
+  result = proc(args: seq[Val]): GenStream =
+    result = oro(facs.map(
+      proc(fac: Val): GenStream =
+        ando(args.mapi(
+          proc(arg: Val, i: int): GenStream =
+            eqo(arg, fac[i])
+        ))
+    ))
+  
