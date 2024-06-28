@@ -1437,6 +1437,26 @@ proc `*`*(x, y: ImValue): ImValue =
 proc `/`*(x, y: ImValue): ImValue = 
   if x.is_num and y.is_num: return (x.as_f64 / y.as_f64).v
   else: raise newException(TypeException, &"Cannot call `/` on {x.type_label} and {y.type_label}")
+proc `mod`*(x, y: ImValue): ImValue =
+  if x.is_num and y.is_num: return (system.mod(x.to_int, y.to_int)).v
+  else: raise newException(TypeException, &"Cannot call `mod` on {x.type_label} and {y.type_label}")
+
+proc `+`*(x: ImValue, y: int): ImValue = 
+  if x.is_num: return (x.as_f64 + y.float64).v
+  else: raise newException(TypeException, &"Cannot call `+` on {x.type_label} and int")
+proc `-`*(x: ImValue, y: int): ImValue = 
+  if x.is_num: return (x.as_f64 - y.float64).v
+  else: raise newException(TypeException, &"Cannot call `-` on {x.type_label} and int")
+proc `*`*(x: ImValue, y: int): ImValue = 
+  if x.is_num: return (x.as_f64 * y.float64).v
+  else: raise newException(TypeException, &"Cannot call `*` on {x.type_label} and int")
+proc `/`*(x: ImValue, y: int): ImValue = 
+  if x.is_num: return (x.as_f64 / y.float64).v
+  else: raise newException(TypeException, &"Cannot call `/` on {x.type_label} and int")
+proc `mod`*(x: ImValue, y: int): ImValue =
+  if x.is_num: return (system.mod(x.to_int, y)).v
+  else: raise newException(TypeException, &"Cannot call `mod` on {x.type_label} and int")
+
 
 ##
 ## nil < boolean < number < string < set < array < map

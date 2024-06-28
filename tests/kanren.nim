@@ -11,6 +11,41 @@ import ../src/[test_utils, kanren]
 
 proc main* =
   suite "kanren":
+    test "EF + FD = FDF":
+      ##
+      ##    EF
+      ## +  FD
+      ## -----
+      ##   FDF
+      ## 
+      let
+        D = Var D
+        E = Var E
+        F = Var F
+      var res = run(10, [D, E, F], fresh([digits],
+        ando(
+          eqo(digits, V [0,1,2,3,4,5,6,7,8,9]),
+          membero(F, digits),
+          neqo(F, 0),
+          membero(D, digits),
+          predo(proc(smap: Val, walk: proc(key, smap: Val): Val): bool =
+            let f = walk(F, smap)
+            if ((walk(D, smap) + f) mod 10) == f: return true 
+          ),
+          membero(E, digits),
+          predo(proc(smap: Val, walk: proc(key, smap: Val): Val): bool =
+            let e = walk(E, smap)
+            if e == 0: return false
+            let d = walk(D, smap)
+            let f = walk(F, smap)
+            let lhs = (e * 10) + f + (f * 10) + d
+            let rhs = (f * 100) + (d * 10) + f
+            if lhs == rhs: return true
+          )
+        )
+      ))
+      check res == @[V {D: 0, E: 9, F: 1}]
+
     test "simple":
       let x = Var x
       var res = run(10, [x], eqo(x, 1))
@@ -96,6 +131,16 @@ proc main* =
 
       res = run(10, [x], ando(eqo(x, 5), eqo(x, 6)))
       check res == newSeq[Val]()
+    
+    test "negation":
+      let x = Var x
+      var res = run(10, [x], ando(
+        membero(x, V [0,1,2,3,4,5,6]),
+        neqo(x, 3),
+        noro(eqo(x, 0), eqo(x, 1), eqo(x, 2)),
+        nando(eqo(x, 4), eqo(x, x))
+      ))
+      check res == @[V {x: 5}, V {x: 6}]
     
     suite "arithmetic":
       test "simple addition and subtraction":

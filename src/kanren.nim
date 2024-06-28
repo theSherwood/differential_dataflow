@@ -222,6 +222,36 @@ proc run*(num: int, vars: openArray[Val], goal: GenStream): seq[Val] =
     n -= 1
     result.add(x)
 
+proc noto*(goal: GenStream): GenStream =
+  return gen_iter(noto, (smap: Val), Val):
+    var inner_goal_success = false
+    var it = goal(smap)
+    for x in it():
+      if x != Nil:
+        inner_goal_success = true
+        break
+    if inner_goal_success: yeet Nil.v
+    else:                  yeet smap
+
+proc nando*(clauses: varargs[GenStream]): GenStream =
+  let c = toSeq(clauses)
+  var goal = gen_iter(nando, (smap: Val), Val):
+    var it = ando_helper(c, 0, smap)
+    for x in it():
+      yeet x
+  return noto(goal)
+
+proc noro*(clauses: varargs[GenStream]): GenStream =
+  let
+    offset = 0
+    sol_num = 0
+    c = toSeq(clauses)
+  var goal = gen_iter(noro, (smap: Val), Val):
+    var it = oro_helper(c, offset, sol_num, smap)
+    for x in it():
+      yeet x
+  return noto(goal)
+
 macro fresh*(lvars, body: untyped): untyped =
   template def_lvar(x): untyped =
     let x = Var x
@@ -244,6 +274,10 @@ proc eqo_impl*(x, y: Val): GenStream =
   return gen_iter(eqo_impl, (smap: Val), Val):
     yeet unify(x, y, smap)
 macro eqo*(x, y): untyped = C("eqo_impl", Z(x), Z(y))
+
+proc neqo_impl*(x, y: Val): GenStream =
+  return noto(eqo(x, y))
+macro neqo*(x, y): untyped = C("neqo_impl", Z(x), Z(y))
 
 # #endregion ==========================================================
 #            KANREN ADDITIONAL OPERATORS
@@ -284,6 +318,11 @@ proc appendo_impl*(arr1, arr2, output: Val): GenStream =
   ])
 macro appendo*(arr1, arr2, output): untyped = C("appendo_impl", Z(arr1), Z(arr2), Z(output)) 
 
+proc predo*(fn: proc(smap: Val, walk: proc(key, smap: Val): Val): bool): GenStream =
+  return gen_iter(predo, (smap: Val), Val):
+    if fn(smap, walk): yeet smap
+    else: yeet Nil.v
+
 proc stringo_impl*(x: Val): GenStream =
   return gen_iter(stringo_impl, (smap: Val), Val):
     if walk(x, smap).is_string: yeet smap
@@ -307,7 +346,7 @@ proc add_impl*(a, b, c: Val): GenStream =
   return gen_iter(add_impl, (smap: Val), Val):
     let x = walk(a, smap)
     let y = walk(b, smap)
-    let z = walk(c,  smap)
+    let z = walk(c, smap)
     var
       lvars_count = 0
       lvar = Nil.v
@@ -348,7 +387,7 @@ proc mul_impl*(a, b, c: Val): GenStream =
   return gen_iter(mul_impl, (smap: Val), Val):
     let x = walk(a, smap)
     let y = walk(b, smap)
-    let z = walk(c,  smap)
+    let z = walk(c, smap)
     var
       lvars_count = 0
       lvar = Nil.v
