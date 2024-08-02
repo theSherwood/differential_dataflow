@@ -68,9 +68,9 @@ func `$`*[T](s: PVecRef[T]): string =
   res.add("]")
   return res
 
-# #endregion ==========================================================
-#            FORWARD DECLARATIONS
-# #region =============================================================
+# ===================================================================
+# FORWARD DECLARATIONS
+# ===================================================================
 
 func init_sumtree*[T](d: T): PVecRef[T]
 func init_sumtree*[T](kind: NodeKind): PVecRef[T]
@@ -83,9 +83,9 @@ func im_delete_after*[T](s: PVecRef[T], idx: int): PVecRef[T]
 func pairs_closure[T](s: PVecRef[T]): iterator(): (int, T)
 
 
-# #endregion ==========================================================
-#            SUMMARY OPERATIONS
-# #region =============================================================
+# ===================================================================
+# SUMMARY OPERATIONS
+# ===================================================================
 
 func zero*[T](t: typedesc[PVecSummary[T]]): PVecSummary[T] =
   result.size = 0
@@ -115,9 +115,9 @@ func from_item*[T](t: typedesc[PVecSummary[T]], it: T): PVecSummary[T] =
   result.size = 1
   result.hash = it.hash
 
-# #endregion ==========================================================
-#            HELPERS
-# #region =============================================================
+# ===================================================================
+# HELPERS
+# ===================================================================
 
 func depth_safe*[T](s: PVecRef[T]): uint8 =
   if s.kind == kLeaf:
@@ -271,9 +271,9 @@ func tree_from_leaves[T](leaves: seq[PVecRef[T]]): PVecRef[T] =
     layer = interiors
   return layer[0]
 
-# #endregion ==========================================================
-#            MUTABLE HELPERS
-# #region =============================================================
+# ===================================================================
+# MUTABLE HELPERS
+# ===================================================================
 
 template mut_append_to_leaf_with_room*[T](s: PVecRef[T], d: T) =
   s.data.add(d)
@@ -348,9 +348,9 @@ proc mut_pop_interior*[T](s: PVecRef[T]): PVecRef[T] =
     s.depth = s.compute_local_depth
   return child
 
-# #endregion ==========================================================
-#            IMMUTABLE HELPERS
-# #region =============================================================
+# ===================================================================
+# IMMUTABLE HELPERS
+# ===================================================================
 
 func im_append_to_leaf_with_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
   result = s.clone
@@ -372,9 +372,9 @@ func im_prepend_to_leaf_no_room*[T](s: PVecRef[T], d: T): PVecRef[T] =
   result.mut_prepend_to_interior_with_room(s)
   result.mut_prepend_to_interior_with_room(new_leaf)
 
-# #endregion ==========================================================
-#            INITIALIZERS
-# #region =============================================================
+# ===================================================================
+# INITIALIZERS
+# ===================================================================
 
 func init_sumtree*[T](d: T): PVecRef[T] =
   var s = PVecRef[T](kind: kLeaf)
@@ -453,9 +453,9 @@ template to_sumtree*(T: typedesc, iter: untyped): untyped =
   leaves.add(n)
   result = tree_from_leaves(leaves)
 
-# #endregion ==========================================================
-#            GETTER API
-# #region =============================================================
+# ===================================================================
+# GETTER API
+# ===================================================================
 
 func get*[T](s: PVecRef[T], idx: int): T =
   find_leaf_node_at_index_template(s, idx)
@@ -529,9 +529,9 @@ func `==`*[T](v1, v2: PVecRef[T]): bool  =
       if t1() != t2(): return false
       if fin: return true
 
-# #endregion ==========================================================
-#            ITERATORS
-# #region =============================================================
+# ===================================================================
+# ITERATORS
+# ===================================================================
 
 iterator nodes_pre_order*[T](s: PVecRef[T]): PVecRef[T] =
   # yield after we push onto the stack
@@ -728,9 +728,9 @@ proc zip*[T, U](s1: PVecRef[T], s2: PVecRef[U]): PVecRef[(T, U)] =
 func reverse*[T](s: PVecRef[T]): PVecRef[T] =
   to_sumtree(T, items_reverse[T](s))
 
-# #endregion ==========================================================
-#            MUTABLE API
-# #region =============================================================
+# ===================================================================
+# MUTABLE API
+# ===================================================================
 
 proc mut_append*[T](s: PVecRef[T], d: T) =
   var n = s
@@ -748,9 +748,9 @@ proc mut_append*[T](s: PVecRef[T], d: T) =
     s.mut_append_to_interior_with_room(s_clone)
     s.mut_append_to_interior_with_room(new_st)
 
-# #endregion ==========================================================
-#            IMMUTABLE API
-# #region =============================================================
+# ===================================================================
+# IMMUTABLE API
+# ===================================================================
 
 func im_delete_before*[T](s: PVecRef[T], idx: int): PVecRef[T] =
   if idx <= 0: return s
@@ -987,9 +987,9 @@ func im_pop*[T](s: PVecRef[T]): (PVecRef[T], T) =
     var datum = n_clone.mut_pop_leaf()
     return (shadow[T](stack, n_clone), datum)
 
-# #endregion ==========================================================
-#            VEC API
-# #region =============================================================
+# ===================================================================
+# VEC API
+# ===================================================================
 
 template init_vec*[T](): PVecRef[T] = init_sumtree[T](kLeaf)
 template to_vec*[T](items: openArray[T]): PVecRef[T] = to_sumtree[T](items)

@@ -6,9 +6,9 @@ import std/[macros, strutils, sequtils, strformat]
 import values
 export values
 
-# #endregion ==========================================================
-#            ITER HELPERS
-# #region =============================================================
+# ====================================================================
+# ITER HELPERS
+# ====================================================================
 
 const DEBUG_ITER* = false
 const ITER_ID* = 0
@@ -97,9 +97,9 @@ template yeet*(val: untyped) =
     print("yeet: " & $THE_VALUE)
   yield THE_VALUE
 
-# #endregion ==========================================================
-#            KANREN CORE
-# #region =============================================================
+# ====================================================================
+# KANREN CORE
+# ====================================================================
 
 type
   Val* = ImValue
@@ -279,9 +279,9 @@ proc neqo_impl*(x, y: Val): GenStream =
   return noto(eqo(x, y))
 macro neqo*(x, y): untyped = C("neqo_impl", Z(x), Z(y))
 
-# #endregion ==========================================================
-#            KANREN ADDITIONAL OPERATORS
-# #region =============================================================
+# ====================================================================
+# KANREN ADDITIONAL OPERATORS
+# ====================================================================
 
 proc conso_impl*(first, rest, output: Val): GenStream =
   if rest.is_lvar: return eqo(V [first, dot, rest], output)
@@ -460,9 +460,9 @@ proc failo*(): GenStream =
 proc anyo*(goal: GenStream): GenStream =
   return oro(@[goal, fresh([], anyo(goal))])
 
-# #endregion ==========================================================
-#            OTHER
-# #region =============================================================
+# ====================================================================
+# OTHER
+# ====================================================================
 
 proc facts*(facs: seq[Val]): proc(args: seq[Val]): GenStream =
   result = proc(args: seq[Val]): GenStream =
