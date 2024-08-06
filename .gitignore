@@ -20,3 +20,4 @@ dist
 
 scratch.*
 profile_results.*
+scripts/user_settings.sh
