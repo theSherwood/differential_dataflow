@@ -258,9 +258,10 @@ macro fresh*(lvars, body: untyped): untyped =
   var defs = newStmtList()
   for lvar in lvars:
     defs.add(getAst(def_lvar(lvar)))
+  let gen_iter = bindSym("gen_iter")
   result = quote do: (proc(): GenStream =
     `defs`
-    return gen_iter(fresh, (smap: Val), Val):
+    return `gen_iter`(fresh, (smap: Val), Val):
       var bod = `body`
       var it = bod(smap)
       for z in it():
