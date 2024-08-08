@@ -11,8 +11,9 @@
 
 import std/[tables, sets, bitops, strutils, sequtils, strformat, macros]
 import hashes
-import persistent/[vec, map]
 # import persistent/[sumtree]
+import persistent/vec except `==`
+import persistent/map except `==`
 
 ## # Immutable Value Types
 ## =======================
@@ -183,7 +184,7 @@ type
     kMap
     kSet
     kSymbol
-
+  
 when c32:
   type ImValue* = object
     tail: uint32
@@ -248,6 +249,30 @@ type
   ImSV* = ImNaN or ImNil or ImBool or ImAtom
   ImHV* = ImString or ImArray or ImMap or ImSet or ImSymbol
   ImV* = ImSV or ImHV
+
+# Forward Declarations #
+# ---------------------------------------------------------------------
+
+## Forward declare these so that the equality procs in the collection
+## implementations can rely on them.
+func `==`*(v1, v2: ImValue): bool
+func `==`*(v: ImValue, f: float64): bool
+func `==`*(f: float64, v: ImValue): bool
+func `==`*(v1, v2: ImString): bool
+func `==`*(v1, v2: ImMap): bool
+func `==`*(v1, v2: ImArray): bool
+func `==`*(v1, v2: ImSet): bool
+func `==`*(v1, v2: ImSymbol): bool
+func `==`*(v1, v2: ImHV): bool
+func `==`*(v1, v2: ImSV): bool
+func `==`*(v1, v2: ImV): bool
+func `==`*(v: ImV, f: float64): bool
+func `==`*(f: float64, v: ImV): bool
+
+## Import the `==` of the persistent collections so that they can "see" the
+## forward declarations of this module.
+from persistent/vec import `==`
+from persistent/map import `==`
 
 ## Forward declare this so that we make sure the same hash function is always
 ## used for every operation involving ImValue
@@ -444,20 +469,23 @@ when c32:
     elif x.is_symbol:
       GC_unref(cast[ImSymbolPayloadRef](x.tail))
   proc `=copy`(x: var ImValue, y: ImValue) =
-    if x.as_u64 == y.as_u64: return
-    if y.is_map:
-      GC_ref(cast[ImMapPayloadRef](y.tail))
-    elif y.is_array:
-      GC_ref(cast[ImArrayPayloadRef](y.tail))
-    elif y.is_set:
-      GC_ref(cast[ImSetPayloadRef](y.tail))
-    elif y.is_string:
-      GC_ref(cast[ImStringPayloadRef](y.tail))
-    elif y.is_symbol:
-      GC_ref(cast[ImSymbolPayloadRef](y.tail))
-    `=destroy`(x)
-    x.head = y.head
-    x.tail = y.tail
+    try:
+      if x.as_u64 == y.as_u64: return
+      if y.is_map:
+        GC_ref(cast[ImMapPayloadRef](y.tail))
+      elif y.is_array:
+        GC_ref(cast[ImArrayPayloadRef](y.tail))
+      elif y.is_set:
+        GC_ref(cast[ImSetPayloadRef](y.tail))
+      elif y.is_string:
+        GC_ref(cast[ImStringPayloadRef](y.tail))
+      elif y.is_symbol:
+        GC_ref(cast[ImSymbolPayloadRef](y.tail))
+      `=destroy`(x)
+      x.head = y.head
+      x.tail = y.tail
+    except:
+      raise newException(AssertionDefect, "Failed copy")
 else:
   proc `=destroy`[T](x: var MaskedRef[T]) =
     GC_unref(cast[ref T](to_clean_ptr(x.p)))

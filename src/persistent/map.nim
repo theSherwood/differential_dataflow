@@ -14,6 +14,8 @@ from strutils import nil
 import chunk
 export chunk
 
+const c32 = defined(cpu32)
+
 const
   INDEX_BITS* {.intdefine.} = 5
   BRANCH_WIDTH = 1 shl INDEX_BITS
@@ -97,7 +99,10 @@ template key*[K, V](h_entry: HashedEntry[K, V]): K =
 template value*[K, V](h_entry: HashedEntry[K, V]): V =
   h_entry.entry.value
 
-const TOP_BIT_MASK = cast[Hash](0x3fffffffffffffff'u64)
+when c32:
+  const TOP_BIT_MASK = cast[Hash](0x3fffffff'u32)
+else:
+  const TOP_BIT_MASK = cast[Hash](0x3fffffffffffffff'u64)
 
 template entry_hash*[K, V](h_entry: HashedEntryBox[K, V]): Hash =
   (h_entry.hash and TOP_BIT_MASK) + (hash(h_entry.value) and TOP_BIT_MASK)

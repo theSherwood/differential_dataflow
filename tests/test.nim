@@ -9,10 +9,10 @@ from dida_from_python import nil
 from kanren import nil
 
 # Run tests
-# vec.main()
-# map.main()
-# set.main()
-# multiset.main()
+vec.main()
+map.main()
+set.main()
+multiset.main()
 # sumtree.main()
 values.main()
 dida_from_python.main()
