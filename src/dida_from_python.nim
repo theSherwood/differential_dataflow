@@ -1,12 +1,12 @@
 import std/[tables, sets, bitops, strutils, sequtils, sugar, algorithm, strformat]
 import hashes
-import values
+import ../submodules/dynamic_value/src/value as value
+export value
 
 # Collections #
 # ---------------------------------------------------------------------
 
 type
-  Value* = ImValue
   Entry* = Value
 
   Row* = (Entry, int)
@@ -28,11 +28,11 @@ proc `$`*(c: Collection): string =
   $(c[])
 
 proc key*(e: Entry): Value =
-  doAssert e.is_array
-  return e.as_arr[0]
+  doAssert e.is_vec
+  return e.as_vec[0]
 proc value*(e: Entry): Value =
-  doAssert e.is_array
-  return e.as_arr[1]
+  doAssert e.is_vec
+  return e.as_vec[1]
 template entry*(r: Row): Entry = r[0]
 template key*(r: Row): Value = r.entry.key
 template value*(r: Row): Value = r.entry.value
@@ -173,7 +173,7 @@ proc min_inner(rows: seq[Row]): seq[Row] =
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
   result = @[]
   var value_seen = false
-  var min_val: ImValue
+  var min_val: Value
   for e, i in t.pairs:
     doAssert i >= 0
     if i != 0:
@@ -200,7 +200,7 @@ proc max_inner(rows: seq[Row]): seq[Row] =
     t[r.entry] = r.multiplicity + t.getOrDefault(r.entry, 0)
   result = @[]
   var value_seen = false
-  var max_val: ImValue
+  var max_val: Value
   for e, i in t.pairs:
     doAssert i >= 0
     if i != 0:

@@ -1,5 +1,4 @@
 import std/[math, algorithm, strutils, strformat]
-import ../../../src/[values]
 
 const WARMUP* = 100_000 # microseconds
 const TIMEOUT* = 100_000

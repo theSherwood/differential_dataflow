@@ -1,0 +1,4 @@
+[submodule "submodules/dynamic_value"]
+	path = submodules/dynamic_value
+	url = https://github.com/theSherwood/dynamic_value.git
+	branch = main
