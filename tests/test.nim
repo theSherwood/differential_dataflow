@@ -1,8 +1,8 @@
 from ../src/test_utils import failures
-from dida_from_python import nil
+from differential_dataflow import nil
 
 # Run tests
-dida_from_python.main()
+differential_dataflow.main()
 
 when defined(wasm):
   if failures > 0: raise newException(AssertionDefect, "Something failed.")

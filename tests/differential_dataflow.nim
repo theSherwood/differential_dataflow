@@ -1,5 +1,5 @@
 import std/[sugar, sequtils]
-import ../src/[test_utils, dida_from_python]
+import ../src/[test_utils, differential_dataflow]
 
 template COL*(rows: openArray[Row]): Collection = init_collection(rows)
 template VER*(timestamps: openArray[int]): Version = init_version(timestamps)
