@@ -2,7 +2,7 @@
 
 **WIP**
 
-Based on the ideas of [Frank McSherry](https://github.com/frankmcsherry/blog) and [Differential Dataflow](https://github.com/TimelyDataflow/differential-dataflow).
+Based on the ideas of [Frank McSherry](https://github.com/frankmcsherry/blog) and [Differential Dataflow](https://github.com/TimelyDataflow/differential-dataflow). This implementation relies on [my dynamic_value lib](https://github.com/theSherwood/dynamic_value).
 
 If you are unfamiliar with the concept, it's basically a model of computation for incremental view maintenance. There is a suite of operators that can be used to form a dataflow graph. The operators act on streams of batches of state deltas (hence the term "differential") to performing mapping, filtering, joins, and even loops/recursion.
 
@@ -21,7 +21,7 @@ The basic idea is pretty promising for databases, ui, and even rule engines and 
 
 ## Usage
 
-An Game of Life implementation in `differential_dataflow`. Honestly, Game of Life probably makes more sense to be written in an imperative style, but this really isn't too bad if the board is small. What is more, it provides an example of iteration.
+A Game of Life implementation in `differential_dataflow`. Honestly, Game of Life probably makes more sense to be written in an imperative style, but this really isn't too bad if the board is small. What is more, it provides an example of iteration.
 
 ```nim
 proc game_of_life(b: Builder): Builder =
